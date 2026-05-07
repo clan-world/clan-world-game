@@ -1,46 +1,85 @@
 /**
- * Mirror of `apps/web/src/styles/cockpit-tokens.ts` — kept verbatim so the
- * mobile shell reads as the cockpit's mobile sibling, not a generic mobile
- * app. If a value here drifts from the cockpit token, that is a visual
- * regression and the next visual audit will catch it.
+ * Design tokens — pulled verbatim from the "Clan World RN Shell" design
+ * archive (`artifacts/Clan World RN Shell.zip` → `project/styles.css`).
  *
- * Palette philosophy is documented in the cockpit file; this file is values
- * only. React Native does not parse CSS shorthands like the web inset shadow,
- * so the shadow tokens are RN-shaped (offset/radius/opacity) rather than
- * CSS strings.
+ * Replacing the old cockpit-token mirror: per the user's redesign brief,
+ * the mobile shell now follows this design language, not the desktop
+ * cockpit's parchment-on-iron-frame aesthetic. Both still feel
+ * "ClanWorld," but they are deliberately not pixel-aligned.
  */
 
 export const tokens = {
   bg: {
-    void: '#0a0a0a',
-    parchment: '#e8dec7',
-    parchmentDim: '#cdbfa0',
-    iron: '#2a2620',
-    ironDeep: '#16140f',
-    ink: '#1a1612',
+    canvas: '#0B0A0E',
+    elevated: '#15131A',
+    elevated2: '#1C1922',
+    parchment: '#E8DAB1',
+    parchmentDim: '#C7B27C',
+    parchmentDeep: '#B59E68',
+    terminal: '#0F0E12',
+
+    // Aliases for cross-screen consistency. Existing callers used `void`;
+    // the design's `canvas` is the same role.
+    void: '#0B0A0E',
+    aubergineDeep: '#2A1F3D',
   },
+  ink: {
+    parchment: '#1A1410',
+    parchmentMuted: '#5A4A35',
+    parchmentFaint: '#8A7752',
+    dark: '#E8DDC4',
+    darkMuted: '#9A8E72',
+    darkFaint: '#5C5443',
+    mono: '#D4AF5C',
+  },
+  gold: {
+    primary: '#D4AF5C',
+    bright: '#E8C77E',
+    deep: '#8C6F3A',
+    deeper: '#5E4920',
+  },
+  script: {
+    blue: '#6B7DB8',
+    blueMuted: '#3A4A7A',
+  },
+  status: {
+    live: '#6B8E5C',
+    warn: '#C99B4F',
+    danger: '#A04A3F',
+    info: '#5A7BA8',
+  },
+  // Convenience aliases mapping legacy callsites to new token names.
+  // Removed once every screen uses the design's vocabulary directly.
   text: {
-    onParchment: '#2a1f10',
-    onParchmentDim: '#5a4628',
-    onIron: '#c9b88a',
-    onIronDim: '#7a6b4a',
-    accent: '#d4a544',
-    danger: '#b03a2e',
-    muted: '#6b5e44',
+    onParchment: '#1A1410',
+    onParchmentDim: '#5A4A35',
+    onIron: '#E8DDC4',
+    onIronDim: '#9A8E72',
+    accent: '#D4AF5C',
+    danger: '#A04A3F',
+    muted: '#5C5443',
   },
   border: {
-    iron: '#3a3528',
-    ironLight: '#4a4232',
-    parchmentEdge: '#a89b78',
+    gold: '#D4AF5C',
+    goldSoft: 'rgba(212, 175, 92, 0.35)',
+    goldDeep: '#8C6F3A',
+    parchmentEdge: 'rgba(26, 20, 16, 0.25)',
+    iron: '#3A3528',
+    ironLight: '#4A4232',
   },
   font: {
-    display: 'Cinzel_600SemiBold',
+    display: 'Cinzel_500Medium',
+    displaySemi: 'Cinzel_600SemiBold',
     displayBold: 'Cinzel_700Bold',
-    body: 'Inter_400Regular',
-    bodyMedium: 'Inter_500Medium',
-    bodyBold: 'Inter_600SemiBold',
+    script: 'CormorantGaramond_500Medium_Italic',
+    scriptBold: 'CormorantGaramond_600SemiBold_Italic',
+    body: 'EBGaramond_400Regular',
+    bodyMedium: 'EBGaramond_500Medium',
+    bodyBold: 'EBGaramond_600SemiBold',
+    bodyItalic: 'EBGaramond_400Regular_Italic',
     mono: 'JetBrainsMono_400Regular',
-    monoBold: 'JetBrainsMono_500Medium',
+    monoMedium: 'JetBrainsMono_500Medium',
+    monoBold: 'JetBrainsMono_600SemiBold',
   },
   space: {
     xs: 4,
@@ -57,10 +96,10 @@ export const tokens = {
   shadow: {
     panel: {
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.6,
-      shadowRadius: 8,
-      elevation: 4,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.5,
+      shadowRadius: 28,
+      elevation: 8,
     },
   },
 } as const;
