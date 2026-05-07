@@ -11,6 +11,8 @@
     "lint": "echo 'lint stub'",
     "build:preview": "eas build --profile preview --platform android",
     "build:dev": "eas build --profile development --platform android",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf .expo dist .turbo node_modules android ios"
   },
   "dependencies": {
@@ -26,6 +28,13 @@
     "@expo-google-fonts/cinzel": "^0.2.3",
     "@expo-google-fonts/inter": "^0.2.3",
     "@expo-google-fonts/jetbrains-mono": "^0.2.3",
+    "expo-haptics": "~14.0.1",
+    "expo-secure-store": "~14.0.1",
+    "@solana-mobile/mobile-wallet-adapter-protocol": "^2.2.8",
+    "@solana-mobile/mobile-wallet-adapter-protocol-web3js": "^2.2.8",
+    "@solana/web3.js": "^1.98.0",
+    "buffer": "^6.0.3",
+    "react-native-get-random-values": "~1.11.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "0.76.9",
@@ -38,6 +47,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~18.3.12",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
   }
 }
