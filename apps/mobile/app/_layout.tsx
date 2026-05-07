@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ConvexProvider } from 'convex/react';
 import { fontMap } from '@/theme/fonts';
 import { tokens } from '@/theme/tokens';
@@ -36,20 +37,22 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.bg.void }}>
-      <StatusBar style="light" />
-      <ConvexProvider client={convex}>
-        <WalletProvider>
-          <FollowedClanProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: tokens.bg.void },
-                animation: 'fade',
-              }}
-            />
-          </FollowedClanProvider>
-        </WalletProvider>
-      </ConvexProvider>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <ConvexProvider client={convex}>
+          <WalletProvider>
+            <FollowedClanProvider>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: tokens.bg.void },
+                  animation: 'fade',
+                }}
+              />
+            </FollowedClanProvider>
+          </WalletProvider>
+        </ConvexProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

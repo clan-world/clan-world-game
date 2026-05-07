@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { useFollowedClan } from '@/hooks/useFollowedClan';
 import { useWallet } from '@/hooks/useWallet';
@@ -17,6 +17,7 @@ const COCKPIT_URL =
 export default function Cockpit() {
   const { state } = useWallet();
   const { clanId } = useFollowedClan();
+  const insets = useSafeAreaInsets();
 
   const url = useMemo(() => buildCockpitUrl(COCKPIT_URL, clanId), [clanId]);
   const injection = useMemo(
@@ -72,7 +73,15 @@ export default function Cockpit() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: tokens.bg.void }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: tokens.bg.void,
+        // Pad the top so the WebView doesn't draw under the status bar.
+        // The tab bar already lives below; bottom inset handled by Expo Router.
+        paddingTop: insets.top,
+      }}
+    >
       <WebView
         // Per slice spec §10.2: shared cookies + DOM storage + JS enabled
         // are required for Convex websockets to live inside react-native-webview.
