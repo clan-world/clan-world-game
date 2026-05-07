@@ -1,0 +1,33 @@
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native (we DO track android/ once `expo prebuild` has run, per slice spec §13.
+# These are the build outputs only.)
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+ios/build/
+ios/Pods/
+
+# Metro
+.metro-health-check*
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Turbo / pnpm
+.turbo/
+node_modules/
