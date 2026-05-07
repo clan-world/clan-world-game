@@ -23,14 +23,13 @@ Mirrors `apps/web/src/styles/cockpit-tokens.ts` verbatim. The mobile shell must 
 
 ## 3. Phase plan (lives in slice 0 spec)
 
-1. Scaffold + EAS init ← we are here
-2. MWA POC (real device, Phantom devnet)
-3. Convex wiring (live snapshot)
-4. Hall + local-Follow
-5. WebView cockpit
-6. Codex + device detect
-7. Visual audit
-8. EAS preview build
+All eight phases of slice 0 are code-complete. Static gates green:
+typecheck PASSES, vitest 17/17 PASSES, expo-doctor 17/17 PASSES,
+expo export Android Hermes bundle (4.77 MB) compiles cleanly.
+
+Runtime gates (AC-W2/W3/W4, AC-V2, AC-S2, AC-B2/B3) require a Pixel 7
+emulator with Phantom on devnet. See `HANDOFF.md` for the 11-step
+verification script and the EAS preview-build kickoff.
 
 ## 4. Common commands
 
