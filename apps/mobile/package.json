@@ -28,6 +28,7 @@
     "@expo-google-fonts/cinzel": "^0.2.3",
     "@expo-google-fonts/inter": "^0.2.3",
     "@expo-google-fonts/jetbrains-mono": "^0.2.3",
+    "expo-dev-client": "~5.0.20",
     "expo-device": "~7.0.3",
     "expo-haptics": "~14.0.1",
     "expo-secure-store": "~14.0.1",

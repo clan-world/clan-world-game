@@ -1,0 +1,35 @@
+# Files to exclude from EAS Build upload. Keeps the archive lean — without
+# this we ship the entire monorepo (apps/web, apps/server, all of
+# node_modules, the gold-bridge submodule, the Pixi sprites in /images, etc.)
+# even though EAS only needs apps/mobile + workspace deps.
+
+# Other apps in the monorepo — EAS only builds @clan-world/mobile.
+apps/web/
+apps/server/
+apps/landing/
+apps/orchestrator/
+packages/contracts/
+packages/agents/
+packages/runner/
+
+# Sibling monorepo with its own toolchain.
+gold-bridge-monorepo/
+
+# Game art assets (Pixi sprites etc) — only consumed by apps/web.
+images/
+
+# Bundled prebuild zips that live in the repo root.
+*.zip
+
+# Repo-level docs/artifacts that EAS doesn't need.
+docs/
+artifacts/
+runtime/
+infra/
+.world/
+
+# Standard outputs.
+**/.expo/
+**/.turbo/
+**/dist/
+**/coverage/
