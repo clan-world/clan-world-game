@@ -14,6 +14,7 @@ import { ConvexProvider } from 'convex/react';
 import { fontMap } from '@/theme/fonts';
 import { tokens } from '@/theme/tokens';
 import { WalletProvider } from '@/hooks/useWallet';
+import { FollowedClanProvider } from '@/hooks/useFollowedClan';
 import { convex } from '@/lib/convex';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -38,13 +39,15 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <ConvexProvider client={convex}>
         <WalletProvider>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: tokens.bg.void },
-              animation: 'fade',
-            }}
-          />
+          <FollowedClanProvider>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: tokens.bg.void },
+                animation: 'fade',
+              }}
+            />
+          </FollowedClanProvider>
         </WalletProvider>
       </ConvexProvider>
     </GestureHandlerRootView>
