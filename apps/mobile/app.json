@@ -9,8 +9,7 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "android": {
-      "package": "com.clanworld.mobile",
-      "edgeToEdgeEnabled": true
+      "package": "com.clanworld.mobile"
     },
     "plugins": [
       "expo-router",
