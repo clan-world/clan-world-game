@@ -12,14 +12,7 @@
       "package": "com.clanworld.mobile"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#0a0a0a",
-          "resizeMode": "contain"
-        }
-      ]
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
