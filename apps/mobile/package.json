@@ -33,6 +33,7 @@
     "@solana-mobile/mobile-wallet-adapter-protocol": "^2.2.8",
     "@solana-mobile/mobile-wallet-adapter-protocol-web3js": "^2.2.8",
     "@solana/web3.js": "^1.98.0",
+    "convex": "1.17.4",
     "buffer": "^6.0.3",
     "react-native-get-random-values": "~1.11.0",
     "react": "18.3.1",

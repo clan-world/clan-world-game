@@ -10,9 +10,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ConvexProvider } from 'convex/react';
 import { fontMap } from '@/theme/fonts';
 import { tokens } from '@/theme/tokens';
 import { WalletProvider } from '@/hooks/useWallet';
+import { convex } from '@/lib/convex';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // On reload during dev, the splash may already be hidden. Swallow.
@@ -34,15 +36,17 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.bg.void }}>
       <StatusBar style="light" />
-      <WalletProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: tokens.bg.void },
-            animation: 'fade',
-          }}
-        />
-      </WalletProvider>
+      <ConvexProvider client={convex}>
+        <WalletProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: tokens.bg.void },
+              animation: 'fade',
+            }}
+          />
+        </WalletProvider>
+      </ConvexProvider>
     </GestureHandlerRootView>
   );
 }
