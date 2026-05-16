@@ -99,6 +99,7 @@ export default defineSchema({
     blockNumber: v.optional(v.number()),
     tickEpochStartedAt: v.number(),
     tickEpochDurationMs: v.number(),
+    currentSeasonNumber: v.optional(v.number()),
     seasonStartTick: v.number(),
     seasonEndTick: v.number(),
     winterActive: v.boolean(),

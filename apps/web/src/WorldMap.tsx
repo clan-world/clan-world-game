@@ -1322,6 +1322,9 @@ export function WorldMap() {
 
   const logs = useAgentLogs();
   const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
+  // Lightweight tick-only subscription (~50 bytes/tick). Invalidates every tick
+  // so WorldMap always has a fresh tick counter without pulling 40KB of world data.
+  const tickClock = useQuery(api.getTickClock.getTickClock);
   // Cache the snapshot in localStorage so iOS Safari (and other browsers that
   // pause background tabs) can render the last-known world state instantly on
   // PWA return — instead of flashing the "no chain data yet" placeholder
@@ -1336,13 +1339,14 @@ export function WorldMap() {
   const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
   const rawChainEvents = useQuery(api.events.getRecentChainEvents);
 
-  // Derived live tick counter — the worldSnapshot.tick field is currently
-  // unwritten by the orchestrator script (it only writes to agentLogs), so
-  // we surface a moving counter by deriving from log count. Floors at the
-  // snapshot value so we never go BACKWARDS if the schema is wired later.
-  const liveTick = useMemo(() => {
-    return Math.max(snapshot?.tick ?? 0, logs.length);
-  }, [logs, snapshot?.tick]);
+  // Derived live tick counter — prefer tickClock (cheap, always fresh) over
+  // snapshot.tick (only updates when world data changes after delta-check).
+  // Fall back to snapshot.tick for continuity during tickClock cold-start.
+  // Floor against log count so we never go BACKWARDS.
+  const liveTick = useMemo(
+    () => Math.max(tickClock?.tick ?? snapshot?.tick ?? 0, logs.length),
+    [logs, tickClock?.tick, snapshot?.tick],
+  );
   const liveBandit = snapshot?.bandit ?? null;
   const visibleBandit = DEMO_MODE
     ? {
