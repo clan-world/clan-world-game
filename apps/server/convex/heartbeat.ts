@@ -260,20 +260,25 @@ export const advanceTick = internalMutation({
 
     const newTick = baseTick + 1;
     const newEpochStartedAt = Math.floor(Date.now() / 1000);
-    await ctx.db.insert("worldSnapshot", {
-      tick: newTick,
-      tickEpochStartedAt: newEpochStartedAt,
-      tickEpochDurationMs: baseEpochDurationMs,
-      regions: snap.regions,
-      clans: snap.clans,
-    });
+    // Monotonic guard covers both writes — prevents stale insert if a concurrent
+    // indexer commit advanced tickClock past newTick between our read and commit.
+    // Convex OCC serializes mutations, but this guard makes the intent explicit.
+    if (!clockRow || newTick > clockRow.tick) {
+      await ctx.db.insert("worldSnapshot", {
+        tick: newTick,
+        tickEpochStartedAt: newEpochStartedAt,
+        tickEpochDurationMs: baseEpochDurationMs,
+        regions: snap.regions,
+        clans: snap.clans,
+      });
+    }
     await ctx.db.insert("agentLogs", {
       level: "info",
       message: `heartbeat: tick ${baseTick} → ${newTick}`,
       timestamp: Date.now(),
     });
 
-    // Monotonic guard: never patch tickClock backward.
+    // Also keep tickClock in sync (same monotonic guard — reuses condition above).
     if (!clockRow || newTick > clockRow.tick) {
       if (clockRow) {
         await ctx.db.patch(clockRow._id, {

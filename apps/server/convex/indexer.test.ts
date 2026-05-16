@@ -765,7 +765,7 @@ describe("legacy snapshot backfill", () => {
       },
     );
 
-    const clansAfterFirst = JSON.stringify(tables.worldSnapshot?.[0]?.clans);
+    const tickAfterFirst = tables.worldSnapshot?.[0]?.tick;
 
     // Second commit — only cooldownEndsAtTs/lastMissionNonce change (monotonic, stripped by stableClansman)
     await (commitSnapshot as any)._handler(
@@ -779,7 +779,8 @@ describe("legacy snapshot backfill", () => {
       },
     );
 
-    // worldSnapshot.clans should be identical — monotonic fields were stripped
-    expect(JSON.stringify(tables.worldSnapshot?.[0]?.clans)).toBe(clansAfterFirst);
+    // worldSnapshot was NOT patched — tick stays at 1, not advanced to 2.
+    // If the delta-check incorrectly fired, it would patch worldSnapshot with tick=2.
+    expect(tables.worldSnapshot?.[0]?.tick).toBe(tickAfterFirst);
   });
 });
