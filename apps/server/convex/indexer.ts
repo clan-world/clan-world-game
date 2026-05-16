@@ -348,16 +348,26 @@ function stableClansman(row: unknown): unknown {
       },
       effectiveRegion: derived.effectiveRegion,
     },
-    activeMission: mission ? {
-      active: mission.active,
-      action: mission.action,
-      startRegion: mission.startRegion,
-      targetRegion: mission.targetRegion,
-      startTick: mission.startTick,
-      arrivalTick: mission.arrivalTick,
-      actionStartTick: mission.actionStartTick,
-      settlesAtTick: mission.settlesAtTick,
-    } : undefined,
+    // Build activeMission with only defined fields. Convex documents reject
+    // arbitrary `undefined` property values; without this filter, an
+    // activeMission fixture that omits e.g. `startTick` would materialize
+    // `{ startTick: undefined, ... }` via the legacy projection and break
+    // serialization on the worldSnapshot insert path. Per pr338-r4 super-
+    // swarm codex HIGH.
+    activeMission: mission
+      ? Object.fromEntries(
+          Object.entries({
+            active: mission.active,
+            action: mission.action,
+            startRegion: mission.startRegion,
+            targetRegion: mission.targetRegion,
+            startTick: mission.startTick,
+            arrivalTick: mission.arrivalTick,
+            actionStartTick: mission.actionStartTick,
+            settlesAtTick: mission.settlesAtTick,
+          }).filter(([, value]) => value !== undefined),
+        )
+      : undefined,
   };
 }
 
