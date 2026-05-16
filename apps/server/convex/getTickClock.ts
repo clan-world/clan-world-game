@@ -1,5 +1,4 @@
 import { query } from "./_generated/server";
-import { HEARTBEAT_INTERVAL_SECONDS, SEASON_DURATION_TICKS } from "@clan-world/shared/generated/constants";
 
 export const getTickClock = query({
   handler: async (ctx) => {

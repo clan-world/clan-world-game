@@ -65,6 +65,12 @@ const LEGACY_REGIONS = [
 ];
 const indexerApi = internal.indexer;
 
+/**
+ * Key-order-stable JSON serializer for Convex-safe values.
+ * Accepts: string, number, boolean, null, plain object, array.
+ * Do NOT pass: Date, BigInt, undefined, Symbol — these are not valid in Convex
+ * documents and will serialize incorrectly (Date→{}, BigInt→throws).
+ */
 export function stableJson(val: unknown): string {
   if (val === null || typeof val !== "object") return JSON.stringify(val);
   if (Array.isArray(val)) return `[${val.map(stableJson).join(",")}]`;
