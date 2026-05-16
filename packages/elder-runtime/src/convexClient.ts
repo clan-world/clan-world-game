@@ -8,7 +8,7 @@ type Qry<A extends Record<string, unknown>, R> = FunctionReference<"query", "pub
 
 const api = anyApi as unknown as {
   commandBus: {
-    claimNext: Mut<{ secret: string; agentId: string }, string | null>;
+    claimNext: Mut<{ secret: string; agentId: string }, AgentCommand | null>;
     ackCommand: Mut<{ secret: string; agentId: string; commandId: string }>;
     completeCommand: Mut<{
       secret: string; agentId: string; commandId: string;
@@ -22,7 +22,6 @@ const api = anyApi as unknown as {
       secret: string; agentId: string;
       lastTickProcessed: number; currentStrategy?: string; health: Health;
     }>;
-    getCommand: Qry<{ commandId: string }, AgentCommand | null>;
   };
 };
 
@@ -37,7 +36,7 @@ export class BusClient {
     this.agentId = agentId;
   }
 
-  async claimNext(): Promise<string | null> {
+  async claimNext(): Promise<AgentCommand | null> {
     return this.http.mutation(api.commandBus.claimNext, {
       secret: this.secret, agentId: this.agentId,
     });
@@ -68,7 +67,4 @@ export class BusClient {
     });
   }
 
-  async getCommand(commandId: string): Promise<AgentCommand | null> {
-    return this.http.query(api.commandBus.getCommand, { commandId });
-  }
 }

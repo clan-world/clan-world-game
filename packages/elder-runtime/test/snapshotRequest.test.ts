@@ -9,6 +9,7 @@ const config: ElderRuntimeConfig = {
   elderId: "elder-1", convexUrl: "http://localhost", busSecret: "s",
   stateDir: "/tmp", ancientWisdomPath: "", pollIntervalMs: 100,
   heartbeatIntervalMs: 1000, noncePollIntervalMs: 50, nonceTimeoutMs: 500,
+  runScriptPath: "/opt/clan-world/shared/run.sh",
 };
 
 describe("handleSnapshotRequest", () => {

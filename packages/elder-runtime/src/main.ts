@@ -39,46 +39,41 @@ async function main(): Promise<void> {
   console.log(`[elder-runtime] poll loop started (interval=${config.pollIntervalMs}ms)`);
   while (!ac.signal.aborted) {
     try {
-      const commandId = await bus.claimNext();
-      if (commandId) {
-        const command = await bus.getCommand(commandId);
-        if (!command) {
-          console.warn(`[elder-runtime] claimed ${commandId} but getCommand returned null`);
-        } else {
-          console.log(`[elder-runtime] dispatching ${command.kind} (${commandId})`);
-          try {
-            switch (command.kind) {
-              case "user_message":
-                await handleUserMessage(commandId, command.payload, tmux, bus, freeze, config);
-                break;
-              case "system_message":
-                await handleSystemMessage(commandId, command.payload, tmux, bus, config);
-                break;
-              case "snapshot_request":
-                await handleSnapshotRequest(commandId, command.payload, bus, config);
-                break;
-              case "reset":
-                await handleReset(commandId, command.payload, tmux, bus, freeze);
-                break;
-              case "freeze":
-                await handleFreeze(commandId, command.payload, bus, freeze);
-                break;
-              case "unfreeze":
-                await handleUnfreeze(commandId, command.payload, bus, freeze);
-                break;
-              default: {
-                const kind = (command as { kind: string }).kind;
-                console.warn(`[elder-runtime] unknown kind: ${kind}`);
-                await bus.failCommand(commandId, `unknown kind: ${kind}`);
-              }
+      const command = await bus.claimNext();
+      if (command) {
+        console.log(`[elder-runtime] dispatching ${command.kind} (${command._id})`);
+        try {
+          switch (command.kind) {
+            case "user_message":
+              await handleUserMessage(command._id, command.payload, tmux, bus, freeze, config);
+              break;
+            case "system_message":
+              await handleSystemMessage(command._id, command.payload, tmux, bus, config);
+              break;
+            case "snapshot_request":
+              await handleSnapshotRequest(command._id, command.payload, bus, config);
+              break;
+            case "reset":
+              await handleReset(command._id, command.payload, tmux, bus, freeze, config);
+              break;
+            case "freeze":
+              await handleFreeze(command._id, command.payload, bus, freeze);
+              break;
+            case "unfreeze":
+              await handleUnfreeze(command._id, command.payload, bus, freeze);
+              break;
+            default: {
+              const kind = (command as { kind: string }).kind;
+              console.warn(`[elder-runtime] unknown kind: ${kind}`);
+              await bus.failCommand(command._id, `unknown kind: ${kind}`);
             }
-            heartbeatState.lastTickProcessed++;
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : String(err);
-            console.error(`[elder-runtime] handler error for ${commandId}:`, err);
-            try { await bus.failCommand(commandId, reason); } catch { /* best-effort */ }
-            heartbeatState.consecutiveErrors++;
           }
+          heartbeatState.lastTickProcessed++;
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          console.error(`[elder-runtime] handler error for ${command._id}:`, err);
+          try { await bus.failCommand(command._id, reason); } catch { /* best-effort */ }
+          heartbeatState.consecutiveErrors++;
         }
       }
     } catch (err) {

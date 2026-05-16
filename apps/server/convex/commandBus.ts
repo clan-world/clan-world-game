@@ -94,7 +94,7 @@ export const claimNext = mutation({
       leaseOwner: args.agentId,
       leaseExpiresAt: now + LEASE_MS,
     });
-    return cmd._id;
+    return { ...cmd, status: "leased" as const, leaseOwner: args.agentId, leaseExpiresAt: now + LEASE_MS };
   },
 });
 
@@ -226,14 +226,6 @@ export const sweepStaleDelivered = internalMutation({
       swept++;
     }
     return { swept };
-  },
-});
-
-// 9. getCommand — fetch a single command by id (for elder-runtime dispatch)
-export const getCommand = query({
-  args: { commandId: v.id("agentCommands") },
-  handler: async (ctx, args) => {
-    return await ctx.db.get(args.commandId);
   },
 });
 

@@ -22,8 +22,11 @@ export function startHeartbeat(
   signal: AbortSignal,
 ): void {
   if (signal.aborted) return;
+  let inFlight = false;
   const tick = setInterval(async () => {
     if (signal.aborted) { clearInterval(tick); return; }
+    if (inFlight) return;
+    inFlight = true;
     const health = deriveHealth(state, Date.now());
     try {
       await client.heartbeat(state.lastTickProcessed, health, state.currentStrategy);
@@ -32,6 +35,8 @@ export function startHeartbeat(
     } catch (err) {
       state.consecutiveErrors++;
       console.error("[heartbeat] failed:", err);
+    } finally {
+      inFlight = false;
     }
   }, intervalMs);
   signal.addEventListener("abort", () => clearInterval(tick), { once: true });

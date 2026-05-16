@@ -16,5 +16,9 @@ export async function handleSnapshotRequest(
   } catch {
     snapshot = "[ANCIENT_WISDOM.md not found]";
   }
+  const MAX_BYTES = 50_000;
+  if (snapshot.length > MAX_BYTES) {
+    snapshot = snapshot.slice(0, MAX_BYTES) + "\n[TRUNCATED: snapshot exceeded 50 KB cap]";
+  }
   await bus.completeCommand(commandId, { snapshot }, Date.now() - startMs);
 }

@@ -199,11 +199,11 @@ describe("claimNext", () => {
         },
       ],
     });
-    const claimedId = await (claimNext as any)._handler(
+    const claimed = await (claimNext as any)._handler(
       { db },
       { secret: "elder-1-secret", agentId: "elder-1" },
     );
-    expect(claimedId).toBe("agentCommands:0");
+    expect(claimed?._id).toBe("agentCommands:0");
     expect(tables.agentCommands![0].status).toBe("leased");
     expect(tables.agentCommands![0].leaseOwner).toBe("elder-1");
   });
@@ -231,11 +231,11 @@ describe("claimNext", () => {
         },
       ],
     });
-    const claimedId = await (claimNext as any)._handler(
+    const claimed = await (claimNext as any)._handler(
       { db },
       { secret: "elder-1-secret", agentId: "elder-1" },
     );
-    expect(claimedId).toBe("agentCommands:0");
+    expect(claimed?._id).toBe("agentCommands:0");
     expect(tables.agentCommands![0].status).toBe("leased");
   });
 });

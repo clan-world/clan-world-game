@@ -28,4 +28,5 @@ export interface ElderRuntimeConfig {
   heartbeatIntervalMs: number;
   noncePollIntervalMs: number;
   nonceTimeoutMs: number;
+  runScriptPath: string;
 }
