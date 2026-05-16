@@ -541,7 +541,7 @@ export const commitSnapshot = internalMutation({
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
       winterActive: asBool(world.winterActive),
-      winterStartsAtTick: asNumber(world.winterStartsAtTick) || undefined,
+      winterStartsAtTick: (() => { const wsat = asNumber(world.winterStartsAtTick); return wsat > 0 ? wsat : undefined; })(),
     };
     if (tickClockRow) {
       await ctx.db.patch(tickClockRow._id, tickClockData);
@@ -759,18 +759,28 @@ export const commitSnapshot = internalMutation({
     // Strip audit/timestamp fields before comparing so a no-data tick is a no-op.
     const previousComparableSnapshot = previousWorldSnapshot
       ? (() => {
-          const { _id, _creationTime, lastUpdatedAt, lastUpdatedBlock, txHash, ...rest } =
+          const {
+            _id, _creationTime, lastUpdatedAt, lastUpdatedBlock, txHash,
+            tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+            ...rest
+          } =
             previousWorldSnapshot as typeof previousWorldSnapshot & {
               _id: unknown;
               _creationTime: unknown;
             };
           void _id; void _creationTime; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+          void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
           return rest;
         })()
       : undefined;
     const nextComparableSnapshot = (() => {
-      const { lastUpdatedAt, lastUpdatedBlock, txHash, ...rest } = worldSnapshot;
+      const {
+        lastUpdatedAt, lastUpdatedBlock, txHash,
+        tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+        ...rest
+      } = worldSnapshot;
       void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+      void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
       return rest;
     })();
     if (
