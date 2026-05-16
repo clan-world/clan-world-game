@@ -5,16 +5,9 @@ export const getTickClock = query({
   handler: async (ctx) => {
     const clock = await ctx.db.query("tickClock").order("desc").first();
     if (!clock) {
-      return {
-        tick: 0,
-        blockNumber: undefined,
-        tickEpochStartedAt: 0,
-        tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
-        seasonStartTick: 0,
-        seasonEndTick: Number(SEASON_DURATION_TICKS),
-        winterActive: false,
-        winterStartsAtTick: undefined,
-      };
+      // Return null so callers can fall back to worldSnapshot.tick during
+      // migration window when tickClock table doesn't exist yet.
+      return null;
     }
     return {
       tick: clock.tick,
