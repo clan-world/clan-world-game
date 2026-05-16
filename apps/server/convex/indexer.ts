@@ -678,11 +678,13 @@ export const commitSnapshot = internalMutation({
             _id: undefined,
             _creationTime: undefined,
             refreshedAt: undefined,
+            derivedAtTick: undefined,
+            lastUpdatedBlock: undefined,
           }
         : undefined;
       if (
         JSON.stringify(previousComparable) !==
-        JSON.stringify({ ...nextView, refreshedAt: undefined })
+        JSON.stringify({ ...nextView, refreshedAt: undefined, derivedAtTick: undefined, lastUpdatedBlock: undefined })
       ) {
         await ctx.db.insert("clanView", nextView);
       }
