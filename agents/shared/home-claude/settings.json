@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Shared CC permission base for every Elder container. Bind-mounted R/O at /home/elder/.claude/settings.json. Deny rules apply to the agent's tool calls (Read/Write/Edit/Bash), NOT the CC harness itself — the harness still reads/writes credentials and project state to run normally.",
+  "permissions": {
+    "deny": [
+      "Read(.credentials.json)",
+      "Read(~/.claude/.credentials.json)",
+      "Read(/home/elder/.claude/.credentials.json)",
+      "Read(~/.claude/projects/**/sessions/*.jsonl)",
+      "Read(/home/elder/.claude/projects/**/sessions/*.jsonl)",
+      "Bash(cat ~/.claude/.credentials.json)",
+      "Bash(cat /home/elder/.claude/.credentials.json)",
+      "Bash(cat ~/.claude/projects/*/sessions/*.jsonl)",
+      "Bash(cat /home/elder/.claude/projects/*/sessions/*.jsonl)",
+      "Bash(env)",
+      "Bash(env *)",
+      "Bash(printenv)",
+      "Bash(printenv *)",
+      "Bash(cat /proc/*/environ)",
+      "Bash(cat /agent/.env)",
+      "Bash(cat /home/elder/.env)",
+      "Write(~/.claude/settings.json)",
+      "Write(/home/elder/.claude/settings.json)",
+      "Write(~/.claude/CLAUDE.md)",
+      "Write(/home/elder/.claude/CLAUDE.md)",
+      "Edit(~/.claude/settings.json)",
+      "Edit(/home/elder/.claude/settings.json)",
+      "Edit(~/.claude/CLAUDE.md)",
+      "Edit(/home/elder/.claude/CLAUDE.md)"
+    ],
+    "allow": [
+      "Read(~/.claude/CLAUDE.md)",
+      "Read(/home/elder/.claude/CLAUDE.md)",
+      "Read(~/.claude/skills/**)",
+      "Read(/home/elder/.claude/skills/**)",
+      "Read(~/.claude/projects/*/memory/**)",
+      "Read(/home/elder/.claude/projects/*/memory/**)",
+      "Write(~/.claude/projects/*/memory/**)",
+      "Write(/home/elder/.claude/projects/*/memory/**)",
+      "Edit(~/.claude/projects/*/memory/**)",
+      "Edit(/home/elder/.claude/projects/*/memory/**)",
+      "Read(/workspace/**)",
+      "Write(/workspace/**)",
+      "Edit(/workspace/**)",
+      "Read(/workspace/ANCIENT_WISDOM.md)",
+      "Write(/workspace/ANCIENT_WISDOM.md)",
+      "Edit(/workspace/ANCIENT_WISDOM.md)",
+      "Bash(elder *)",
+      "Bash(date)",
+      "Bash(date *)"
+    ]
+  }
+}
