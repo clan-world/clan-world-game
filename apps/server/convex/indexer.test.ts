@@ -700,4 +700,86 @@ describe("legacy snapshot backfill", () => {
     expect(tables.worldSnapshot?.[0]?.lastUpdatedBlock).toBe(100);
     expect(tables.worldSnapshot?.[0]?.clans).toEqual([{ id: "current" }]);
   });
+
+  it("does not rewrite worldSnapshot when only monotonic clansman fields change", async () => {
+    const { db, tables } = createDb();
+
+    const makeClanView = (cooldownEndsAtTs: number) => ({
+      // view.clan.clan = the on-chain struct; view.clan = derived view with effectiveRegion
+      clan: {
+        clan: {
+          clanId: 1,
+          owner: "0x0000000000000000000000000000000000000000",
+          baseRegion: 1,
+          clanState: 0,
+          baseLevel: 1,
+          wallLevel: 1,
+          monumentLevel: 0,
+          livingClansmen: 1,
+          isStarving: false,
+          starvationStartsAtTick: 0,
+          coldDamage: 0,
+          goldBalance: "0",
+          blueprintBalance: "0",
+          vaultWood: "0",
+          vaultIron: "0",
+          vaultWheat: "0",
+          vaultFish: "0",
+          lootValue: "0",
+        },
+        derivedAtTick: 1,
+        effectiveRegion: 1,
+      },
+      // view.clansmen = top-level field consumed by the handler (line 611)
+      clansmen: [
+        {
+          clansman: {
+            clansman: {
+              clansmanId: 1,
+              clanId: 1,
+              state: 0,
+              currentRegion: 1,
+              cooldownEndsAtTs,       // monotonic — stripped by stableClansman
+              lastMissionNonce: cooldownEndsAtTs,  // monotonic — stripped
+              carryWood: "0",
+              carryIron: "0",
+              carryWheat: "0",
+              carryFish: "0",
+            },
+            effectiveRegion: 1,
+          },
+          activeMission: { active: false, action: 0, startRegion: 1, targetRegion: 1 },
+        },
+      ],
+    });
+
+    // First commit — establishes clanView + worldSnapshot
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 1,
+          world: { currentTick: 1 },
+          clans: [makeClanView(100)],
+        },
+      },
+    );
+
+    const clansAfterFirst = JSON.stringify(tables.worldSnapshot?.[0]?.clans);
+
+    // Second commit — only cooldownEndsAtTs/lastMissionNonce change (monotonic, stripped by stableClansman)
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 2,
+          world: { currentTick: 2 },
+          clans: [makeClanView(101)],
+        },
+      },
+    );
+
+    // worldSnapshot.clans should be identical — monotonic fields were stripped
+    expect(JSON.stringify(tables.worldSnapshot?.[0]?.clans)).toBe(clansAfterFirst);
+  });
 });
