@@ -23,7 +23,7 @@ export async function handleSystemMessage(
 
   const text = (payload as { text?: string })?.text ?? "";
   const nonce = randomUUID();
-  const nonceInstruction = `\n\n[control] When you have fully completed processing this message, emit exactly the line \`##NONCE:${nonce}## DONE\` (no prefix, no suffix, no quotes) as the final line of your response. The runtime uses this marker to acknowledge command completion.`;
+  const nonceInstruction = `\n\n[control] When you have fully completed processing this message, emit exactly the line \`##NONCE:${nonce}## DONE\` (no prefix, no suffix, no quotes) as the final line of your response. If you cannot complete the task, emit \`##NONCE:${nonce}## FAIL <reason>\` instead. The runtime uses the marker count to acknowledge command completion.`;
   const message = `${text}${nonceInstruction}`;
 
   await tmux.loadBuffer("elder-input", message);

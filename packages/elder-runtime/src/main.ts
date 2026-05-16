@@ -29,22 +29,35 @@ async function main(): Promise<void> {
     writeSync(lockFd, String(process.pid));
   } catch (err: any) {
     if (err.code === "EEXIST") {
-      // Stale-lock check: verify the owning process is still a tsx elder-runtime
-      let stillAlive = false;
+      // Stale-lock check: split kill-0 and cmdline-read to avoid safe-default confusion
       try {
         const stalePid = parseInt(readFileSync(lockPath, "utf8").trim(), 10);
         if (Number.isFinite(stalePid)) {
-          process.kill(stalePid, 0); // throws if dead
-          const cmdline = readFileSync(`/proc/${stalePid}/cmdline`, "utf8");
-          if (cmdline.includes("tsx") && cmdline.includes("elder-runtime")) {
-            stillAlive = true;
+          let pidAlive = false;
+          try {
+            process.kill(stalePid, 0);
+            pidAlive = true;
+          } catch { /* pid dead — stale lock */ }
+
+          if (pidAlive) {
+            // PID alive. Try to confirm it's actually a tsx supervisor (not PID reuse).
+            let isOurProcess = true; // default safe: assume locked when cmdline unreadable
+            try {
+              const cmdline = readFileSync(`/proc/${stalePid}/cmdline`, "utf8");
+              isOurProcess = cmdline.includes("tsx") && cmdline.includes("elder-runtime");
+            } catch {
+              // cmdline unreadable (restricted procfs, transient) — DEFAULT SAFE: treat as locked
+              console.error(`[elder-runtime] cannot read /proc/${stalePid}/cmdline; treating as locked`);
+            }
+            if (isOurProcess) {
+              console.error(`[elder-runtime] FATAL: another supervisor running at PID ${stalePid}`);
+              process.exit(1);
+            }
+            // cmdline confirmed different process — PID reuse; fall through to unlink
           }
+          // pid dead or PID-reuse confirmed — stale, safe to unlink
         }
-      } catch { /* dead or no /proc — treat as stale */ }
-      if (stillAlive) {
-        console.error("[elder-runtime] FATAL: another supervisor already running. Exiting.");
-        process.exit(1);
-      }
+      } catch { /* lock unreadable; treat as stale */ }
       // Stale lock — remove and retry
       unlinkSync(lockPath);
       lockFd = openSync(lockPath, "wx");

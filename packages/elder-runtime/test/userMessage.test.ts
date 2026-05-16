@@ -120,17 +120,23 @@ describe("handleUserMessage", () => {
     expect(failed[0]?.reason).toContain("nonce");
   });
 
-  it("fails with FAIL marker when Elder echoes FAIL (occurrence >= 2)", async () => {
+  it("fails with FAIL marker when Elder emits FAIL exactly once (prompt seeds first occurrence)", async () => {
+    // Prompt now contains BOTH DONE and FAIL markers → Elder emitting FAIL once = count 2.
     const { bus, failed } = makeBus();
     const freeze = new FreezeGate();
     const { tmux, paneState } = makeTmux();
 
+    let elderEmittedFail = false;
     let pollCount = 0;
     tmux.capturePane = async () => {
       pollCount++;
-      if (pollCount >= 2) {
+      if (!elderEmittedFail && pollCount >= 2) {
+        // Elder emits FAIL exactly once — prompt already has one occurrence
         const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
-        if (match) paneState.scrollback += `##NONCE:${match[1]}## FAIL cannot process request\n`;
+        if (match) {
+          paneState.scrollback += `I cannot do that — ##NONCE:${match[1]}## FAIL out of vault funds\n`;
+          elderEmittedFail = true;
+        }
       }
       return paneState.scrollback;
     };
@@ -138,6 +144,7 @@ describe("handleUserMessage", () => {
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
     expect(failed[0]?.id).toBe("cmd:0");
     expect(failed[0]?.reason).toContain("FAIL");
+    expect(failed[0]?.reason).toContain("vault funds");
   });
 
   it("loads buffer with NONCE instruction and pastes to session", async () => {
