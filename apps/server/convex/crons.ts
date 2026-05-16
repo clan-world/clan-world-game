@@ -17,7 +17,6 @@ if (process.env.CLANWORLD_USE_FAKE_HEARTBEAT === "true") {
 }
 
 if (process.env.CLANWORLD_USE_REAL_INDEXER === "true") {
-  crons.interval("real-indexer-snapshot-refresh", { seconds: 5 }, internal.indexer.refreshSnapshot, {});
   crons.interval("real-indexer-log-poller", { seconds: 3 }, internal.indexer.pollLogs, {});
 }
 

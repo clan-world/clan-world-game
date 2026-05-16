@@ -1019,6 +1019,7 @@ export const pollLogs = internalAction({
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
       lastBlock: number;
       lastTxHash?: string;
+      lastSeenAt?: number;
     } | null;
     const latest = await client.getBlockNumber();
     const { fromBlock, toBlock, safeLatest, shouldPoll } = planPollLogRange(
@@ -1033,15 +1034,25 @@ export const pollLogs = internalAction({
       };
     }
 
+    if (checkpoint?.lastSeenAt && Date.now() - checkpoint.lastSeenAt > 90_000) {
+      console.error("[indexer] liveness: no events polled in 90s — webhook may be down");
+    }
+
     const logs = await client.getLogs({ address, fromBlock, toBlock });
     const events = decodeClanWorldLogs(logs);
-    return await ctx.runMutation(indexerApi.ingestEvents, {
+    const result = await ctx.runMutation(indexerApi.ingestEvents, {
       events,
       blockNumber: Number(toBlock),
       txHash:
         events[events.length - 1]?.transactionHash ?? checkpoint?.lastTxHash,
       advanceCheckpoint: true,
     });
+    if ((result as { inserted: number }).inserted > 0) {
+      await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {
+        blockNumber: Number(toBlock),
+      });
+    }
+    return result;
   },
 });
 
