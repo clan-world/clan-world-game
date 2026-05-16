@@ -97,6 +97,51 @@ type LegacyClanView = Partial<Doc<"clanView">> &
 const isPresent = <T>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined;
 
+// Non-content fields stripped before delta-comparison in commitSnapshot's
+// banditView / marketState writes (see #334). Convex auto-fields (_id,
+// _creationTime) plus per-insert audit/timestamp fields that advance every
+// heartbeat even when on-chain state is identical. marketState additionally
+// carries tick cursors (currentTick / lastUpdatedTick) that advance every
+// tick — these must be stripped too or the no-op guard never fires.
+const BANDIT_VIEW_NON_CONTENT_FIELDS = [
+  "_id",
+  "_creationTime",
+  "refreshedAt",
+  "lastUpdatedBlock",
+] as const;
+const MARKET_STATE_NON_CONTENT_FIELDS = [
+  "_id",
+  "_creationTime",
+  "refreshedAt",
+  "lastUpdatedBlock",
+  "currentTick",
+  "lastUpdatedTick",
+] as const;
+
+const stripNonContentFields = (
+  row: object | null | undefined,
+  fieldsToStrip: readonly string[],
+): Record<string, unknown> | undefined => {
+  if (!row) return undefined;
+  const skip = new Set(fieldsToStrip);
+  return Object.fromEntries(
+    Object.entries(row).filter(([key]) => !skip.has(key)),
+  );
+};
+
+// JSON.stringify-based content equality. Matches the existing `clanView`
+// delta pattern in `commitSnapshot` (`previousComparable` block). Field
+// order in object literals is stable across V8 for same-shape inserts,
+// so this is sound without a deep-equal dep — and consistent with the
+// pattern that PR #338 may later upgrade to fast-deep-equal.
+const isContentEqualIgnoring = (
+  previous: object | null | undefined,
+  next: object,
+  fieldsToStrip: readonly string[],
+) =>
+  JSON.stringify(stripNonContentFields(previous, fieldsToStrip)) ===
+  JSON.stringify(stripNonContentFields(next, fieldsToStrip));
+
 export function bigintSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.map(bigintSafe);
@@ -484,7 +529,7 @@ export const commitSnapshot = internalMutation({
 
     if (snapshot.market) {
       const market = snapshot.market;
-      await ctx.db.insert("marketState", {
+      const nextMarketState = {
         pools: MARKET_POOL_KEYS.map((resourceType) => {
           const pool = objectAt(market, resourceType);
           return {
@@ -506,12 +551,25 @@ export const commitSnapshot = internalMutation({
         lastUpdatedTick: tick,
         lastUpdatedBlock: snapshot.blockNumber,
         refreshedAt: now,
-      });
+      };
+      const previousMarketState = await ctx.db
+        .query("marketState")
+        .order("desc")
+        .first();
+      if (
+        !isContentEqualIgnoring(
+          previousMarketState,
+          nextMarketState,
+          MARKET_STATE_NON_CONTENT_FIELDS,
+        )
+      ) {
+        await ctx.db.insert("marketState", nextMarketState);
+      }
     }
 
     if (snapshot.bandit) {
       const bandit = snapshot.bandit;
-      await ctx.db.insert("banditView", {
+      const nextBanditView = {
         exists: asBool(bandit.exists),
         id: asNumber(bandit.banditId),
         region: asNumber(bandit.currentRegion),
@@ -530,7 +588,20 @@ export const commitSnapshot = internalMutation({
         projectedTargetLootValue: asString(bandit.projectedTargetLootValue),
         refreshedAt: now,
         lastUpdatedBlock: snapshot.blockNumber,
-      });
+      };
+      const previousBanditView = await ctx.db
+        .query("banditView")
+        .order("desc")
+        .first();
+      if (
+        !isContentEqualIgnoring(
+          previousBanditView,
+          nextBanditView,
+          BANDIT_VIEW_NON_CONTENT_FIELDS,
+        )
+      ) {
+        await ctx.db.insert("banditView", nextBanditView);
+      }
     }
 
     for (const view of snapshot.clans) {
