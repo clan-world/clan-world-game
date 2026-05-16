@@ -8,6 +8,7 @@ import {
   lensAddress,
   planPollLogRange,
   pricePointFromEvent,
+  stableJson,
 } from "./indexer";
 
 const address = "0x1111111111111111111111111111111111111111" as const;
@@ -124,6 +125,24 @@ function fixtureLog(
     removed: false,
   };
 }
+
+describe("stableJson", () => {
+  it("is key-order-independent", () => {
+    const a = { b: 1, a: 2 };
+    const b = { a: 2, b: 1 };
+    expect(stableJson(a)).toBe(stableJson(b));
+  });
+  it("two worldSnapshot-like objects differing only in tick-family fields produce equal stableJson when those fields are stripped", () => {
+    const strip = (o: Record<string, unknown>) => {
+      const { tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick, lastUpdatedAt, lastUpdatedBlock, txHash, ...rest } = o;
+      void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+      return rest;
+    };
+    const prev = { tick: 10, tickEpochStartedAt: 1000, regions: [{ id: "A" }], clans: [] };
+    const next = { tick: 11, tickEpochStartedAt: 1060, regions: [{ id: "A" }], clans: [] };
+    expect(stableJson(strip(prev))).toBe(stableJson(strip(next)));
+  });
+});
 
 describe("decodeClanWorldLogs", () => {
   it("decodes representative ClanWorld events with bigint-safe args", () => {

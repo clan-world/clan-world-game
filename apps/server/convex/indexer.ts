@@ -65,6 +65,13 @@ const LEGACY_REGIONS = [
 ];
 const indexerApi = internal.indexer;
 
+export function stableJson(val: unknown): string {
+  if (val === null || typeof val !== "object") return JSON.stringify(val);
+  if (Array.isArray(val)) return `[${val.map(stableJson).join(",")}]`;
+  const obj = val as Record<string, unknown>;
+  return `{${Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`).join(",")}}`;
+}
+
 type ParsedIndexerEvent = {
   eventName: IClanWorldAbiEventName;
   args: Record<string, unknown>;
@@ -314,6 +321,40 @@ export function planPollLogRange(
   };
 }
 
+function stableClansman(row: unknown): unknown {
+  const r = row as Record<string, unknown>;
+  const derived = (r.clansman ?? r) as Record<string, unknown>;
+  const cs = (derived.clansman ?? derived) as Record<string, unknown>;
+  const mission = (r.activeMission ?? derived.activeMission) as Record<string, unknown> | undefined;
+  return {
+    clansman: {
+      clansman: {
+        clansmanId: cs.clansmanId,
+        clanId: cs.clanId,
+        state: cs.state,
+        currentRegion: cs.currentRegion,
+        carryWood: cs.carryWood,
+        carryIron: cs.carryIron,
+        carryWheat: cs.carryWheat,
+        carryFish: cs.carryFish,
+        // NOTE: intentionally omitting cooldownEndsAtTs, lastMissionNonce — monotonic per-tick,
+        // not read by WorldMap, would defeat worldSnapshot delta-check
+      },
+      effectiveRegion: derived.effectiveRegion,
+    },
+    activeMission: mission ? {
+      active: mission.active,
+      action: mission.action,
+      startRegion: mission.startRegion,
+      targetRegion: mission.targetRegion,
+      startTick: mission.startTick,
+      arrivalTick: mission.arrivalTick,
+      actionStartTick: mission.actionStartTick,
+      settlesAtTick: mission.settlesAtTick,
+    } : undefined,
+  };
+}
+
 export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
   clanViews
     .filter((view) => view.clanId > 0)
@@ -334,7 +375,7 @@ export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
       monumentLevel: asNumber(view.monumentLevel),
       livingClansmen: asNumber(view.livingClansmen),
       owner: asString(view.owner, ""),
-      clansmen: view.clansmen ?? [],
+      clansmen: (view.clansmen ?? []).map(stableClansman),
     }));
 
 // M-5: tighten internal-mutation arg shape. We can't enumerate every event
@@ -683,8 +724,8 @@ export const commitSnapshot = internalMutation({
           }
         : undefined;
       if (
-        JSON.stringify(previousComparable) !==
-        JSON.stringify({ ...nextView, refreshedAt: undefined, derivedAtTick: undefined, lastUpdatedBlock: undefined })
+        stableJson(previousComparable) !==
+        stableJson({ ...nextView, refreshedAt: undefined, derivedAtTick: undefined, lastUpdatedBlock: undefined })
       ) {
         await ctx.db.insert("clanView", nextView);
       }
@@ -782,8 +823,8 @@ export const commitSnapshot = internalMutation({
       return rest;
     })();
     if (
-      JSON.stringify(previousComparableSnapshot) !==
-      JSON.stringify(nextComparableSnapshot)
+      stableJson(previousComparableSnapshot) !==
+      stableJson(nextComparableSnapshot)
     ) {
       if (previousWorldSnapshot) {
         await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
