@@ -18,6 +18,8 @@ if (process.env.CLANWORLD_USE_FAKE_HEARTBEAT === "true") {
 
 if (process.env.CLANWORLD_USE_REAL_INDEXER === "true") {
   crons.interval("real-indexer-log-poller", { seconds: 3 }, internal.indexer.pollLogs, {});
+  // 60s fallback: backstops transient refreshSnapshot failures from pollLogs/webhook paths.
+  crons.interval("real-indexer-snapshot-refresh-fallback", { seconds: 60 }, internal.indexer.refreshSnapshot, {});
 }
 
 crons.interval("gold-quote-refresh", { minutes: 5 }, internal.goldQuote.refreshGoldQuote, {});

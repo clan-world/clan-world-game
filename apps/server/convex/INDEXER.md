@@ -6,7 +6,7 @@ place during production soak.
 ## Flags
 
 - `CLANWORLD_USE_REAL_INDEXER=true` enables receipt decoding in the heartbeat
-  webhook, the 5s snapshot refresher, and the 3s log poller.
+  webhook, the 3s log poller, and the 60s fallback snapshot refresher.
 - `CLANWORLD_USE_FAKE_HEARTBEAT=true` keeps the MUST-13 fake tick cron alive for
   demos and fallback environments.
 - Do not enable both in production. They coexist only so migration and rollback
