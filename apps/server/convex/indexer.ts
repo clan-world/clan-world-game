@@ -68,14 +68,36 @@ const indexerApi = internal.indexer;
 /**
  * Key-order-stable JSON serializer for Convex-safe values.
  * Accepts: string, number, boolean, null, plain object, array.
- * Do NOT pass: Date, BigInt, undefined, Symbol — these are not valid in Convex
+ *
+ * Undefined-key semantics: matches JSON.stringify — keys with undefined values
+ * are DROPPED from objects; undefined array elements become null. This makes
+ * `stableJson({ a: 1, b: undefined })` equal to `stableJson({ a: 1 })`, which
+ * means callers can use the spread-with-undefined-override pattern to strip
+ * fields from a Convex doc before comparison:
+ *
+ *   const previousComparable = { ...prev, _id: undefined, _creationTime: undefined };
+ *   if (stableJson(previousComparable) === stableJson(nextView)) // ...
+ *
+ * Without this drop-undefined behavior, the spread pattern leaves stripped keys
+ * present-but-undefined, making the two strings always differ (super-swarm r3
+ * H1, fix-round 5).
+ *
+ * Do NOT pass: Date, BigInt, Symbol — these are not valid in Convex
  * documents and will serialize incorrectly (Date→{}, BigInt→throws).
  */
 export function stableJson(val: unknown): string {
+  if (val === undefined) return "undefined";  // sentinel; callers shouldn't pass undefined at top-level
   if (val === null || typeof val !== "object") return JSON.stringify(val);
-  if (Array.isArray(val)) return `[${val.map(stableJson).join(",")}]`;
+  if (Array.isArray(val)) {
+    // JSON.stringify converts array `undefined` elements to `null`.
+    return `[${val.map(v => v === undefined ? "null" : stableJson(v)).join(",")}]`;
+  }
   const obj = val as Record<string, unknown>;
-  return `{${Object.keys(obj).sort().map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`).join(",")}}`;
+  return `{${Object.keys(obj)
+    .sort()
+    .filter(k => obj[k] !== undefined)
+    .map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+    .join(",")}}`;
 }
 
 type ParsedIndexerEvent = {
