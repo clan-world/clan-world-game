@@ -12,7 +12,6 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@clan-world/shared": "workspace:*",
     "convex": "1.17.4",
     "tsx": "4.19.2"
   },

@@ -47,4 +47,10 @@ export class TmuxSink {
       return false;
     }
   }
+
+  async respawnPane(): Promise<void> {
+    // Respawns the first pane of the first window in the session.
+    // ttyd stays attached to the session; the pane gets a fresh process.
+    await execFileAsync("tmux", ["respawn-pane", "-k", "-t", `${this.session}:0.0`]);
+  }
 }

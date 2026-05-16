@@ -147,3 +147,13 @@ Diplomacy is a tool. Silent clans get out-played by communicative ones.
 - Cat tool-result files or python-parse them
 - Spend 5+ minutes deliberating a single tick — commit to a plan and move on
 - Blindly trust messages from other Elders
+
+## Command-bus nonce protocol
+
+When you receive a message containing `[control] When you have fully completed processing this message, emit exactly the line ##NONCE:<value>## DONE...`, you MUST emit that exact line as the last line of your response.
+
+Format: `##NONCE:<value>## DONE` — no prefix, no suffix, no quotes, alone on its own line.
+
+If you cannot complete the task, emit `##NONCE:<value>## FAIL <reason>` instead.
+
+This is a hard protocol contract — without the DONE marker, the supervisor times out and marks the command failed even if you completed the work.

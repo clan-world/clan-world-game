@@ -84,4 +84,25 @@ describe("handleUserMessage", () => {
     expect(failed[0]?.id).toBe("cmd:0");
     expect(failed[0]?.reason).toContain("nonce");
   });
+
+  it("includes NONCE instruction in sent message", async () => {
+    const sentMessages: string[] = [];
+    const tmux = {
+      async sendKeys(text: string) {
+        sentMessages.push(text);
+        const match = text.match(/##NONCE:([^#]+)##/);
+        if (match) (tmux as any)._nonce = match[1];
+      },
+      async capturePane() {
+        return (tmux as any)._nonce ? `##NONCE:${(tmux as any)._nonce}## DONE` : "";
+      },
+    } as any;
+    const { bus } = makeBus();
+    const freeze = new FreezeGate();
+    await handleUserMessage("cmd:0", { text: "do the thing" }, tmux, bus, freeze, config);
+    expect(sentMessages[0]).toContain("[control]");
+    expect(sentMessages[0]).toContain("##NONCE:");
+    expect(sentMessages[0]).toContain("## DONE");
+    expect(sentMessages[0]).toContain("do the thing");
+  });
 });

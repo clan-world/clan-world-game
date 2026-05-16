@@ -22,7 +22,8 @@ export async function handleSystemMessage(
 
   const text = (payload as { text?: string })?.text ?? "";
   const nonce = randomUUID();
-  const message = `${text}\n##NONCE:${nonce}##`;
+  const nonceInstruction = `\n\n[control] When you have fully completed processing this message, emit exactly the line \`##NONCE:${nonce}## DONE\` (no prefix, no suffix, no quotes) as the final line of your response. The runtime uses this marker to acknowledge command completion.`;
+  const message = `${text}${nonceInstruction}`;
 
   await tmux.sendKeys(message);
 

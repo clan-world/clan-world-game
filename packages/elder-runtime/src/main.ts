@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { loadConfig } from "./config.js";
 import { BusClient } from "./convexClient.js";
 import { TmuxSink } from "./tmuxSink.js";
@@ -19,6 +20,29 @@ async function main(): Promise<void> {
 
   // Ensure state dir exists
   fs.mkdirSync(config.stateDir, { recursive: true });
+
+  // Singleton PID-file lock — exit immediately if another instance is running
+  const lockFile = path.join(config.stateDir, "elder-runtime.lock");
+  try {
+    if (fs.existsSync(lockFile)) {
+      const existingPid = fs.readFileSync(lockFile, "utf8").trim();
+      const pid = parseInt(existingPid, 10);
+      if (Number.isFinite(pid)) {
+        try {
+          process.kill(pid, 0); // throws if process doesn't exist
+          console.error(`[elder-runtime] another instance running (PID ${pid}). Exiting.`);
+          process.exit(1);
+        } catch {
+          console.warn(`[elder-runtime] stale lock (PID ${pid}), overwriting`);
+        }
+      }
+    }
+    fs.writeFileSync(lockFile, String(process.pid));
+    process.on("exit", () => { try { fs.unlinkSync(lockFile); } catch { /* ignore */ } });
+  } catch (err) {
+    console.error("[elder-runtime] could not acquire singleton lock:", err);
+    process.exit(1);
+  }
 
   const bus = new BusClient(config.convexUrl, config.busSecret, config.elderId);
   const tmux = new TmuxSink(config.elderId); // session name = "elder-1" etc.
@@ -54,7 +78,7 @@ async function main(): Promise<void> {
               await handleSnapshotRequest(command._id, command.payload, bus, config);
               break;
             case "reset":
-              await handleReset(command._id, command.payload, tmux, bus, freeze, config);
+              await handleReset(command._id, command.payload, tmux, bus, freeze);
               break;
             case "freeze":
               await handleFreeze(command._id, command.payload, bus, freeze);
