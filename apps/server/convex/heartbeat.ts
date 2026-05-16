@@ -241,50 +241,56 @@ type AdvanceTickResult =
 
 export const advanceTick = internalMutation({
   handler: async (ctx): Promise<AdvanceTickResult> => {
+    // Read tickClock first — authoritative cursor after worldSnapshot delta-check (#333).
+    // worldSnapshot can freeze at tick N while tickClock advances to N+k.
+    const clockRow = await ctx.db.query("tickClock").order("desc").first();
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     if (!snap) return { status: "no-op", reason: "no snapshot to refresh" };
 
+    const baseTick = clockRow?.tick ?? snap.tick;
+    const baseEpochStartedAt = clockRow?.tickEpochStartedAt ?? snap.tickEpochStartedAt;
+    const baseEpochDurationMs = clockRow?.tickEpochDurationMs ?? snap.tickEpochDurationMs;
+
     // Staleness gate: only advance if the current epoch has elapsed.
-    // Prevents cron from double-advancing (fires 4x/epoch) and concurrent
-    // calls from inserting duplicate tick rows.
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const epochEndSeconds =
-      snap.tickEpochStartedAt + Math.floor(snap.tickEpochDurationMs / 1000);
+    const epochEndSeconds = baseEpochStartedAt + Math.floor(baseEpochDurationMs / 1000);
     if (nowSeconds < epochEndSeconds) {
       return { status: "no-op", reason: "epoch not yet elapsed" };
     }
 
-    const newTick = snap.tick + 1;
+    const newTick = baseTick + 1;
     const newEpochStartedAt = Math.floor(Date.now() / 1000);
     await ctx.db.insert("worldSnapshot", {
       tick: newTick,
       tickEpochStartedAt: newEpochStartedAt,
-      tickEpochDurationMs: snap.tickEpochDurationMs,
+      tickEpochDurationMs: baseEpochDurationMs,
       regions: snap.regions,
       clans: snap.clans,
     });
-    // Keep tickClock in sync — it's the stale-gate cursor in commitSnapshot (#333).
-    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
-    if (tickClockRow) {
-      await ctx.db.patch(tickClockRow._id, {
-        tick: newTick,
-        tickEpochStartedAt: newEpochStartedAt,
-      });
-    } else {
-      await ctx.db.insert("tickClock", {
-        tick: newTick,
-        tickEpochStartedAt: newEpochStartedAt,
-        tickEpochDurationMs: snap.tickEpochDurationMs,
-        seasonStartTick: 0,
-        seasonEndTick: 0,
-        winterActive: false,
-      });
-    }
     await ctx.db.insert("agentLogs", {
       level: "info",
-      message: `heartbeat: tick ${snap.tick} → ${newTick}`,
+      message: `heartbeat: tick ${baseTick} → ${newTick}`,
       timestamp: Date.now(),
     });
+
+    // Monotonic guard: never patch tickClock backward.
+    if (!clockRow || newTick > clockRow.tick) {
+      if (clockRow) {
+        await ctx.db.patch(clockRow._id, {
+          tick: newTick,
+          tickEpochStartedAt: newEpochStartedAt,
+        });
+      } else {
+        await ctx.db.insert("tickClock", {
+          tick: newTick,
+          tickEpochStartedAt: newEpochStartedAt,
+          tickEpochDurationMs: baseEpochDurationMs,
+          seasonStartTick: 0,
+          seasonEndTick: 0,
+          winterActive: false,
+        });
+      }
+    }
 
     return { status: "ok", tick: newTick };
   },
