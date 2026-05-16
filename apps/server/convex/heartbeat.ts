@@ -255,13 +255,31 @@ export const advanceTick = internalMutation({
     }
 
     const newTick = snap.tick + 1;
+    const newEpochStartedAt = Math.floor(Date.now() / 1000);
     await ctx.db.insert("worldSnapshot", {
       tick: newTick,
-      tickEpochStartedAt: Math.floor(Date.now() / 1000),
+      tickEpochStartedAt: newEpochStartedAt,
       tickEpochDurationMs: snap.tickEpochDurationMs,
       regions: snap.regions,
       clans: snap.clans,
     });
+    // Keep tickClock in sync — it's the stale-gate cursor in commitSnapshot (#333).
+    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
+    if (tickClockRow) {
+      await ctx.db.patch(tickClockRow._id, {
+        tick: newTick,
+        tickEpochStartedAt: newEpochStartedAt,
+      });
+    } else {
+      await ctx.db.insert("tickClock", {
+        tick: newTick,
+        tickEpochStartedAt: newEpochStartedAt,
+        tickEpochDurationMs: snap.tickEpochDurationMs,
+        seasonStartTick: 0,
+        seasonEndTick: 0,
+        winterActive: false,
+      });
+    }
     await ctx.db.insert("agentLogs", {
       level: "info",
       message: `heartbeat: tick ${snap.tick} → ${newTick}`,
