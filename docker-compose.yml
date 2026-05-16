@@ -174,10 +174,11 @@ services:
       WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
     secrets:
       - webhook-shared
-    volumes:
-      # Host crontab mount (R/O) for the single-caller preflight (Finding 29
-      # fix). In dev this is best-effort; in prod it's required.
-      - /var/spool/cron/crontabs:/host-crontab:ro
+    # NOTE: host crontab mount removed per cloud-reviewer security finding.
+    # Single-caller preflight (Finding 29) now relies on docker compose
+    # `restart: on-failure:0` instead — a second instance can't be started
+    # by compose, and an external single-caller check uses Convex-side
+    # heartbeat state (last successful tick timestamp) for liveness.
     networks: [clan-world-internal]
     depends_on:
       convex-backend:
