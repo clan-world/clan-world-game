@@ -16,7 +16,7 @@ export async function handleUserMessage(
   await bus.ackCommand(commandId);
 
   if (freeze.isFrozen()) {
-    await bus.completeCommand(commandId, { skipped: true, reason: "frozen" }, Date.now() - startMs);
+    await bus.failCommand(commandId, "frozen");
     return;
   }
 

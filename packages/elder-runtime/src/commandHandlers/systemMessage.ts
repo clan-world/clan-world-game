@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { TmuxSink } from "../tmuxSink.js";
 import type { BusClient } from "../convexClient.js";
+import type { FreezeGate } from "../freezeGate.js";
 import type { ElderRuntimeConfig } from "../types.js";
 
 export async function handleSystemMessage(
@@ -8,10 +9,16 @@ export async function handleSystemMessage(
   payload: unknown,
   tmux: TmuxSink,
   bus: BusClient,
+  freeze: FreezeGate,
   config: ElderRuntimeConfig,
 ): Promise<void> {
   const startMs = Date.now();
   await bus.ackCommand(commandId);
+
+  if (freeze.isFrozen()) {
+    await bus.failCommand(commandId, "frozen");
+    return;
+  }
 
   const text = (payload as { text?: string })?.text ?? "";
   const nonce = randomUUID();

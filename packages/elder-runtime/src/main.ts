@@ -48,7 +48,7 @@ async function main(): Promise<void> {
               await handleUserMessage(command._id, command.payload, tmux, bus, freeze, config);
               break;
             case "system_message":
-              await handleSystemMessage(command._id, command.payload, tmux, bus, config);
+              await handleSystemMessage(command._id, command.payload, tmux, bus, freeze, config);
               break;
             case "snapshot_request":
               await handleSnapshotRequest(command._id, command.payload, bus, config);

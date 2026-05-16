@@ -47,13 +47,14 @@ function makeTmux(nonceToEcho?: string) {
 }
 
 describe("handleUserMessage", () => {
-  it("skips when frozen", async () => {
-    const { bus, completed } = makeBus();
+  it("fails with 'frozen' reason when frozen", async () => {
+    const { bus, failed } = makeBus();
     const { tmux } = makeTmux();
     const freeze = new FreezeGate();
     freeze.freeze();
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
-    expect(completed[0]?.payload).toMatchObject({ skipped: true });
+    expect(failed[0]?.id).toBe("cmd:0");
+    expect(failed[0]?.reason).toBe("frozen");
   });
 
   it("completes on nonce echo", async () => {
