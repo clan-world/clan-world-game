@@ -30,6 +30,28 @@ else
   exit 3
 fi
 
+# Start elder-runtime supervisor in background (Phase 1.9, issue #352).
+# tsx + source are copied into /opt/elder-runtime/ by the Dockerfile.
+# tini (PID 1) will reap it if it exits; we log failure but don't abort container.
+if command -v tsx &>/dev/null && [[ -f /opt/elder-runtime/src/main.ts ]]; then
+  tsx /opt/elder-runtime/src/main.ts &
+  RUNTIME_PID=$!
+  # Wait up to 10s for process to stay alive
+  for i in $(seq 1 10); do
+    sleep 1
+    if kill -0 "$RUNTIME_PID" 2>/dev/null; then
+      echo "[entrypoint] elder-runtime started (PID $RUNTIME_PID)"
+      break
+    fi
+    if [[ $i -eq 10 ]]; then
+      echo "[entrypoint] ERROR: elder-runtime (PID $RUNTIME_PID) died within 10s — aborting container" >&2
+      exit 1
+    fi
+  done
+else
+  echo "[entrypoint] elder-runtime not found at /opt/elder-runtime/src/main.ts — skipping (Phase 1.9 not built)" >&2
+fi
+
 # Hand off to run.sh from the shared bind-mount. run.sh is owned by Phase 1.7
 # (issue #350); for v1, if the mount is missing we fall back to an interactive
 # bash so the operator can introspect.

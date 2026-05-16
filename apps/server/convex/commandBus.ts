@@ -229,6 +229,14 @@ export const sweepStaleDelivered = internalMutation({
   },
 });
 
+// 9. getCommand — fetch a single command by id (for elder-runtime dispatch)
+export const getCommand = query({
+  args: { commandId: v.id("agentCommands") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.commandId);
+  },
+});
+
 // 8. heartbeat — elder-runtime upserts heartbeat row
 export const heartbeat = mutation({
   args: {

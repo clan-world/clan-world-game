@@ -1,3 +1,7 @@
+> **DEPRECATED**: This package is superseded by `packages/elder-runtime/` (Phase 1.9, issue #352).
+> It will be removed in Phase 2. The elder-runtime supervisor runs inside each elder container
+> and replaces the centralized multi-elder runner daemon.
+
 # @clan-world/runner
 
 ClanWorld runner daemon — drives 4 Elder Claude Code sessions through the

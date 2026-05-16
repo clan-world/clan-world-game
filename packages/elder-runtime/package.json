@@ -1,0 +1,24 @@
+{
+  "name": "@clan-world/elder-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/main.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@clan-world/shared": "workspace:*",
+    "convex": "1.17.4",
+    "tsx": "4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.0"
+  }
+}
