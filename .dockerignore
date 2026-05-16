@@ -1,0 +1,99 @@
+# .dockerignore — keeps image-build contexts small for the agent / heartbeat /
+# convex Dockerfiles wired up in Phase 1.2 (#345) and Phase 1.10 (#353).
+# Pattern mirrors .gitignore for runtime artefacts + adds Docker- and IDE-
+# specific ignores that .gitignore already covers.
+
+# Git internals
+.git
+.gitignore
+.gitattributes
+.gitmodules
+
+# Per-worktree state — never copy these into images
+.claude/
+.world/
+.docker-mounts/
+
+# Node / pnpm
+node_modules/
+**/node_modules/
+.pnpm-store/
+.npm/
+*.tgz
+.yarn-integrity
+.pnp.*
+.yarn/cache/
+.yarn/install-state.gz
+
+# Build outputs
+dist/
+**/dist/
+.next/
+out/
+.nuxt/
+.output/
+build/
+**/build/
+.turbo/
+.svelte-kit/
+.docusaurus/
+**/.vitepress/dist/
+**/.vitepress/cache/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Logs / diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+*.hprof
+
+# Test / coverage
+coverage/
+.nyc_output/
+*.lcov
+**/test-results/
+**/playwright-report/
+**/playwright/.cache/
+
+# IDE
+.vscode/
+.idea/
+.vscode-test/
+.tern-port
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets / state — explicit denylist (defence-in-depth, also in .gitignore)
+.env
+.env.*
+!.env.template
+!.env.example
+**/agent-directive.secret.md
+**/.credentials.json
+**/state/
+
+# Vercel
+**/.vercel/
+!**/.vercel/project.json
+
+# Android
+**/.gradle/
+**/local.properties
+*.apk
+keys/
+
+# Docker-specific
+**/Dockerfile
+**/docker-compose*.yml
+.dockerignore
+
+# Codex local state
+.codex/

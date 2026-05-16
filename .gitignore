@@ -192,3 +192,14 @@ docs/planning/V1/
 .git.worktree-link
 .claude/.active-chat
 .claude/worktrees/
+
+# Docker / compose stack (Phase 1 dockerize — issue #344+).
+# Materialized secrets, per-elder env, and host-mount snapshots stay out of
+# git. The compose file references files under agents/secrets/; the bootstrap
+# Makefile targets generate them at runtime.
+agents/runtime/
+agents/.env
+agents/.docker-mounts/
+agents/secrets/
+agents/elder-*/.env
+!agents/elder-*/.env.example

@@ -1,0 +1,299 @@
+# ClanWorld Elder Infrastructure — docker-compose stack
+#
+# Phase 1.1 scaffold (issue #344). Establishes the topology only — concrete
+# image builds, Caddyfiles, runbooks, and the Makefile arrive in later phases:
+#
+#   - #345 agents/Dockerfile (Phase 1.2)
+#   - #347 self-hosted Convex deploy (Phase 1.4)
+#   - #348 host caddy snippet + Caddyfile (Phase 1.5)
+#   - #349 elder-N service template (Phase 1.6) — these stubs will be
+#     overwritten by the generated docker-compose.elders.yml
+#   - #355 agents/Makefile (Phase 1.12)
+#   - #356 migration runbook (Phase 1.13)
+#
+# Profiles (per locked decision in docs/plans/dockerize-elder-infra-v1.md):
+#
+#   --profile dev   anvil-fork + bind-mount agents/  (local iteration)
+#   --profile prod  real Base Sepolia RPC, image-baked agents/  (VPS deploy)
+#
+# Caddy is NOT a compose service — host caddy stays authoritative (decision D
+# in the plan). The clan-world stack reverse-proxies through the host caddy via
+# CADDY_HOST_PORT.
+#
+# Validation:
+#   docker compose --profile dev config
+#   docker compose --profile prod config
+
+name: clan-world
+
+networks:
+  clan-world-internal:
+    driver: bridge
+
+volumes:
+  # Self-hosted Convex SQLite — wired up in #347
+  convex_data: {}
+  # anvil-fork persisted fork state (dev profile only) — wired up in #346
+  anvil_data: {}
+  # Per-Elder R/W volumes — wired up in #349. Declared here so `docker compose
+  # config` can resolve mount references early.
+  elder-1-home: {}
+  elder-1-workspace: {}
+  elder-2-home: {}
+  elder-2-workspace: {}
+  elder-3-home: {}
+  elder-3-workspace: {}
+  elder-4-home: {}
+  elder-4-workspace: {}
+
+secrets:
+  # Plan revision (Finding 10): admin key lives in a file mounted as a Docker
+  # secret, NOT an env var (env vars leak through `docker inspect`).
+  # `make bootstrap-convex-admin-key` (Phase 1.12) materializes these files.
+  convex-admin-key:
+    file: ./agents/secrets/convex-admin.key
+  # Webhook HMAC shared secret for heartbeat → Convex webhook (Finding 30 fix).
+  webhook-shared:
+    file: ./agents/secrets/webhook-shared.key
+  # Per-Elder bus secrets (Finding 22 fix — per-elder, not shared).
+  bus-elder-1:
+    file: ./agents/secrets/bus-elder-1.key
+  bus-elder-2:
+    file: ./agents/secrets/bus-elder-2.key
+  bus-elder-3:
+    file: ./agents/secrets/bus-elder-3.key
+  bus-elder-4:
+    file: ./agents/secrets/bus-elder-4.key
+  # Operator secret for enqueueing commands into the Convex bus.
+  bus-operator:
+    file: ./agents/secrets/bus-operator.key
+
+# Shared building blocks (YAML anchors, NOT compose services).
+# Profiles let us reuse the same elder service block in both dev and prod with
+# only the agents-mount strategy and image tag differing.
+x-elder-common: &elder-common
+  image: clanworld/agents:dev
+  restart: unless-stopped
+  networks: [clan-world-internal]
+  cap_add:
+    - NET_ADMIN  # Required by agents/shared/init-firewall.sh (#345).
+  depends_on:
+    convex-backend:
+      condition: service_healthy
+
+services:
+  # ---------------------------------------------------------------------------
+  # Self-hosted Convex backend + dashboard.
+  #
+  # Phase 1.1 scaffolds the service definitions only. Image pinning, admin-key
+  # bootstrap, and `npx convex deploy --self-hosted` land in #347.
+  # ---------------------------------------------------------------------------
+  convex-backend:
+    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-latest}
+    environment:
+      CONVEX_INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      # Backend reads admin key from a file path, not an env var.
+      CONVEX_ADMIN_KEY_FILE: /run/secrets/convex-admin-key
+    secrets:
+      - convex-admin-key
+    volumes:
+      - convex_data:/data
+    networks: [clan-world-internal]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    profiles: [dev, prod]
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-latest}
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://convex-backend:3210
+    networks: [clan-world-internal]
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6791/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    profiles: [dev, prod]
+
+  # ---------------------------------------------------------------------------
+  # anvil-fork — dev profile ONLY. Forks Base Sepolia at FORK_BLOCK_NUMBER and
+  # impersonates the diamond owner so dev iteration burns zero real RPC credits.
+  # Implementation details (state intervals, auto-impersonate flags) land in
+  # #346 (Phase 1.3).
+  # ---------------------------------------------------------------------------
+  anvil-fork:
+    image: ghcr.io/foundry-rs/foundry:v1.2.0
+    entrypoint: anvil
+    command:
+      - --host=0.0.0.0
+      - --fork-url=${BASE_SEPOLIA_RPC_FOR_FORK_SEED:-}
+      - --fork-block-number=${FORK_BLOCK_NUMBER:-0}
+      - --state=/data/anvil-state.json
+      - --state-interval=60
+      - --chain-id=84532
+      - --gas-price=0
+      - --block-time=2
+      - --auto-impersonate
+    volumes:
+      - anvil_data:/data
+    networks: [clan-world-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "cast chain-id --rpc-url http://localhost:8545 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    profiles: [dev]
+
+  # ---------------------------------------------------------------------------
+  # Heartbeat — calls heartbeat() on the diamond every 60s + posts an HMAC-
+  # signed webhook to Convex. Pre-flight assertions, HMAC signing, and the
+  # single-caller guard land in #353 (Phase 1.10).
+  # ---------------------------------------------------------------------------
+  heartbeat:
+    image: clanworld/heartbeat:dev
+    environment:
+      CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      # Profile-specific overlay sets exactly ONE of these (Finding 9 + 48 fix
+      # — no cross-env fallback). Entrypoint picks based on CHAIN_NETWORK and
+      # aborts if the selected URL is empty.
+      DEV_RPC_URL: ${DEV_RPC_URL:-}
+      PROD_RPC_URL: ${PROD_RPC_URL:-}
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
+      WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
+    secrets:
+      - webhook-shared
+    volumes:
+      # Host crontab mount (R/O) for the single-caller preflight (Finding 29
+      # fix). In dev this is best-effort; in prod it's required.
+      - /var/spool/cron/crontabs:/host-crontab:ro
+    networks: [clan-world-internal]
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    healthcheck:
+      # Webhook timestamp file is touched on every successful heartbeat tick.
+      test: ["CMD-SHELL", "test -f /tmp/last-heartbeat-success && [ $$(($$(date +%s) - $$(cat /tmp/last-heartbeat-success))) -lt 120 ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 2
+      start_period: 60s
+    # Failed preflight stays failed visibly — operator must intervene.
+    restart: on-failure:0
+    profiles: [dev, prod]
+
+  # ---------------------------------------------------------------------------
+  # Elder containers (4 in v1 — scaling to 12 is a config change). Each Elder
+  # runs three processes under tini: ttyd (port 7681) + tmux server + the
+  # elder-runtime supervisor (Node, in #354). Locked to ONE container per
+  # Elder (Finding 24 fix — sibling containers can't share tmux sockets).
+  #
+  # Volume mounts differ by profile (Finding 1.6 — agents/ bind-mount in dev
+  # for fast iteration, image-baked in prod for immutability). The dev/prod
+  # split is expressed via separate service blocks rather than YAML overlays
+  # so `docker compose --profile {dev,prod} config` resolves cleanly without
+  # external overlay files.
+  # ---------------------------------------------------------------------------
+  elder-1:
+    <<: *elder-common
+    container_name: clan-world-elder-1
+    environment:
+      ELDER_N: "1"
+      ELDER_ID: ${ELDER_1_CLAN_ID:-1}
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
+      ANTHROPIC_API_KEY: ${ELDER_1_ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_1_CLAUDE_CODE_OAUTH_TOKEN:-}
+    secrets:
+      - bus-elder-1
+    volumes:
+      # Per-Elder R/W runtime state — survives container restart.
+      - elder-1-home:/home/elder/.claude
+      - elder-1-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-1 && pgrep -f /opt/elder-runtime/main.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]
+
+  elder-2:
+    <<: *elder-common
+    container_name: clan-world-elder-2
+    environment:
+      ELDER_N: "2"
+      ELDER_ID: ${ELDER_2_CLAN_ID:-2}
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
+      ANTHROPIC_API_KEY: ${ELDER_2_ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_2_CLAUDE_CODE_OAUTH_TOKEN:-}
+    secrets:
+      - bus-elder-2
+    volumes:
+      - elder-2-home:/home/elder/.claude
+      - elder-2-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-2 && pgrep -f /opt/elder-runtime/main.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]
+
+  elder-3:
+    <<: *elder-common
+    container_name: clan-world-elder-3
+    environment:
+      ELDER_N: "3"
+      ELDER_ID: ${ELDER_3_CLAN_ID:-3}
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
+      ANTHROPIC_API_KEY: ${ELDER_3_ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_3_CLAUDE_CODE_OAUTH_TOKEN:-}
+    secrets:
+      - bus-elder-3
+    volumes:
+      - elder-3-home:/home/elder/.claude
+      - elder-3-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-3 && pgrep -f /opt/elder-runtime/main.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]
+
+  elder-4:
+    <<: *elder-common
+    container_name: clan-world-elder-4
+    environment:
+      ELDER_N: "4"
+      ELDER_ID: ${ELDER_4_CLAN_ID:-4}
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
+      ANTHROPIC_API_KEY: ${ELDER_4_ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_4_CLAUDE_CODE_OAUTH_TOKEN:-}
+    secrets:
+      - bus-elder-4
+    volumes:
+      - elder-4-home:/home/elder/.claude
+      - elder-4-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-4 && pgrep -f /opt/elder-runtime/main.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]

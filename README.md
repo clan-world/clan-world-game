@@ -220,6 +220,51 @@ Detailed setup, env vars, and contract addresses live in [`docs/SETUP.md`](docs/
 
 ---
 
+## 🐳  Docker / Compose
+
+The Elder fleet (4 Elder containers + self-hosted Convex + heartbeat + a dev
+anvil-fork) is defined in [`docker-compose.yml`](./docker-compose.yml). Two
+profiles are supported:
+
+| Profile | RPC | `agents/` layout | Use case |
+|---|---|---|---|
+| `dev`   | anvil-fork (forked Base Sepolia, container-internal) | bind-mounted from host for fast iteration | local hacking |
+| `prod`  | real Base Sepolia RPC                                | image-baked at build time (immutable)      | VPS deploy   |
+
+The full plan, including phase-by-phase dependencies and locked decisions, is
+[`docs/plans/dockerize-elder-infra-v1.md`](./docs/plans/dockerize-elder-infra-v1.md).
+
+**Quick start (config validation — does NOT bring up containers):**
+
+```bash
+cp .env.template .env       # then fill in the Docker / Compose section
+docker compose --profile dev  config   # validates dev topology
+docker compose --profile prod config   # validates prod topology
+```
+
+Caddy is intentionally NOT a compose service — the host caddy stays
+authoritative and reverse-proxies `app.${CLAN_WORLD_DOMAIN}` to
+`127.0.0.1:${CADDY_HOST_PORT}` (see the host caddy snippet added in #348).
+
+**Bring-up + per-Elder lifecycle** is fronted by `agents/Makefile`, which
+ships in [#355](https://github.com/clan-world/clan-world-game/issues/355).
+Once landed, the workflow becomes:
+
+```bash
+make up PROFILE=dev      # full stack (anvil-fork + convex + heartbeat + 4 elders)
+make pause-elder-1       # SIGSTOP the elder-1 supervisor (ttyd + tmux stay up)
+make unpause-elder-1     # SIGCONT the supervisor
+make smoke-test          # the 10-criterion acceptance gate from Phase 2
+make down PROFILE=dev
+```
+
+Until [#345 lands the agents image](https://github.com/clan-world/clan-world-game/issues/345),
+`docker compose up` will fail to pull `clanworld/agents:dev` — but
+`docker compose config` already validates the topology and catches misnamed
+env vars / mounts / secrets early.
+
+---
+
 ## 📚  Deep technical detail
 
 The original game-engine deep dive — Diamond proxy, lazy mission resolution, agent CLI, 0G memory, Jensen AXL whispers, KeeperHub heartbeat — has moved to its own document so it doesn't bury the mobile/GOLD story.
