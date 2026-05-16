@@ -624,9 +624,13 @@ describe("legacy snapshot backfill", () => {
       },
     );
 
-    const advancedTickSnapshot = tables.worldSnapshot?.[0];
-    expect(advancedTickSnapshot.tickEpochStartedAt).toBe(1_060);
-    expect(advancedTickSnapshot.tickEpochDurationMs).toBe(60_000);
+    // tickClock is always patched — it's the authoritative epoch source after the
+    // worldSnapshot delta-check (#333). worldSnapshot may not be updated when
+    // content (clans, regions) didn't change, so read epoch from tickClock.
+    const advancedClock = tables.tickClock?.[0];
+    expect(advancedClock.tick).toBe(13);
+    expect(advancedClock.tickEpochStartedAt).toBe(1_060);
+    expect(advancedClock.tickEpochDurationMs).toBe(60_000);
 
     now.mockRestore();
   });
