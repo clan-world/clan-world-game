@@ -25,4 +25,14 @@ crons.interval("gold-quote-refresh", { minutes: 5 }, internal.goldQuote.refreshG
 crons.interval("kickstart-leaderboard-refresh", { minutes: 5 }, internal.kickstart.refreshKickstartLeaderboard, {});
 crons.interval("kickstart-watched-candles-refresh", { minutes: 1 }, internal.kickstart.refreshWatchedTokenCandles, {});
 
+// Issue #337: nightly storage retention purge. 04:00 UTC is low-traffic for
+// the game (early-morning EU / late-night Americas). Convex cron schedules
+// are UTC-anchored — see https://docs.convex.dev/scheduling/cron-jobs.
+crons.daily(
+  "retention-purge-stale-data",
+  { hourUTC: 4, minuteUTC: 0 },
+  internal.retention.purgeStaleData,
+  {},
+);
+
 export default crons;
