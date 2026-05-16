@@ -1,5 +1,5 @@
 import { query } from "./_generated/server";
-import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import { HEARTBEAT_INTERVAL_SECONDS, SEASON_DURATION_TICKS } from "@clan-world/shared/generated/constants";
 
 export const getTickClock = query({
   handler: async (ctx) => {
@@ -11,7 +11,7 @@ export const getTickClock = query({
         tickEpochStartedAt: 0,
         tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
         seasonStartTick: 0,
-        seasonEndTick: 360,
+        seasonEndTick: Number(SEASON_DURATION_TICKS),
         winterActive: false,
         winterStartsAtTick: undefined,
       };
