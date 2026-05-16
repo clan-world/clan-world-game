@@ -1035,7 +1035,7 @@ export const pollLogs = internalAction({
     }
 
     if (checkpoint?.lastSeenAt && Date.now() - checkpoint.lastSeenAt > 90_000) {
-      console.error("[indexer] liveness: no events polled in 90s — webhook may be down");
+      console.error("[indexer] liveness: pollLogs stalled >90s — cron may be dead");
     }
 
     const logs = await client.getLogs({ address, fromBlock, toBlock });
