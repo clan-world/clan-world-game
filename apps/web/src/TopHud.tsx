@@ -34,6 +34,7 @@ function useBanditWarning(liveTick: number, bandit: SnapshotBandit | null): { ac
 
 export function TopHud({ liveTick }: { liveTick: number }) {
   const clock = useQuery(api.getTickClock.getTickClock);
+  const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
   const tickCountdownAnchorRef = useRef<TickCountdownAnchor>({
     tick: liveTick,
     startedAtMs: Date.now(),
@@ -102,8 +103,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
     return winterStartsAtTick - liveTick <= 20 && winterStartsAtTick > liveTick;
   }, [winterActive, winterStartsAtTick, liveTick]);
 
-  // Bandit warning not available from getTickClock — bandit data stays on getSnapshot (WorldMap).
-  const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick, null);
+  const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick, liveSnapshot?.bandit ?? null);
   const tickCountdown = useMemo(() => {
     const { startedAtMs, durationMs } = tickCountdownAnchorRef.current;
     const elapsed = Math.max(0, nowMs - startedAtMs);
