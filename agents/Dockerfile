@@ -83,7 +83,7 @@ WORKDIR /workspace
 
 ENV HOME=/home/elder
 ENV CLAUDE_CONFIG_DIR=/home/elder/.claude
-ENV PATH=/usr/local/bin:/usr/bin:/bin
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Healthcheck — tmux daemon alive AND ttyd accepting connections on 7681.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

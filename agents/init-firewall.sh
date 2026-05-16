@@ -43,6 +43,28 @@ iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT DROP
 
+# --- IPv6 lockdown ----------------------------------------------------------
+# Default-DROP IPv6 too. Without this, any host with an AAAA record bypasses
+# the IPv4 allowlist via v6. We don't allow ANY IPv6 egress — Anthropic API
+# is reachable via IPv4. If the container has IPv6 connectivity but ip6tables
+# is missing (unlikely but possible), the script logs and continues — the
+# IPv4 DROP still applies, which is the primary defense.
+if command -v ip6tables >/dev/null 2>&1; then
+  log "setting IPv6 default policy DROP (ip6tables)"
+  ip6tables -P INPUT DROP
+  ip6tables -P FORWARD DROP
+  ip6tables -P OUTPUT DROP
+  ip6tables -F
+  ip6tables -X
+  # Allow loopback + established/related under IPv6 (mirrors IPv4 below)
+  ip6tables -A INPUT  -i lo -j ACCEPT
+  ip6tables -A OUTPUT -o lo -j ACCEPT
+  ip6tables -A INPUT  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+else
+  log "WARN: ip6tables not found — IPv6 lockdown skipped (IPv4 DROP still applies)"
+fi
+
 # --- Loopback ----------------------------------------------------------------
 iptables -A INPUT  -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
