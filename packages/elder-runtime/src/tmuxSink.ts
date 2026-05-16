@@ -10,12 +10,18 @@ export class TmuxSink {
     this.session = sessionName;
   }
 
-  async sendKeys(text: string): Promise<void> {
-    await execFileAsync("tmux", ["send-keys", "-t", this.session, "-l", text]);
-    await execFileAsync("tmux", ["send-keys", "-t", this.session, "Enter"]);
-    // Double-Enter: CC occasionally drops first Enter after literal paste
-    await new Promise(r => setTimeout(r, 250));
-    await execFileAsync("tmux", ["send-keys", "-t", this.session, "Enter"]);
+  async sendKeys(key: string): Promise<void> {
+    await execFileAsync("tmux", ["send-keys", "-t", this.session, key, ""]);
+  }
+
+  async loadBuffer(name: string, content: string): Promise<void> {
+    await execFileAsync("tmux", ["load-buffer", "-b", name, "-"], { input: content } as any);
+  }
+
+  async pasteBuffer(name: string, target: string, opts: { bracketed: boolean }): Promise<void> {
+    const args = ["paste-buffer", "-b", name, "-t", target];
+    if (opts.bracketed) args.push("-p");
+    await execFileAsync("tmux", args);
   }
 
   async capturePane(lines = 100): Promise<string> {
@@ -37,15 +43,6 @@ export class TmuxSink {
     await execFileAsync("tmux", [
       "new-session", "-d", "-s", this.session, runScript,
     ]);
-  }
-
-  async sessionExists(): Promise<boolean> {
-    try {
-      await execFileAsync("tmux", ["has-session", "-t", this.session]);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   async respawnPane(): Promise<void> {

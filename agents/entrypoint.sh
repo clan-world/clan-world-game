@@ -49,15 +49,15 @@ RUNTIME_PID=""
 if command -v tsx &>/dev/null && [[ -f /opt/elder-runtime/src/main.ts ]]; then
   tsx /opt/elder-runtime/src/main.ts &
   RUNTIME_PID=$!
-  # Wait up to 10s for supervisor to stay alive
-  for i in $(seq 1 10); do
+  # Wait up to 30s for readiness file written by supervisor after startup
+  for i in $(seq 1 30); do
     sleep 1
-    if kill -0 "${RUNTIME_PID}" 2>/dev/null; then
-      echo "[entrypoint] elder-runtime started (PID ${RUNTIME_PID})"
+    if [[ -f /run/elder-runtime.ready ]]; then
+      echo "[entrypoint] elder-runtime ready"
       break
     fi
-    if [[ $i -eq 10 ]]; then
-      echo "[entrypoint] ERROR: elder-runtime (PID ${RUNTIME_PID}) died within 10s — aborting container" >&2
+    if [[ $i -eq 30 ]]; then
+      echo "[entrypoint] ERROR: elder-runtime did not become ready in 30s — aborting" >&2
       exit 1
     fi
   done

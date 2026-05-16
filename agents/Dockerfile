@@ -69,9 +69,9 @@ RUN userdel -r node 2>/dev/null || true \
 
 # Entrypoint scripts. init-firewall.sh requires CAP_NET_ADMIN; it runs via
 # sudo with a strict allowlist (see /etc/sudoers.d/elder-firewall).
-COPY --chmod=755 entrypoint.sh    /opt/clan-world/entrypoint.sh
-COPY --chmod=755 init-firewall.sh /opt/clan-world/init-firewall.sh
-COPY --chmod=755 elder            /usr/local/bin/elder
+COPY --chmod=755 agents/entrypoint.sh    /opt/clan-world/entrypoint.sh
+COPY --chmod=755 agents/init-firewall.sh /opt/clan-world/init-firewall.sh
+COPY --chmod=755 agents/elder            /usr/local/bin/elder
 
 # Sudoers rule: elder may run init-firewall.sh as root, no password, no other commands.
 # /etc/sudoers.d/* files must be chmod 0440.

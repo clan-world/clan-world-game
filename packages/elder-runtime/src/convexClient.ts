@@ -17,6 +17,7 @@ const api = anyApi as unknown as {
     failCommand: Mut<{
       secret: string; agentId: string; commandId: string; reason: string;
     }>;
+    releaseLease: Mut<{ secret: string; agentId: string; commandId: string }>;
     getQueuedFor: Qry<{ secret: string; agentId: string }, AgentCommand[]>;
     heartbeat: Mut<{
       secret: string; agentId: string;
@@ -36,32 +37,52 @@ export class BusClient {
     this.agentId = agentId;
   }
 
+  private mut<A extends Record<string, unknown>, R>(ref: Mut<A, R>, args: A): Promise<R> {
+    return Promise.race([
+      this.http.mutation(ref as any, args as any) as Promise<R>,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Convex mutation timeout")), 15_000)),
+    ]);
+  }
+
+  private qry<A extends Record<string, unknown>, R>(ref: Qry<A, R>, args: A): Promise<R> {
+    return Promise.race([
+      this.http.query(ref as any, args as any) as Promise<R>,
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Convex query timeout")), 15_000)),
+    ]);
+  }
+
   async claimNext(): Promise<AgentCommand | null> {
-    return this.http.mutation(api.commandBus.claimNext, {
+    return this.mut(api.commandBus.claimNext, {
       secret: this.secret, agentId: this.agentId,
     });
   }
 
   async ackCommand(commandId: string): Promise<void> {
-    await this.http.mutation(api.commandBus.ackCommand, {
+    await this.mut(api.commandBus.ackCommand, {
       secret: this.secret, agentId: this.agentId, commandId,
     });
   }
 
   async completeCommand(commandId: string, resultPayload: unknown, tookMs: number): Promise<void> {
-    await this.http.mutation(api.commandBus.completeCommand, {
+    await this.mut(api.commandBus.completeCommand, {
       secret: this.secret, agentId: this.agentId, commandId, resultPayload, tookMs,
     });
   }
 
   async failCommand(commandId: string, reason: string): Promise<void> {
-    await this.http.mutation(api.commandBus.failCommand, {
+    await this.mut(api.commandBus.failCommand, {
       secret: this.secret, agentId: this.agentId, commandId, reason,
     });
   }
 
+  async releaseLease(commandId: string): Promise<void> {
+    await this.mut(api.commandBus.releaseLease, {
+      secret: this.secret, agentId: this.agentId, commandId,
+    });
+  }
+
   async heartbeat(lastTickProcessed: number, health: Health, currentStrategy?: string): Promise<void> {
-    await this.http.mutation(api.commandBus.heartbeat, {
+    await this.mut(api.commandBus.heartbeat, {
       secret: this.secret, agentId: this.agentId,
       lastTickProcessed, health, currentStrategy,
     });

@@ -44,6 +44,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Write readiness file — entrypoint polls for this
+  try {
+    fs.writeFileSync("/run/elder-runtime.ready", String(process.pid));
+  } catch {
+    console.warn("[elder-runtime] could not write /run/elder-runtime.ready");
+  }
+
   const bus = new BusClient(config.convexUrl, config.busSecret, config.elderId);
   const tmux = new TmuxSink(config.elderId); // session name = "elder-1" etc.
   const freeze = new FreezeGate();

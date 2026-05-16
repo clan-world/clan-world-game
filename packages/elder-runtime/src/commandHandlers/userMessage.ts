@@ -13,19 +13,23 @@ export async function handleUserMessage(
   config: ElderRuntimeConfig,
 ): Promise<void> {
   const startMs = Date.now();
-  await bus.ackCommand(commandId);
 
+  // Check freeze BEFORE ack — release lease back to queued (no retry bump)
   if (freeze.isFrozen()) {
-    await bus.failCommand(commandId, "frozen");
+    await bus.releaseLease(commandId);
     return;
   }
+  await bus.ackCommand(commandId);
 
   const text = (payload as { text?: string })?.text ?? "";
   const nonce = randomUUID();
   const nonceInstruction = `\n\n[control] When you have fully completed processing this message, emit exactly the line \`##NONCE:${nonce}## DONE\` (no prefix, no suffix, no quotes) as the final line of your response. The runtime uses this marker to acknowledge command completion.`;
   const message = `${text}${nonceInstruction}`;
 
-  await tmux.sendKeys(message);
+  await tmux.loadBuffer("elder-input", message);
+  await tmux.pasteBuffer("elder-input", config.elderId, { bracketed: true });
+  // Single Enter to submit the composed prompt
+  await tmux.sendKeys("Enter");
 
   // Poll capture-pane for nonce echo
   const deadline = Date.now() + config.nonceTimeoutMs;

@@ -32,44 +32,45 @@ function makeBus() {
   };
 }
 
-function makeTmux(nonceToEcho?: string) {
-  const sent: string[] = [];
+function makeTmux(echoLoaded = false) {
+  const loaded: Array<{ name: string; content: string }> = [];
+  const pasted: string[] = [];
+  const keys: string[] = [];
   return {
     tmux: {
-      async sendKeys(text: string) { sent.push(text); },
+      async loadBuffer(name: string, content: string) { loaded.push({ name, content }); },
+      async pasteBuffer(name: string, target: string) { pasted.push(name); },
+      async sendKeys(key: string) { keys.push(key); },
       async capturePane() {
-        if (nonceToEcho) return `##NONCE:${nonceToEcho}## DONE`;
+        if (echoLoaded && loaded.length > 0) {
+          const match = loaded[loaded.length - 1]!.content.match(/##NONCE:([^#]+)##/);
+          if (match) return `##NONCE:${match[1]}## DONE`;
+        }
         return "";
       },
     } as any,
-    sent,
+    loaded, pasted, keys,
   };
 }
 
 describe("handleUserMessage", () => {
-  it("fails with 'frozen' reason when frozen", async () => {
-    const { bus, failed } = makeBus();
+  it("releases lease when frozen (no retry bump)", async () => {
+    const released: string[] = [];
+    const bus = {
+      ...makeBus().bus,
+      async releaseLease(id: string) { released.push(id); },
+    } as any;
     const { tmux } = makeTmux();
     const freeze = new FreezeGate();
     freeze.freeze();
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
-    expect(failed[0]?.id).toBe("cmd:0");
-    expect(failed[0]?.reason).toBe("frozen");
+    expect(released[0]).toBe("cmd:0");
   });
 
   it("completes on nonce echo", async () => {
     const { bus, completed } = makeBus();
     const freeze = new FreezeGate();
-    // Capture nonce from sendKeys and return it in capturePane
-    const tmux = {
-      async sendKeys(text: string) {
-        const match = text.match(/##NONCE:([^#]+)##/);
-        if (match) (tmux as any)._nonce = match[1];
-      },
-      async capturePane() {
-        return (tmux as any)._nonce ? `##NONCE:${(tmux as any)._nonce}## DONE` : "";
-      },
-    } as any;
+    const { tmux } = makeTmux(true); // echoLoaded=true: capturePane echoes nonce from loaded buffer
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
     expect(completed[0]?.id).toBe("cmd:0");
     expect((completed[0]?.payload as any).matched).toBe(true);
@@ -77,7 +78,7 @@ describe("handleUserMessage", () => {
 
   it("fails on nonce timeout", async () => {
     const { bus, failed } = makeBus();
-    const { tmux } = makeTmux(); // capturePane returns ""
+    const { tmux } = makeTmux(); // echoLoaded=false: capturePane always returns ""
     const freeze = new FreezeGate();
     const shortConfig = { ...config, nonceTimeoutMs: 100, noncePollIntervalMs: 50 };
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, shortConfig);
@@ -85,24 +86,17 @@ describe("handleUserMessage", () => {
     expect(failed[0]?.reason).toContain("nonce");
   });
 
-  it("includes NONCE instruction in sent message", async () => {
-    const sentMessages: string[] = [];
-    const tmux = {
-      async sendKeys(text: string) {
-        sentMessages.push(text);
-        const match = text.match(/##NONCE:([^#]+)##/);
-        if (match) (tmux as any)._nonce = match[1];
-      },
-      async capturePane() {
-        return (tmux as any)._nonce ? `##NONCE:${(tmux as any)._nonce}## DONE` : "";
-      },
-    } as any;
+  it("loads buffer with NONCE instruction and pastes to session", async () => {
     const { bus } = makeBus();
     const freeze = new FreezeGate();
+    const { tmux, loaded, pasted, keys } = makeTmux(true);
     await handleUserMessage("cmd:0", { text: "do the thing" }, tmux, bus, freeze, config);
-    expect(sentMessages[0]).toContain("[control]");
-    expect(sentMessages[0]).toContain("##NONCE:");
-    expect(sentMessages[0]).toContain("## DONE");
-    expect(sentMessages[0]).toContain("do the thing");
+    expect(loaded[0]?.name).toBe("elder-input");
+    expect(loaded[0]?.content).toContain("[control]");
+    expect(loaded[0]?.content).toContain("##NONCE:");
+    expect(loaded[0]?.content).toContain("## DONE");
+    expect(loaded[0]?.content).toContain("do the thing");
+    expect(pasted[0]).toBe("elder-input");
+    expect(keys).toContain("Enter");
   });
 });

@@ -5,6 +5,7 @@ import {
   ackCommand,
   completeCommand,
   failCommand,
+  releaseLease,
   getQueuedFor,
   sweepStaleDelivered,
   heartbeat,
@@ -590,5 +591,31 @@ describe("auth", () => {
         },
       ),
     ).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("releaseLease", () => {
+  it("returns leased command to queued without bumping retryCount", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() + 300_000,
+          createdAt: 1000,
+          retryCount: 1,
+        },
+      ],
+    });
+    await (releaseLease as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1", commandId: "agentCommands:0" },
+    );
+    expect(tables.agentCommands![0].status).toBe("queued");
+    expect(tables.agentCommands![0].retryCount).toBe(1); // NOT bumped
+    expect(tables.agentCommands![0].leaseOwner).toBeUndefined();
   });
 });
