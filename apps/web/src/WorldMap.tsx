@@ -1490,9 +1490,12 @@ export function WorldMap() {
   }, [snapshot]);
 
   function getDayNightProgress() {
+    const clockEpoch = tickClockEpochRef.current;
     const snap = snapshotRef.current;
-    const tick = snap?.tick;
-    const epoch = snap?.tickEpoch;
+    const tick = clockEpoch?.tick ?? snap?.tick;
+    const epoch = clockEpoch
+      ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+      : snap?.tickEpoch;
     const hasEpoch = !!epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0;
     if (typeof tick === 'number' && Number.isFinite(tick) && (tick > 0 || hasEpoch)) {
       let subTickProgress = 0;
@@ -4581,13 +4584,16 @@ export function WorldMap() {
   }
 
   function getMsUntilTickClose() {
+    const clockEpoch = tickClockEpochRef.current;
     const snap = snapshotRef.current;
-    const epoch = snap?.tickEpoch;
+    const epoch = clockEpoch
+      ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+      : snap?.tickEpoch;
     const durationMs =
       epoch && typeof epoch.durationMs === 'number' && epoch.durationMs > 0
         ? epoch.durationMs
         : FALLBACK_DAY_TICK_MS;
-    if (epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0 && snap?.tick === liveTickRef.current) {
+    if (epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0 && (clockEpoch?.tick ?? snap?.tick) === liveTickRef.current) {
       const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
       return Math.max(0, durationMs - (Date.now() - startedAtMs));
     }
@@ -4608,8 +4614,11 @@ export function WorldMap() {
       // only triggers post-close (line below). Detect fallback mode and
       // trigger as soon as we enter the pre-attack tick. Vignette occupies the
       // first 4s of the pre-attack tick instead of the last 4s; visually similar.
+      const clockEpoch = tickClockEpochRef.current;
       const snap = snapshotRef.current;
-      const epoch = snap?.tickEpoch;
+      const epoch = clockEpoch
+        ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+        : snap?.tickEpoch;
       const havePreciseEpoch =
         epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0
         && typeof epoch.durationMs === 'number' && epoch.durationMs > 0;
