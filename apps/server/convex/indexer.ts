@@ -527,6 +527,28 @@ export const commitSnapshot = internalMutation({
       };
     }
 
+    // Write tickClock on every tick — cheap single-row table (~50 bytes).
+    // Patch if it exists, insert if not.
+    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
+    const tickClockData = {
+      tick,
+      blockNumber: snapshot.blockNumber,
+      tickEpochStartedAt:
+        previousWorldSnapshot?.tick === tick
+          ? previousWorldSnapshot.tickEpochStartedAt
+          : Math.floor(now / 1000),
+      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      seasonStartTick: asNumber(world.seasonStartTick),
+      seasonEndTick: asNumber(world.seasonEndTick),
+      winterActive: asBool(world.winterActive),
+      winterStartsAtTick: asNumber(world.winterStartsAtTick) || undefined,
+    };
+    if (tickClockRow) {
+      await ctx.db.patch(tickClockRow._id, tickClockData);
+    } else {
+      await ctx.db.insert("tickClock", tickClockData);
+    }
+
     if (snapshot.market) {
       const market = snapshot.market;
       const nextMarketState = {
@@ -733,10 +755,33 @@ export const commitSnapshot = internalMutation({
         };
       }),
     };
-    if (previousWorldSnapshot) {
-      await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
-    } else {
-      await ctx.db.insert("worldSnapshot", worldSnapshot);
+    // Delta-check: only patch worldSnapshot when data actually changes.
+    // Strip audit/timestamp fields before comparing so a no-data tick is a no-op.
+    const previousComparableSnapshot = previousWorldSnapshot
+      ? (() => {
+          const { _id, _creationTime, lastUpdatedAt, lastUpdatedBlock, txHash, ...rest } =
+            previousWorldSnapshot as typeof previousWorldSnapshot & {
+              _id: unknown;
+              _creationTime: unknown;
+            };
+          void _id; void _creationTime; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+          return rest;
+        })()
+      : undefined;
+    const nextComparableSnapshot = (() => {
+      const { lastUpdatedAt, lastUpdatedBlock, txHash, ...rest } = worldSnapshot;
+      void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+      return rest;
+    })();
+    if (
+      JSON.stringify(previousComparableSnapshot) !==
+      JSON.stringify(nextComparableSnapshot)
+    ) {
+      if (previousWorldSnapshot) {
+        await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
+      } else {
+        await ctx.db.insert("worldSnapshot", worldSnapshot);
+      }
     }
 
     return { tick, clans: snapshot.clans.length };
