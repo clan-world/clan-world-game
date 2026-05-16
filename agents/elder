@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# elder — clan-world elder CLI wrapper (STUB)
+#
+# Phase 1.2 of docs/plans/dockerize-elder-infra-v1.md.
+#
+# This is a placeholder. The real elder CLI (chain reads via `cast`,
+# Convex command-bus interaction, snapshot ingestion, etc.) is scoped to a
+# later issue. For v1 we ship a stub so the entrypoint test
+# `which elder` resolves and downstream phases can wire calls without
+# blocking on the CLI implementation.
+
+cat >&2 <<'EOF'
+elder CLI not yet implemented — this is a v1 stub.
+
+Use the MCP tools or `cast` directly for chain interactions until the
+elder CLI is filled in. Tracking issue: TBD (Phase 2+ scope).
+EOF
+
+exit 0
