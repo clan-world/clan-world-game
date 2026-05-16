@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import { openSync, writeSync, closeSync, unlinkSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "./config.js";
 import { BusClient } from "./convexClient.js";
@@ -19,36 +19,54 @@ async function main(): Promise<void> {
   console.log(`[elder-runtime] elder=${config.elderId} convex=${config.convexUrl}`);
 
   // Ensure state dir exists
-  fs.mkdirSync(config.stateDir, { recursive: true });
+  mkdirSync(config.stateDir, { recursive: true });
 
-  // Singleton PID-file lock — exit immediately if another instance is running
-  const lockFile = path.join(config.stateDir, "elder-runtime.lock");
+  // Atomic singleton lock via wx (exclusive create) — eliminates TOCTOU
+  const lockPath = path.join(config.stateDir, "supervisor.lock");
+  let lockFd: number;
   try {
-    if (fs.existsSync(lockFile)) {
-      const existingPid = fs.readFileSync(lockFile, "utf8").trim();
-      const pid = parseInt(existingPid, 10);
-      if (Number.isFinite(pid)) {
-        try {
-          process.kill(pid, 0); // throws if process doesn't exist
-          console.error(`[elder-runtime] another instance running (PID ${pid}). Exiting.`);
-          process.exit(1);
-        } catch {
-          console.warn(`[elder-runtime] stale lock (PID ${pid}), overwriting`);
+    lockFd = openSync(lockPath, "wx");
+    writeSync(lockFd, String(process.pid));
+  } catch (err: any) {
+    if (err.code === "EEXIST") {
+      // Stale-lock check: verify the owning process is still a tsx elder-runtime
+      let stillAlive = false;
+      try {
+        const stalePid = parseInt(readFileSync(lockPath, "utf8").trim(), 10);
+        if (Number.isFinite(stalePid)) {
+          process.kill(stalePid, 0); // throws if dead
+          const cmdline = readFileSync(`/proc/${stalePid}/cmdline`, "utf8");
+          if (cmdline.includes("tsx") && cmdline.includes("elder-runtime")) {
+            stillAlive = true;
+          }
         }
+      } catch { /* dead or no /proc — treat as stale */ }
+      if (stillAlive) {
+        console.error("[elder-runtime] FATAL: another supervisor already running. Exiting.");
+        process.exit(1);
       }
+      // Stale lock — remove and retry
+      unlinkSync(lockPath);
+      lockFd = openSync(lockPath, "wx");
+      writeSync(lockFd, String(process.pid));
+    } else {
+      console.error("[elder-runtime] could not acquire singleton lock:", err);
+      process.exit(1);
     }
-    fs.writeFileSync(lockFile, String(process.pid));
-    process.on("exit", () => { try { fs.unlinkSync(lockFile); } catch { /* ignore */ } });
-  } catch (err) {
-    console.error("[elder-runtime] could not acquire singleton lock:", err);
-    process.exit(1);
   }
+  const cleanupLock = () => {
+    try { closeSync(lockFd); } catch { /* ignore */ }
+    try { unlinkSync(lockPath); } catch { /* ignore */ }
+  };
+  process.on("exit", cleanupLock);
 
-  // Write readiness file — entrypoint polls for this
+  // Write readiness file to writable stateDir — entrypoint polls for this
+  const readyPath = path.join(config.stateDir, "elder-runtime.ready");
   try {
-    fs.writeFileSync("/run/elder-runtime.ready", String(process.pid));
-  } catch {
-    console.warn("[elder-runtime] could not write /run/elder-runtime.ready");
+    writeFileSync(readyPath, String(process.pid));
+  } catch (err) {
+    console.error("[elder-runtime] FATAL: could not write readiness file", err);
+    process.exit(1);
   }
 
   const bus = new BusClient(config.convexUrl, config.busSecret, config.elderId);
@@ -56,8 +74,8 @@ async function main(): Promise<void> {
   const freeze = new FreezeGate();
 
   const ac = new AbortController();
-  process.on("SIGTERM", () => ac.abort());
-  process.on("SIGINT", () => ac.abort());
+  process.on("SIGTERM", () => { cleanupLock(); ac.abort(); });
+  process.on("SIGINT", () => { cleanupLock(); ac.abort(); });
 
   const heartbeatState: HeartbeatState = {
     lastTickProcessed: 0,

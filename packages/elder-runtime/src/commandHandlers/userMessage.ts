@@ -31,12 +31,24 @@ export async function handleUserMessage(
   // Single Enter to submit the composed prompt
   await tmux.sendKeys("Enter");
 
-  // Poll capture-pane for nonce echo
+  // Poll capture-pane for nonce echo.
+  // Require >= 2 occurrences: prompt paste adds one, Elder's response adds the second.
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const marker = `##NONCE:${nonce}## DONE`;
+  const failMarker = `##NONCE:${nonce}## FAIL`;
+  const markerRe = new RegExp(escapeRe(marker), "g");
+  const failRe = new RegExp(escapeRe(failMarker), "g");
   const deadline = Date.now() + config.nonceTimeoutMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, config.noncePollIntervalMs));
     const pane = await tmux.capturePane(200);
-    if (pane.includes(`##NONCE:${nonce}## DONE`)) {
+    if ((pane.match(failRe) ?? []).length >= 2) {
+      const failLine = pane.split("\n").reverse().find(l => l.includes(failMarker));
+      const reason = failLine ? (failLine.split("FAIL")[1]?.trim() ?? "unknown") : "unknown";
+      await bus.failCommand(commandId, `nonce ${nonce} FAIL: ${reason}`);
+      return;
+    }
+    if ((pane.match(markerRe) ?? []).length >= 2) {
       await bus.completeCommand(commandId, { nonce, matched: true }, Date.now() - startMs);
       return;
     }

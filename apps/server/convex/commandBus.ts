@@ -194,8 +194,9 @@ export const releaseLease = mutation({
   handler: async (ctx, args) => {
     checkElderAuth(args.secret, args.agentId);
     const cmd = await ctx.db.get(args.commandId);
-    if (!cmd || cmd.leaseOwner !== args.agentId) {
-      throw new Error("Command not found or not owned by this elder");
+    if (!cmd || cmd.leaseOwner !== args.agentId ||
+        (cmd.status !== "leased" && cmd.status !== "acked")) {
+      throw new Error("Command not found or not owned by this elder, or not in releasable state");
     }
     await ctx.db.patch(args.commandId, {
       status: "queued",

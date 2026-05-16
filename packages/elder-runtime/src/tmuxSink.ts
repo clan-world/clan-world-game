@@ -20,7 +20,7 @@ export class TmuxSink {
 
   async pasteBuffer(name: string, target: string, opts: { bracketed: boolean }): Promise<void> {
     const args = ["paste-buffer", "-b", name, "-t", target];
-    if (opts.bracketed) args.push("-p");
+    if (opts.bracketed) args.push("-p", "-r"); // -p: bracketed paste mode; -r: no LF→CR replacement
     await execFileAsync("tmux", args);
   }
 

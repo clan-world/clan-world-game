@@ -32,24 +32,27 @@ function makeBus() {
   };
 }
 
-function makeTmux(echoLoaded = false) {
+/**
+ * makeTmux builds a mock tmux with a mutable pane scrollback.
+ * Tests set paneState.scrollback directly to control what capturePane returns.
+ */
+function makeTmux() {
   const loaded: Array<{ name: string; content: string }> = [];
   const pasted: string[] = [];
   const keys: string[] = [];
+  const paneState = { scrollback: "" };
   return {
     tmux: {
-      async loadBuffer(name: string, content: string) { loaded.push({ name, content }); },
+      async loadBuffer(name: string, content: string) {
+        loaded.push({ name, content });
+        // Simulate the prompt appearing in pane scrollback after paste (1 occurrence)
+        paneState.scrollback += content + "\n";
+      },
       async pasteBuffer(name: string, target: string) { pasted.push(name); },
       async sendKeys(key: string) { keys.push(key); },
-      async capturePane() {
-        if (echoLoaded && loaded.length > 0) {
-          const match = loaded[loaded.length - 1]!.content.match(/##NONCE:([^#]+)##/);
-          if (match) return `##NONCE:${match[1]}## DONE`;
-        }
-        return "";
-      },
+      async capturePane() { return paneState.scrollback; },
     } as any,
-    loaded, pasted, keys,
+    loaded, pasted, keys, paneState,
   };
 }
 
@@ -67,18 +70,49 @@ describe("handleUserMessage", () => {
     expect(released[0]).toBe("cmd:0");
   });
 
-  it("completes on nonce echo", async () => {
+  it("completes when Elder echoes nonce (occurrence count >= 2)", async () => {
     const { bus, completed } = makeBus();
     const freeze = new FreezeGate();
-    const { tmux } = makeTmux(true); // echoLoaded=true: capturePane echoes nonce from loaded buffer
+    const { tmux, paneState } = makeTmux();
+
+    // The poll loop runs; after loadBuffer the prompt is in scrollback (1 occurrence).
+    // We need to add a second occurrence to simulate Elder's response.
+    // We hook into pasteBuffer timing by overriding capturePane to add Elder response on 2nd call.
+    let pollCount = 0;
+    const origCapture = tmux.capturePane.bind(tmux);
+    tmux.capturePane = async () => {
+      pollCount++;
+      if (pollCount >= 2) {
+        // Extract nonce from prompt and add Elder's response
+        const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
+        if (match) paneState.scrollback += `##NONCE:${match[1]}## DONE\n`;
+      }
+      return paneState.scrollback;
+    };
+
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
     expect(completed[0]?.id).toBe("cmd:0");
     expect((completed[0]?.payload as any).matched).toBe(true);
   });
 
-  it("fails on nonce timeout", async () => {
+  it("does NOT complete on first poll (prompt occurrence only = 1)", async () => {
+    // Prompt is in pane, but Elder hasn't responded yet — should NOT complete early.
+    // We verify by using a short timeout: if it false-positives, it completes immediately.
+    const { bus, completed, failed } = makeBus();
+    const freeze = new FreezeGate();
+    const { tmux } = makeTmux();
+    // paneState already has the prompt after loadBuffer — 1 occurrence.
+    // capturePane always returns the same scrollback (no Elder response added).
+    const shortConfig = { ...config, nonceTimeoutMs: 150, noncePollIntervalMs: 50 };
+    await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, shortConfig);
+    // Must timeout, not complete
+    expect(completed).toHaveLength(0);
+    expect(failed[0]?.reason).toContain("nonce");
+  });
+
+  it("fails on nonce timeout when Elder never responds", async () => {
     const { bus, failed } = makeBus();
-    const { tmux } = makeTmux(); // echoLoaded=false: capturePane always returns ""
+    const { tmux } = makeTmux();
     const freeze = new FreezeGate();
     const shortConfig = { ...config, nonceTimeoutMs: 100, noncePollIntervalMs: 50 };
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, shortConfig);
@@ -86,10 +120,42 @@ describe("handleUserMessage", () => {
     expect(failed[0]?.reason).toContain("nonce");
   });
 
+  it("fails with FAIL marker when Elder echoes FAIL (occurrence >= 2)", async () => {
+    const { bus, failed } = makeBus();
+    const freeze = new FreezeGate();
+    const { tmux, paneState } = makeTmux();
+
+    let pollCount = 0;
+    tmux.capturePane = async () => {
+      pollCount++;
+      if (pollCount >= 2) {
+        const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
+        if (match) paneState.scrollback += `##NONCE:${match[1]}## FAIL cannot process request\n`;
+      }
+      return paneState.scrollback;
+    };
+
+    await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
+    expect(failed[0]?.id).toBe("cmd:0");
+    expect(failed[0]?.reason).toContain("FAIL");
+  });
+
   it("loads buffer with NONCE instruction and pastes to session", async () => {
     const { bus } = makeBus();
     const freeze = new FreezeGate();
-    const { tmux, loaded, pasted, keys } = makeTmux(true);
+    const { tmux, loaded, pasted, keys, paneState } = makeTmux();
+
+    // Add Elder response so it completes
+    let pollCount = 0;
+    tmux.capturePane = async () => {
+      pollCount++;
+      if (pollCount >= 2) {
+        const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
+        if (match) paneState.scrollback += `##NONCE:${match[1]}## DONE\n`;
+      }
+      return paneState.scrollback;
+    };
+
     await handleUserMessage("cmd:0", { text: "do the thing" }, tmux, bus, freeze, config);
     expect(loaded[0]?.name).toBe("elder-input");
     expect(loaded[0]?.content).toContain("[control]");

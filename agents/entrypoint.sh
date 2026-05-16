@@ -45,15 +45,18 @@ TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 
 # 3. Start elder-runtime supervisor (background)
+# Readiness file lives in the per-elder state dir (writable by UID 1000)
+READY_FILE="${CLAN_WORLD_RUNNER_STATE_DIR:-/workspace/.runtime}/elder-runtime.ready"
 RUNTIME_PID=""
 if command -v tsx &>/dev/null && [[ -f /opt/elder-runtime/src/main.ts ]]; then
+  rm -f "${READY_FILE}"   # clear any stale ready file from previous run
   tsx /opt/elder-runtime/src/main.ts &
   RUNTIME_PID=$!
   # Wait up to 30s for readiness file written by supervisor after startup
   for i in $(seq 1 30); do
     sleep 1
-    if [[ -f /run/elder-runtime.ready ]]; then
-      echo "[entrypoint] elder-runtime ready"
+    if [[ -f "${READY_FILE}" ]]; then
+      echo "[entrypoint] elder-runtime ready (file=${READY_FILE})"
       break
     fi
     if [[ $i -eq 30 ]]; then

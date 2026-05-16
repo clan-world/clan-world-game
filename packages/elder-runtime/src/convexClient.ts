@@ -37,18 +37,23 @@ export class BusClient {
     this.agentId = agentId;
   }
 
-  private mut<A extends Record<string, unknown>, R>(ref: Mut<A, R>, args: A): Promise<R> {
+  private withTimeout<R>(p: Promise<R>): Promise<R> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, rej) => {
+      timer = setTimeout(() => rej(new Error("Convex call timeout (15s)")), 15_000);
+    });
     return Promise.race([
-      this.http.mutation(ref as any, args as any) as Promise<R>,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Convex mutation timeout")), 15_000)),
+      p.finally(() => { if (timer !== undefined) clearTimeout(timer); }),
+      timeout,
     ]);
   }
 
+  private mut<A extends Record<string, unknown>, R>(ref: Mut<A, R>, args: A): Promise<R> {
+    return this.withTimeout(this.http.mutation(ref as any, args as any) as Promise<R>);
+  }
+
   private qry<A extends Record<string, unknown>, R>(ref: Qry<A, R>, args: A): Promise<R> {
-    return Promise.race([
-      this.http.query(ref as any, args as any) as Promise<R>,
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Convex query timeout")), 15_000)),
-    ]);
+    return this.withTimeout(this.http.query(ref as any, args as any) as Promise<R>);
   }
 
   async claimNext(): Promise<AgentCommand | null> {

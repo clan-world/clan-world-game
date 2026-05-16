@@ -157,3 +157,5 @@ Format: `##NONCE:<value>## DONE` — no prefix, no suffix, no quotes, alone on i
 If you cannot complete the task, emit `##NONCE:<value>## FAIL <reason>` instead.
 
 This is a hard protocol contract — without the DONE marker, the supervisor times out and marks the command failed even if you completed the work.
+
+The runtime detects completion by COUNTING occurrences of the marker in the scrollback (your prompt has it once; your response adds the second). You MUST emit the marker as the FINAL line of your response. Emitting it inside a code block or quoted reference still counts. Do NOT emit the DONE marker mid-response and then continue talking — emit it once, at the very end.
