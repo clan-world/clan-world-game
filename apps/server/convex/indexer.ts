@@ -702,14 +702,9 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
+    // tickEpochStartedAt now sourced from tickClockData (PR #402) — see below.
+    // worldPaused / pausedAtTs computation retained from dev for chain-pause semantics.
     const worldPaused = asBool(world.worldPaused);
-    const sameTickAsPrevious = previousWorldSnapshot?.tick === tick;
-    const wasPausedNowUnpaused =
-      previousWorldSnapshot?.worldPaused === true && !worldPaused;
-    const tickEpochStartedAt =
-      previousWorldSnapshot && sameTickAsPrevious && !wasPausedNowUnpaused
-        ? previousWorldSnapshot.tickEpochStartedAt
-        : Math.floor(now / 1000);
     const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
     const pausedAtTs =
       Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)
@@ -717,8 +712,8 @@ export const commitSnapshot = internalMutation({
         : undefined;
     const worldSnapshot = {
       tick,
-      tickEpochStartedAt,
-      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      tickEpochStartedAt: tickClockData.tickEpochStartedAt,
+      tickEpochDurationMs: tickClockData.tickEpochDurationMs,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
