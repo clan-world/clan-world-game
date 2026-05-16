@@ -512,11 +512,15 @@ export const commitSnapshot = internalMutation({
       .query("worldSnapshot")
       .order("desc")
       .first();
-    const previousTick = asNumber(previousWorldSnapshot?.tick, -1);
-    const previousBlock = asNumber(previousWorldSnapshot?.lastUpdatedBlock, -1);
+    // Fetch tickClock first — it's the always-advancing monotonic cursor.
+    // worldSnapshot can freeze between content-change ticks (delta-check), so
+    // previousWorldSnapshot.tick is not a reliable stale-gate cursor anymore.
+    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
+    const previousTick = asNumber(tickClockRow?.tick ?? previousWorldSnapshot?.tick, -1);
+    const previousBlock = asNumber(tickClockRow?.blockNumber ?? previousWorldSnapshot?.lastUpdatedBlock, -1);
     const incomingBlock = snapshot.blockNumber ?? -1;
     if (
-      previousWorldSnapshot &&
+      (tickClockRow || previousWorldSnapshot) &&
       (tick < previousTick ||
         (tick === previousTick && incomingBlock <= previousBlock))
     ) {
@@ -526,10 +530,7 @@ export const commitSnapshot = internalMutation({
         skipped: "stale-snapshot",
       };
     }
-
     // Write tickClock on every tick — cheap single-row table (~50 bytes).
-    // Patch if it exists, insert if not.
-    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
     const tickClockData = {
       tick,
       blockNumber: snapshot.blockNumber,
