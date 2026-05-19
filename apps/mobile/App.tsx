@@ -113,7 +113,7 @@ if (!CONVEX_URL) {
 // Solana RPC keeps a soft default: the public mainnet endpoint is a fine
 // fallback for low-traffic dev/demo flows. Convex has no equivalent public
 // fallback — every deployment is a project-specific URL — so it fails loud.
-const SOLANA_RPC = process.env.EXPO_PUBLIC_SOLANA_RPC ?? 'https://api.mainnet-beta.solana.com';
+const SOLANA_RPC = process.env.EXPO_PUBLIC_SOLANA_RPC || 'https://api.mainnet-beta.solana.com';
 
 const convex = new ConvexReactClient(CONVEX_URL, { unsavedChangesWarning: false });
 const solana = new Connection(SOLANA_RPC, 'confirmed');

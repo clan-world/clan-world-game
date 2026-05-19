@@ -8,17 +8,15 @@ plugins {
 // ─────────────────────────────────────────────────────────────────────────
 // Build-time URL config.
 //
-// MAP_URL and TERMINAL_BASE_URL: required at build time. We deliberately
-// fall back from env → Gradle property → hard fail. A hardcoded fallback
-// previously risked silently shipping the wrong backend into release APKs.
-//
-// CONVEX_URL: optional with a sensible default (the V3 Convex deployment).
-// Falling back is safe here because the default points to the public read
-// endpoint — there's no auth or write surface that could leak.
+// MAP_URL, TERMINAL_BASE_URL, and CONVEX_URL: required at build time. We
+// deliberately fall back from env → Gradle property → hard fail. A hardcoded
+// default previously risked silently shipping the wrong backend into release
+// APKs — every project-specific URL should be set explicitly per environment.
 //
 // Local devs can keep these in `~/.gradle/gradle.properties`:
 //   clanWorldMapUrl=https://app.clan-world.com
 //   clanWorldTerminalBaseUrl=https://cockpit.clan-world.com
+//   clanWorldConvexUrl=https://valuable-kudu-985.convex.cloud
 // ─────────────────────────────────────────────────────────────────────────
 
 fun resolveBuildConfigUrl(envName: String, propName: String): String {
@@ -39,8 +37,7 @@ fun optionalEnvOrProperty(envName: String, propName: String): String? =
 
 val mapUrl = resolveBuildConfigUrl("CLAN_WORLD_MAP_URL", "clanWorldMapUrl")
 val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "clanWorldTerminalBaseUrl")
-val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
-  .orElse("https://valuable-kudu-985.convex.cloud")
+val convexUrl = resolveBuildConfigUrl("CLAN_WORLD_CONVEX_URL", "clanWorldConvexUrl")
 val goldRpcUrl = providers.environmentVariable("CLAN_WORLD_GOLD_RPC_URL")
   .orElse("https://api.devnet.solana.com")
 val goldMint = providers.environmentVariable("CLAN_WORLD_GOLD_MINT")
@@ -85,7 +82,7 @@ android {
     versionName = clanWorldVersionName
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
-    buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
+    buildConfigField("String", "CONVEX_URL", "\"$convexUrl\"")
     buildConfigField("String", "GOLD_RPC_URL", "\"${goldRpcUrl.get()}\"")
     buildConfigField("String", "GOLD_MINT", "\"${goldMint.get()}\"")
     buildConfigField("String", "GOLD_FAUCET_PROGRAM_ID", "\"${goldFaucetProgramId.get()}\"")
