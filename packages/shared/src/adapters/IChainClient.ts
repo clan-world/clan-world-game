@@ -5092,9 +5092,9 @@ class RealChainClient implements IChainClient {
         'CLAN_WORLD_CONTRACT_ADDRESS env var is required; no fallback allowed in production code paths',
       );
     }
-    if (!configuredLensAddress) {
+    if (!configuredLensAddress || !/^0x[0-9a-fA-F]{40}$/.test(configuredLensAddress)) {
       throw new Error(
-        'CLAN_WORLD_LENS_ADDRESS env var is required; no fallback to contract address allowed in production code paths',
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
       );
     }
     this.contractAddress = configuredContractAddress as `0x${string}`;

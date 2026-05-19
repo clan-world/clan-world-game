@@ -192,23 +192,41 @@ describe('RealChainClient.submitOrders order field mapping', () => {
     const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
     delete process.env.CLAN_WORLD_LENS_ADDRESS;
 
-    expect(() => createChainClient()).toThrowError(
-      'CLAN_WORLD_LENS_ADDRESS env var is required; no fallback to contract address allowed in production code paths',
-    );
-
-    if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
-    else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    try {
+      expect(() => createChainClient()).toThrowError(
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+      else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    }
   });
 
   it('fails loudly when CLAN_WORLD_LENS_ADDRESS is empty/whitespace', () => {
     const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
     process.env.CLAN_WORLD_LENS_ADDRESS = '   ';
 
-    expect(() => createChainClient()).toThrowError(
-      'CLAN_WORLD_LENS_ADDRESS env var is required; no fallback to contract address allowed in production code paths',
-    );
+    try {
+      expect(() => createChainClient()).toThrowError(
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+      else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    }
+  });
 
-    if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
-    else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+  it('fails loudly when CLAN_WORLD_LENS_ADDRESS is malformed (not 0x+40 hex)', () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    process.env.CLAN_WORLD_LENS_ADDRESS = '0x123';
+
+    try {
+      expect(() => createChainClient()).toThrowError(
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+      else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    }
   });
 });
