@@ -187,4 +187,28 @@ describe('RealChainClient.submitOrders order field mapping', () => {
       }),
     );
   });
+
+  it('fails loudly when CLAN_WORLD_LENS_ADDRESS is missing', () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    delete process.env.CLAN_WORLD_LENS_ADDRESS;
+
+    expect(() => createChainClient()).toThrowError(
+      'CLAN_WORLD_LENS_ADDRESS env var is required; no fallback to contract address allowed in production code paths',
+    );
+
+    if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+    else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+  });
+
+  it('fails loudly when CLAN_WORLD_LENS_ADDRESS is empty/whitespace', () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    process.env.CLAN_WORLD_LENS_ADDRESS = '   ';
+
+    expect(() => createChainClient()).toThrowError(
+      'CLAN_WORLD_LENS_ADDRESS env var is required; no fallback to contract address allowed in production code paths',
+    );
+
+    if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+    else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+  });
 });

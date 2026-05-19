@@ -5086,18 +5086,19 @@ class RealChainClient implements IChainClient {
     this.transport = this.createTransport();
 
     const configuredContractAddress = readEnv('CLAN_WORLD_CONTRACT_ADDRESS')?.trim();
-    const configuredLensAddress = readEnv('CLAN_WORLD_LENS_ADDRESS');
+    const configuredLensAddress = readEnv('CLAN_WORLD_LENS_ADDRESS')?.trim();
     if (!configuredContractAddress) {
       throw new Error(
         'CLAN_WORLD_CONTRACT_ADDRESS env var is required; no fallback allowed in production code paths',
       );
     }
+    if (!configuredLensAddress) {
+      throw new Error(
+        'CLAN_WORLD_LENS_ADDRESS env var is required; no fallback to contract address allowed in production code paths',
+      );
+    }
     this.contractAddress = configuredContractAddress as `0x${string}`;
-    this.lensAddress = (
-      configuredLensAddress && configuredLensAddress.trim()
-        ? configuredLensAddress
-        : this.contractAddress
-    ) as `0x${string}`;
+    this.lensAddress = configuredLensAddress as `0x${string}`;
 
     this.client = createPublicClient({
       chain: baseSepolia,
