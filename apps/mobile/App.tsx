@@ -103,10 +103,14 @@ import { getForgedInfts } from './src/storage';
 // banner. The themed RaidAlertOverlay takes its place.
 installRaidNotificationHandler();
 
-const CONVEX_URL =
-  process.env.EXPO_PUBLIC_CONVEX_URL ?? 'https://valuable-kudu-985.convex.cloud';
-const SOLANA_RPC =
-  process.env.EXPO_PUBLIC_SOLANA_RPC ?? 'https://api.mainnet-beta.solana.com';
+const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL;
+if (!CONVEX_URL) {
+  throw new Error(
+    'EXPO_PUBLIC_CONVEX_URL env var is required; no fallback allowed. ' +
+      'Set it in apps/mobile/.env or via the EAS build profile.',
+  );
+}
+const SOLANA_RPC = process.env.EXPO_PUBLIC_SOLANA_RPC ?? 'https://api.mainnet-beta.solana.com';
 
 const convex = new ConvexReactClient(CONVEX_URL, { unsavedChangesWarning: false });
 const solana = new Connection(SOLANA_RPC, 'confirmed');
