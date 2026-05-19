@@ -103,10 +103,17 @@ import { getForgedInfts } from './src/storage';
 // banner. The themed RaidAlertOverlay takes its place.
 installRaidNotificationHandler();
 
-const CONVEX_URL =
-  process.env.EXPO_PUBLIC_CONVEX_URL ?? 'https://valuable-kudu-985.convex.cloud';
-const SOLANA_RPC =
-  process.env.EXPO_PUBLIC_SOLANA_RPC ?? 'https://api.mainnet-beta.solana.com';
+const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL;
+if (!CONVEX_URL) {
+  throw new Error(
+    'EXPO_PUBLIC_CONVEX_URL env var is required; no fallback allowed. ' +
+      'See apps/mobile/.env.example. For EAS builds set it in eas.json build profiles.',
+  );
+}
+// Solana RPC keeps a soft default: the public mainnet endpoint is a fine
+// fallback for low-traffic dev/demo flows. Convex has no equivalent public
+// fallback — every deployment is a project-specific URL — so it fails loud.
+const SOLANA_RPC = process.env.EXPO_PUBLIC_SOLANA_RPC || 'https://api.mainnet-beta.solana.com';
 
 const convex = new ConvexReactClient(CONVEX_URL, { unsavedChangesWarning: false });
 const solana = new Connection(SOLANA_RPC, 'confirmed');

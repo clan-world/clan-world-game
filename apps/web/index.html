@@ -43,8 +43,10 @@
     <!-- Canonical -->
     <link rel="canonical" href="https://app.clan-world.com/" />
 
-    <!-- Convex preconnect (faster first paint) -->
-    <link rel="preconnect" href="https://valuable-kudu-985.convex.cloud" crossorigin />
+    <!-- Convex preconnect (faster first paint). VITE_CONVEX_URL is substituted
+         by Vite at build time. If unset at build, the literal placeholder is
+         left in the HTML — a visible fail-loud signal. -->
+    <link rel="preconnect" href="%VITE_CONVEX_URL%" crossorigin />
 
     <!-- Font preconnects -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
