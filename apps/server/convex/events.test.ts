@@ -7,14 +7,19 @@
  * Covers:
  *   - `getEventTickerFeed`: limit clamping (1..30), default 10, ordering.
  *   - `getBattleEvents`: tickWindow clamping (1..20), event-name filtering,
- *     fallback when tickClock is empty, hard cap.
- *   - `getRecentChainEvents`: back-compat wrapper still returns last 60.
+ *     fallback when tickClock is empty, hard cap, cap-before-filter hazard
+ *     (PR #505 super-swarm MUST-fix-1), and dead-letter exclusion for events
+ *     without a tick arg at the contract level (PR #505 super-swarm
+ *     MUST-fix-2).
+ *   - `getRecentChainEvents`: back-compat wrapper still returns last 60 with
+ *     correct ordering (PR #505 super-swarm SHOULD-fix-2).
  */
 
 import { describe, expect, it } from "vitest";
 import {
   BATTLE_EVENT_FETCH_HARD_CAP,
   BATTLE_EVENT_NAMES,
+  BATTLE_EVENT_PER_NAME_TAKE,
   getBattleEvents,
   getEventTickerFeed,
   getRecentChainEvents,
@@ -39,6 +44,9 @@ function applyClauses(rows: Row[], clauses: Clause[]): Row[] {
     clauses.every((c) => {
       const v = row[c.field];
       if (c.op === "eq") return v === c.value;
+      // gte mirrors Convex semantics: rows with undefined for the index key
+      // are excluded from the scan. This matters for tick-less battle-shaped
+      // events whose indexed tick column is undefined (see indexer.ts:532).
       if (c.op === "gte") return typeof v === "number" && v >= c.value;
       return false;
     }),
@@ -73,11 +81,21 @@ function createDb(initial: Record<string, Row[]> = {}) {
             apply(q);
           }
           rows = applyClauses(rows, clauses);
+          // For by_event_tick / by_tick, Convex would not surface undefined-
+          // tick rows even without an explicit gte (the row simply isn't in
+          // the index). Mirror that: any tick-scoped index drops rows with
+          // undefined tick from the eligible set.
+          if (usedIndex === "by_tick" || usedIndex === "by_event_tick") {
+            rows = rows.filter((r) => typeof r.tick === "number");
+          }
           return builder;
         },
         order(direction: "asc" | "desc") {
-          // For by_tick index, order by tick; else by _creationTime.
-          const sortField = usedIndex === "by_tick" ? "tick" : "_creationTime";
+          // tick-indexed scans order by tick; everything else by _creationTime.
+          const sortField =
+            usedIndex === "by_tick" || usedIndex === "by_event_tick"
+              ? "tick"
+              : "_creationTime";
           rows = [...rows].sort((a, b) => {
             const av = (a[sortField] as number | undefined) ?? 0;
             const bv = (b[sortField] as number | undefined) ?? 0;
@@ -90,6 +108,9 @@ function createDb(initial: Record<string, Row[]> = {}) {
         },
         async take(n: number): Promise<Row[]> {
           return rows.slice(0, n);
+        },
+        async collect(): Promise<Row[]> {
+          return [...rows];
         },
       };
       return builder;
@@ -160,9 +181,7 @@ function clock(tick: number): Row {
 
 describe("getEventTickerFeed", () => {
   it("defaults to 10 events ordered desc by _creationTime", async () => {
-    const events = Array.from({ length: 20 }, (_, i) =>
-      evt("MissionAssigned", 5),
-    );
+    const events = Array.from({ length: 20 }, () => evt("MissionAssigned", 5));
     const { db } = createDb({ chainEvents: events });
 
     const result = await callHandler<{ limit?: number }, Row[]>(
@@ -234,17 +253,20 @@ describe("getBattleEvents", () => {
     const { db } = createDb({
       tickClock: [clock(10)],
       chainEvents: [
-        // OUT of window (too old)
+        // OUT of window (too old at tickWindow=3 → minTick=8)
         evt("BanditAttackResolved", 5),
-        // IN window, non-battle — should be filtered out
+        // IN window, non-battle — should be filtered out (and never even
+        // surface via the by_event_tick eq filter).
         evt("MissionAssigned", 8),
         evt("ResourcesGathered", 9),
         evt("WorkerArrived", 10),
-        // IN window, battle events — should be returned
+        // IN window, battle events from the trimmed-list — should be returned
         evt("BanditAttackResolved", 9),
-        evt("WallDamagedByBandit", 10),
-        evt("LootDistributed", 10),
         evt("BanditDefeated", 10),
+        evt("BanditTargetDied", 10),
+        evt("BanditEscaped", 9),
+        evt("BanditStateChanged", 8),
+        evt("BlueprintEarned", 10),
       ],
     });
 
@@ -254,14 +276,16 @@ describe("getBattleEvents", () => {
       { tickWindow: 3 },
     );
 
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(6);
     const names = result.map((r) => r.eventName).sort();
     expect(names).toEqual(
       [
         "BanditAttackResolved",
         "BanditDefeated",
-        "LootDistributed",
-        "WallDamagedByBandit",
+        "BanditEscaped",
+        "BanditStateChanged",
+        "BanditTargetDied",
+        "BlueprintEarned",
       ].sort(),
     );
   });
@@ -270,8 +294,9 @@ describe("getBattleEvents", () => {
     const { db } = createDb({
       tickClock: [clock(20)],
       chainEvents: [
-        evt("BanditAttackResolved", 5), // 15 ticks old → out
-        evt("BanditAttackResolved", 18), // 2 ticks old → in
+        // tickWindow=3 at tick=20 → minTick=18, so tick=17 is out.
+        evt("BanditAttackResolved", 17),
+        evt("BanditAttackResolved", 18),
       ],
     });
 
@@ -285,12 +310,35 @@ describe("getBattleEvents", () => {
     expect(result[0]!.tick).toBe(18);
   });
 
+  it("tickWindow=3 includes exactly 3 ticks (super-swarm SHOULD-fix-1)", async () => {
+    // With current tick=10 and tickWindow=3, the contract says the window
+    // covers ticks 8, 9, 10 — three ticks inclusive of the current one.
+    // The pre-fix implementation included 4 (ticks 7..10).
+    const { db } = createDb({
+      tickClock: [clock(10)],
+      chainEvents: [
+        evt("BanditAttackResolved", 7), // OUT (4th tick back)
+        evt("BanditAttackResolved", 8), // IN  (3rd tick back)
+        evt("BanditAttackResolved", 9), // IN  (2nd tick back)
+        evt("BanditAttackResolved", 10), // IN (current)
+      ],
+    });
+    const result = await callHandler<{ tickWindow?: number }, Row[]>(
+      getBattleEvents,
+      { db },
+      { tickWindow: 3 },
+    );
+    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+      8, 9, 10,
+    ]);
+  });
+
   it("defaults tickWindow to 3 when not specified", async () => {
     const { db } = createDb({
       tickClock: [clock(10)],
       chainEvents: [
-        evt("BanditAttackResolved", 6), // 4 ticks old → out at default=3
-        evt("BanditAttackResolved", 7), // 3 ticks old → in (gte 10-3=7)
+        evt("BanditAttackResolved", 7), // 4 ticks back → OUT at default=3
+        evt("BanditAttackResolved", 8), // 3 ticks back → IN  (minTick=8)
         evt("BanditAttackResolved", 10),
       ],
     });
@@ -300,15 +348,17 @@ describe("getBattleEvents", () => {
       { db },
       {},
     );
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([7, 10]);
+    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+      8, 10,
+    ]);
   });
 
   it("clamps tickWindow > 20 down to 20", async () => {
     const { db } = createDb({
       tickClock: [clock(100)],
       chainEvents: [
-        evt("BanditAttackResolved", 50), // 50 old → out even after clamp
-        evt("BanditAttackResolved", 80), // 20 old → boundary (gte 80)
+        evt("BanditAttackResolved", 50), // 50 old → OUT after clamp
+        evt("BanditAttackResolved", 81), // 19 old → IN  (minTick=100-20+1=81)
         evt("BanditAttackResolved", 100),
       ],
     });
@@ -318,7 +368,9 @@ describe("getBattleEvents", () => {
       { db },
       { tickWindow: 1000 },
     );
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([80, 100]);
+    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+      81, 100,
+    ]);
   });
 
   it("clamps tickWindow < 1 up to 1", async () => {
@@ -336,17 +388,19 @@ describe("getBattleEvents", () => {
       { db },
       { tickWindow: 0 },
     );
-    // tickWindow=1 → minTick = 9, so ticks 9 and 10 included
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([9, 10]);
+    // tickWindow=1 → minTick = 10, only the current tick included.
+    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+      10,
+    ]);
   });
 
   it("falls back to scanning recent chainEvents when tickClock is empty", async () => {
     const { db } = createDb({
       tickClock: [],
       chainEvents: [
-        evt("BanditAttackResolved", undefined),
-        evt("MissionAssigned", undefined),
-        evt("LootDistributed", undefined),
+        evt("BanditAttackResolved", 5),
+        evt("MissionAssigned", 5),
+        evt("BanditDefeated", 6),
       ],
     });
 
@@ -358,7 +412,7 @@ describe("getBattleEvents", () => {
 
     // Should still filter out non-battle events even in fallback mode.
     expect(result.map((r) => r.eventName).sort()).toEqual(
-      ["BanditAttackResolved", "LootDistributed"].sort(),
+      ["BanditAttackResolved", "BanditDefeated"].sort(),
     );
   });
 
@@ -388,6 +442,90 @@ describe("getBattleEvents", () => {
 
   it("hard cap is sane (>= default tick-window worth of events)", () => {
     expect(BATTLE_EVENT_FETCH_HARD_CAP).toBeGreaterThanOrEqual(20);
+    expect(BATTLE_EVENT_PER_NAME_TAKE).toBeGreaterThanOrEqual(1);
+  });
+
+  // ──────────────────── PR #505 super-swarm regression tests ───────────────
+
+  it("returns battle event even when 60+ non-battle events precede it in the window (MUST-fix-1)", async () => {
+    // Repro of the cap-before-filter hazard: the pre-fix implementation
+    // did `take(BATTLE_EVENT_FETCH_HARD_CAP=50)` BEFORE filtering by event
+    // name. A burst of >50 non-battle events at a recent tick would evict
+    // the battle event from the scan window. The fix routes through a
+    // per-event-name index, so the battle event surfaces regardless of
+    // how many non-battle events share the window.
+    const noise = Array.from({ length: 60 }, () =>
+      evt("ResourcesGathered", 10),
+    );
+    const { db } = createDb({
+      tickClock: [clock(10)],
+      chainEvents: [
+        ...noise,
+        // The buried battle event — earlier tick, fewer log indexes than the
+        // noise pile-up, but still within the default 3-tick window.
+        evt("BanditAttackResolved", 9),
+      ],
+    });
+
+    const result = await callHandler<{ tickWindow?: number }, Row[]>(
+      getBattleEvents,
+      { db },
+      { tickWindow: 3 },
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.eventName).toBe("BanditAttackResolved");
+    expect(result[0]!.tick).toBe(9);
+  });
+
+  it("does NOT return LootDistributed events — no tick arg means dead in by_tick scan (MUST-fix-2)", async () => {
+    // The contract event `LootDistributed` has no tick / atTick / openedTick
+    // arg, so the indexer writes `tick: undefined`. Convex's tick-indexed
+    // scans don't surface rows with undefined index keys, so listing
+    // LootDistributed in BATTLE_EVENT_NAMES would just produce dead letters
+    // for any consumer expecting it. This guards against a future refactor
+    // re-adding it (or one of its tick-less siblings) to the list.
+    const { db } = createDb({
+      tickClock: [clock(10)],
+      chainEvents: [
+        // Dead-letter shape: events without a tick arg get `tick: undefined`
+        // from the real indexer (apps/server/convex/indexer.ts:532-535).
+        evt("LootDistributed", undefined),
+        evt("WallDamagedByBandit", undefined),
+        evt("ClansmanKilledByBandit", undefined),
+        evt("BlueprintAwarded", undefined),
+        evt("LootDistributedToDefender", undefined),
+        // Sanity: a real battle event still surfaces.
+        evt("BanditAttackResolved", 10),
+      ],
+    });
+    const result = await callHandler<{ tickWindow?: number }, Row[]>(
+      getBattleEvents,
+      { db },
+      { tickWindow: 3 },
+    );
+    const names = result.map((r) => r.eventName);
+    expect(names).not.toContain("LootDistributed");
+    expect(names).not.toContain("WallDamagedByBandit");
+    expect(names).not.toContain("ClansmanKilledByBandit");
+    expect(names).not.toContain("BlueprintAwarded");
+    expect(names).not.toContain("LootDistributedToDefender");
+    expect(names).toContain("BanditAttackResolved");
+  });
+
+  it("BATTLE_EVENT_NAMES is trimmed to events with a contract-level tick arg", () => {
+    // Cross-check against IClanWorld.sol so a future event addition that
+    // forgets a tick arg can't silently re-introduce dead letters.
+    const TICKLESS_BATTLE_SHAPED_EVENTS = [
+      "WallDamagedByBandit",
+      "ClansmanKilledByBandit",
+      "BlueprintAwarded",
+      "LootDistributed",
+      "LootDistributedToDefender",
+    ];
+    for (const name of TICKLESS_BATTLE_SHAPED_EVENTS) {
+      expect(BATTLE_EVENT_NAMES).not.toContain(name);
+    }
   });
 });
 
@@ -396,7 +534,7 @@ describe("getBattleEvents", () => {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("getRecentChainEvents (back-compat)", () => {
-  it("still returns the last 60 events for one-release back-compat", async () => {
+  it("returns the last 60 events newest-first (PR #505 super-swarm SHOULD-fix-2)", async () => {
     const events = Array.from({ length: 100 }, () =>
       evt("MissionAssigned", 1),
     );
@@ -409,5 +547,21 @@ describe("getRecentChainEvents (back-compat)", () => {
     );
 
     expect(result).toHaveLength(60);
+    // Ordering: newest first by _creationTime (the default-table-scan order
+    // the wrapper relies on). The previous test only checked length, which
+    // would have passed even if the wrapper accidentally returned the
+    // OLDEST 60 — a real regression for ticker consumers still on the
+    // back-compat path.
+    const creationTimes = result.map((r) => r._creationTime as number);
+    const sortedDesc = [...creationTimes].sort((a, b) => b - a);
+    expect(creationTimes).toEqual(sortedDesc);
+    // The highest creation time across the 100-event fixture should be
+    // included; the lowest should NOT (it would be the 60-event window
+    // furthest from the tail).
+    const allCreationTimes = events.map((e) => e._creationTime);
+    const maxCreation = Math.max(...allCreationTimes);
+    const minCreation = Math.min(...allCreationTimes);
+    expect(creationTimes).toContain(maxCreation);
+    expect(creationTimes).not.toContain(minCreation);
   });
 });

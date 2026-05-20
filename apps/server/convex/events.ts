@@ -1,26 +1,39 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 
-// Battle / resolution event names. Used by `getBattleEvents` to filter the
-// chainEvents stream down to just combat-relevant events the WorldMap consumes
-// for its combat vignette playback. Kept in one place so the next person who
-// adds a battle-relevant event remembers to update this set.
+// Battle / resolution event names that drive `getBattleEvents`. Used to filter
+// the chainEvents stream down to just combat-relevant events the WorldMap
+// consumes for its combat vignette playback.
+//
+// Trimmed to events whose Solidity signatures carry a tick arg (see
+// `packages/contracts/src/IClanWorld.sol`). The indexer at
+// `apps/server/convex/indexer.ts` writes
+//   tick = event.args.tick ?? event.args.atTick ?? event.args.openedTick
+// for each chainEvents row. Events without any of those three args land with
+// `tick: undefined` and are SILENTLY excluded from any `by_tick` /
+// `by_event_tick` index scan — so listing them here would just produce dead
+// letters and trap a future reader into thinking they're surfaced.
+//
+// Other "battle-shaped" events lack tick args at the contract level:
+//   - WallDamagedByBandit (uint32 clanId, uint8 newLevel, uint32 banditId)
+//   - ClansmanKilledByBandit (uint32 clanId, uint32 clansmanId, uint32 banditId)
+//   - BlueprintAwarded (uint32 clanId, uint32 banditId, uint256 amount)
+//   - LootDistributed (uint32 banditId, uint32[] clanIdsRewarded, ...amounts)
+//   - LootDistributedToDefender (uint32 banditId, uint32 clanId, uint32 clansmanId, ...amounts)
+// To surface them in a future feed, either add a tick arg to the contract
+// event OR have the indexer fall back to `tickClock.tick` when no tick arg is
+// present.
 //
 // Today WorldMap only acts on `BanditAttackResolved`, but the wider cluster
-// (defeated / target died / wall damaged / clansman killed / loot / blueprint)
-// is included so future battle-feed consumers don't need a schema change.
+// (defeated / target died / escaped / state changed / blueprint earned) is
+// included so future battle-feed consumers don't need a schema change.
 export const BATTLE_EVENT_NAMES = [
-  "BanditAttackResolved",
-  "BanditDefeated",
-  "BanditTargetDied",
-  "BanditEscaped",
-  "BanditStateChanged",
-  "WallDamagedByBandit",
-  "ClansmanKilledByBandit",
-  "LootDistributed",
-  "LootDistributedToDefender",
-  "BlueprintAwarded",
-  "BlueprintEarned",
+  "BanditAttackResolved", // atTick
+  "BanditDefeated", // atTick
+  "BanditTargetDied", // tick
+  "BanditEscaped", // atTick
+  "BanditStateChanged", // atTick
+  "BlueprintEarned", // tick
 ] as const;
 
 const BATTLE_EVENT_NAME_SET: ReadonlySet<string> = new Set<string>(
@@ -64,20 +77,28 @@ export const getEventTickerFeed = query({
 
 /**
  * Returns battle-resolution chainEvents from the last `tickWindow` ticks
- * (default 3). Used by WorldMap to drive the combat vignette playback after a
- * bandit attack resolves.
+ * (default 3, inclusive of current tick). Used by WorldMap to drive the
+ * combat vignette playback after a bandit attack resolves.
  *
- * Implementation: read the current tick from `tickClock`, then walk the
- * `by_tick` index on chainEvents from `currentTick - tickWindow` and filter
- * down to battle-cluster event names. The result set is bounded by both the
- * tick window AND a hard `BATTLE_EVENT_FETCH_HARD_CAP` so a pathological
- * burst of battle events in a single tick can't blow up the payload.
+ * Implementation: read the current tick from `tickClock`, then for each
+ * battle-event name run a parallel `by_event_tick`-indexed scan over the
+ * tick window and merge the results. This avoids the "take(50) before
+ * filter" hazard — a burst of non-battle events in a recent tick window can
+ * no longer evict a battle event from the result set (issue #336 super-swarm
+ * round 2).
  *
  * Reactive payload is much smaller than `getRecentChainEvents` because:
- *   1. Most events (MissionAssigned, ResourcesGathered, WorkerArrived, ...)
- *      are filtered out — only ~11 battle-cluster event names pass.
+ *   1. Per-name index scans skip non-battle events at the DB level — they
+ *      never enter the in-memory window.
  *   2. The tick window means non-battle ticks return [].
  */
+// Per-name take. Default tickWindow=3, 6 battle names → at most 6 * 20 = 120
+// rows scanned before the final slice. Tunable; 20 leaves headroom over the
+// observed per-tick battle-event frequency (~1-2/tick worst case).
+export const BATTLE_EVENT_PER_NAME_TAKE = 20;
+// Final cap on the merged + sorted result returned to clients. Sized so a
+// pathological multi-event tick (e.g. defended-attack writes ~4 events) over
+// a 20-tick window still fits comfortably while bounding payload growth.
 export const BATTLE_EVENT_FETCH_HARD_CAP = 50;
 
 export const getBattleEvents = query({
@@ -90,30 +111,50 @@ export const getBattleEvents = query({
     const tickWindow = Math.max(1, Math.min(20, requested));
 
     // Latest tick from tickClock (single-row table). If absent (cold start /
-    // pre-migration), fall back to scanning the last `BATTLE_EVENT_FETCH_HARD_CAP`
-    // chainEvents and filtering. That keeps the query useful on a fresh DB
-    // before tickClock is populated.
+    // pre-migration), fall back to a small per-name desc scan with no tick
+    // floor. That keeps the query useful on a fresh DB before tickClock is
+    // populated.
     const clock = await ctx.db.query("tickClock").order("desc").first();
+
     if (!clock) {
-      const recent = await ctx.db
-        .query("chainEvents")
-        .order("desc")
-        .take(BATTLE_EVENT_FETCH_HARD_CAP);
-      return recent.filter((ev) => BATTLE_EVENT_NAME_SET.has(ev.eventName));
+      const perName = await Promise.all(
+        BATTLE_EVENT_NAMES.map((name) =>
+          ctx.db
+            .query("chainEvents")
+            .withIndex("by_event_tick", (q) => q.eq("eventName", name))
+            .order("desc")
+            .take(BATTLE_EVENT_PER_NAME_TAKE),
+        ),
+      );
+      return perName
+        .flat()
+        .sort((a, b) => (b.tick ?? 0) - (a.tick ?? 0))
+        .slice(0, BATTLE_EVENT_FETCH_HARD_CAP);
     }
 
-    const minTick = Math.max(0, clock.tick - tickWindow);
-    // by_tick index. Take(HARD_CAP) AFTER ordering desc — gives us the most
-    // recent battle-window events, then we filter to battle names client-side
-    // within Convex. (Convex queries can't `or`-match on a string field, so
-    // post-filter is the cleanest path; the tick window already bounds the
-    // scan tightly.)
-    const windowed = await ctx.db
-      .query("chainEvents")
-      .withIndex("by_tick", (q) => q.gte("tick", minTick))
-      .order("desc")
-      .take(BATTLE_EVENT_FETCH_HARD_CAP);
+    // tickWindow=3 at currentTick=10 → minTick = 8 → ticks 8, 9, 10 (3 ticks).
+    // The `+ 1` corrects the off-by-one in the original implementation, which
+    // scanned (tickWindow + 1) ticks (issue #336 super-swarm SHOULD-fix-1).
+    const minTick = Math.max(0, clock.tick - tickWindow + 1);
 
-    return windowed.filter((ev) => BATTLE_EVENT_NAME_SET.has(ev.eventName));
+    const perName = await Promise.all(
+      BATTLE_EVENT_NAMES.map((name) =>
+        ctx.db
+          .query("chainEvents")
+          .withIndex("by_event_tick", (q) =>
+            q.eq("eventName", name).gte("tick", minTick),
+          )
+          .order("desc")
+          .take(BATTLE_EVENT_PER_NAME_TAKE),
+      ),
+    );
+
+    // Belt-and-suspenders: re-filter through the name set in case a future
+    // refactor expands the per-name scan to a broader query.
+    return perName
+      .flat()
+      .filter((ev) => BATTLE_EVENT_NAME_SET.has(ev.eventName))
+      .sort((a, b) => (b.tick ?? 0) - (a.tick ?? 0))
+      .slice(0, BATTLE_EVENT_FETCH_HARD_CAP);
   },
 });

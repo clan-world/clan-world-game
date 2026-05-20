@@ -185,6 +185,7 @@ export default defineSchema({
     .index("by_tx_log", ["txHash", "logIndex"])
     .index("by_block", ["blockNumber"])
     .index("by_event_block", ["eventName", "blockNumber"])
+    .index("by_event_tick", ["eventName", "tick"])
     .index("by_tick", ["tick"])
     .index("by_clan_tick", ["clanId", "tick"]),
   tickHistory: defineTable({
