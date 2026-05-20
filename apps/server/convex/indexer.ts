@@ -349,6 +349,29 @@ export function planPollLogRange(
   };
 }
 
+/**
+ * Gating predicate for event-driven snapshot refresh.
+ *
+ * pollLogs only schedules a refresh when BOTH:
+ *   1. inserted > 0 — there is actually new state worth surfacing, AND
+ *   2. toBlock >= safeLatest — we are AT chain tip, not chunking through
+ *      historical backfill. During backfill `toBlock` is a 9-block sub-range
+ *      well behind the chain head; each chunk-with-inserts would otherwise
+ *      queue a refresh against a stale block number — wasteful + an
+ *      RPC-rate-limit risk. The 60s fallback cron covers periodic refreshes
+ *      during backfill, so the visible-state lag during catch-up is bounded.
+ *
+ * Exported as a pure helper so the gating contract is testable independent
+ * of the surrounding action handler.
+ */
+export function shouldScheduleEventDrivenRefresh(args: {
+  inserted: number;
+  toBlock: bigint;
+  safeLatest: bigint;
+}): boolean {
+  return args.inserted > 0 && args.toBlock >= args.safeLatest;
+}
+
 function stableClansman(row: unknown): unknown {
   // Null/non-object guard — fixture rows or malformed lens reads can hand us
   // `null`/`undefined`/primitives, and the legacy projection below would crash
@@ -1052,10 +1075,14 @@ export const pollLogs = internalAction({
     // historical backfill `toBlock` is a chunked sub-range (9 blocks/tick),
     // each chunk-with-inserts would otherwise queue a refresh against stale
     // block numbers — wasteful + RPC-rate-limit risk. The 60s fallback cron
-    // covers periodic refreshes during backfill.
+    // covers periodic refreshes during backfill. See
+    // `shouldScheduleEventDrivenRefresh` for the gating contract.
     if (
-      (result as { inserted: number }).inserted > 0 &&
-      toBlock >= safeLatest
+      shouldScheduleEventDrivenRefresh({
+        inserted: (result as { inserted: number }).inserted,
+        toBlock,
+        safeLatest,
+      })
     ) {
       await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {
         blockNumber: Number(toBlock),
@@ -1073,31 +1100,37 @@ export const readCheckpoint = internalQuery({
 });
 
 /**
- * Stamp `pollerLastInvokedAt = Date.now()` on the singleton checkpoint row.
- * Called at the top of `pollLogs` (BEFORE shouldPoll early-return) so the
- * field is a true "cron is alive" heartbeat — independent of whether there
- * are new blocks to ingest. `pollerWatchdog` reads this to detect a dead
- * `real-indexer-log-poller` cron.
+ * Stamp `pollerLastInvokedAt = Date.now()` on the singleton `pollerHealth`
+ * row. Called at the top of `pollLogs` (BEFORE shouldPoll early-return) so
+ * the field is a true "cron is alive" heartbeat — independent of whether
+ * there are new blocks to ingest. `pollerWatchdog` reads this to detect a
+ * dead `real-indexer-log-poller` cron.
  *
- * If no checkpoint row exists yet (cold start before the first ingest),
- * insert a placeholder with `lastBlock: 0` + `lastSeenAt: now`. The first
- * real ingest will overwrite lastBlock via the monotonic guard in
- * `ingestEvents`.
+ * On first invocation the row doesn't exist yet — insert it. We deliberately
+ * do NOT touch `eventCheckpoint` here: a previous version of this mutation
+ * inserted a synthetic checkpoint row at cold-start, which polluted the
+ * ingest table and (worse) made the watchdog structurally unable to detect
+ * a stuck cold-start. Keeping the two concerns in separate tables means
+ * `pollerHealth` reflects ONLY cron liveness while `eventCheckpoint` reflects
+ * ONLY ingest progress.
  */
 export const markPollerInvoked = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const checkpoint = await ctx.db.query("eventCheckpoint").first();
-    if (checkpoint) {
-      await ctx.db.patch(checkpoint._id, { pollerLastInvokedAt: now });
+    const health = await ctx.db.query("pollerHealth").first();
+    if (health) {
+      await ctx.db.patch(health._id, { pollerLastInvokedAt: now });
     } else {
-      await ctx.db.insert("eventCheckpoint", {
-        lastBlock: 0,
-        lastSeenAt: now,
-        pollerLastInvokedAt: now,
-      });
+      await ctx.db.insert("pollerHealth", { pollerLastInvokedAt: now });
     }
+  },
+});
+
+export const readPollerHealth = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("pollerHealth").first();
   },
 });
 
@@ -1106,11 +1139,22 @@ export const markPollerInvoked = internalMutation({
  * its own 60s cron so it fires INDEPENDENTLY of pollLogs — making it
  * structurally capable of detecting that pollLogs has stopped running.
  *
- * Reads `pollerLastInvokedAt` (patched on every pollLogs invocation) and
- * logs an error if it's older than 90s. A previous version of this check
- * lived inside pollLogs itself, which (a) couldn't detect a truly dead cron
- * and (b) false-positived during chain-quiet periods because the field it
- * read (`lastSeenAt`) only updates inside the ingest path.
+ * Behavior:
+ *   - `CLANWORLD_USE_REAL_INDEXER !== "true"`: returns `stale: false` because
+ *     the poller is intentionally disabled — no alert noise from environments
+ *     that don't run the real indexer at all.
+ *   - `pollerHealth` row missing: returns `stale: true` with reason
+ *     "poller never ran". Catches the cold-start failure mode where
+ *     `CLANWORLD_USE_REAL_INDEXER=true` is set but `pollLogs` has never
+ *     successfully completed even one invocation (e.g. import-time crash,
+ *     misconfigured RPC, missing env var).
+ *   - `pollerLastInvokedAt` > 90s old: returns `stale: true` with reason
+ *     "poller heartbeat aged out". Catches the running-but-stuck failure mode.
+ *
+ * Previous incarnations of this check lived inside pollLogs itself (couldn't
+ * detect a truly dead cron) and read from `eventCheckpoint` (returned
+ * `stale: false` against the synthetic cold-start row even when no real
+ * ingest had run since).
  */
 export const pollerWatchdog = internalAction({
   args: {},
@@ -1118,19 +1162,29 @@ export const pollerWatchdog = internalAction({
     if (resetLocked()) {
       return { skipped: true, resetLocked: true };
     }
-    const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
-      pollerLastInvokedAt?: number;
+    if (process.env.CLANWORLD_USE_REAL_INDEXER !== "true") {
+      return { stale: false, reason: "real indexer disabled" };
+    }
+    const health = (await ctx.runQuery(indexerApi.readPollerHealth, {})) as {
+      pollerLastInvokedAt: number;
     } | null;
-    if (
-      checkpoint?.pollerLastInvokedAt &&
-      Date.now() - checkpoint.pollerLastInvokedAt > 90_000
-    ) {
+    if (!health) {
+      console.error(
+        "[indexer] poller never ran — real-indexer-log-poller cron has not produced a heartbeat since cold-start",
+      );
+      return { stale: true, reason: "poller never ran" };
+    }
+    if (Date.now() - health.pollerLastInvokedAt > 90_000) {
       console.error(
         "[indexer] poller invocation stale >90s — real-indexer-log-poller cron may be dead",
       );
-      return { stale: true, lastInvokedAt: checkpoint.pollerLastInvokedAt };
+      return {
+        stale: true,
+        reason: "poller heartbeat aged out",
+        lastInvokedAt: health.pollerLastInvokedAt,
+      };
     }
-    return { stale: false };
+    return { stale: false, lastInvokedAt: health.pollerLastInvokedAt };
   },
 });
 
