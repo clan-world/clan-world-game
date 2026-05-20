@@ -91,4 +91,63 @@ describe('telegramAlert', () => {
       error: 'network down',
     });
   });
+
+  it('scrubs bot token from err.cause-bearing fetch errors', async () => {
+    // undici TypeError surfaces the request URL through err.cause.message
+    // in some Node 20.x configurations — the URL has the bot token as a
+    // path segment, so it must be scrubbed regardless of nesting depth.
+    const causeErr = new Error('connect ECONNREFUSED https://api.telegram.org/bot01234SECRETTOKEN/sendMessage');
+    const outerErr = new TypeError('fetch failed');
+    (outerErr as Error & { cause?: unknown }).cause = causeErr;
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(outerErr));
+
+    const result = await sendTelegramAlert('test', {
+      botToken: '01234SECRETTOKEN',
+      chatId: '-1003806628027',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).not.toContain('01234SECRETTOKEN');
+    expect(result.error).toContain('<redacted>');
+    // confirm the cause's message did get surfaced (with token redacted)
+    expect(result.error).toContain('ECONNREFUSED');
+  });
+
+  it('scrubs bot token from AggregateError.errors nested fetch failures', async () => {
+    const inner1 = new Error('https://api.telegram.org/botSECRET99/sendMessage timed out');
+    const inner2 = new Error('https://api.telegram.org/botSECRET99/sendMessage retry failed');
+    const agg = new AggregateError([inner1, inner2], 'all upstreams failed');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(agg));
+
+    const result = await sendTelegramAlert('test', {
+      botToken: 'SECRET99',
+      chatId: '-1003806628027',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).not.toContain('SECRET99');
+    expect(result.error).toContain('<redacted>');
+  });
+
+  it('scrubs bot token from non-OK response body', async () => {
+    // A misrouted Telegram 401 sometimes echoes the request URL in the body
+    // text (proxy / dev-tunnel error pages). Scrub the body before logging.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: () => Promise.resolve('Invalid request to https://api.telegram.org/botPROXY_LEAK/sendMessage'),
+    }));
+
+    const result = await sendTelegramAlert('test', {
+      botToken: 'PROXY_LEAK',
+      chatId: '-1003806628027',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).not.toContain('PROXY_LEAK');
+    expect(result.error).toContain('<redacted>');
+    expect(result.error).toContain('Telegram API 401');
+  });
 });

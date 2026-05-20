@@ -43,19 +43,46 @@ export async function sendTelegramAlert(
     });
     if (!response.ok) {
       const description = await response.text().catch(() => response.statusText);
-      return { ok: false, error: `Telegram API ${response.status}: ${description}` };
+      return {
+        ok: false,
+        error: scrubBotToken(`Telegram API ${response.status}: ${description}`, cfg.botToken),
+      };
     }
     return { ok: true };
   } catch (err) {
-    // Scrub the bot token from any error message before returning to the
-    // caller (which logs it via heartbeatScheduler). Some undici/Node 20.x
-    // error variants include the request URL in err.cause/err.message; the
-    // bot token is a URL path segment so a structural redaction is required.
-    // opus 4.7 R1 L1.
-    const raw = err instanceof Error ? err.message : String(err);
-    const scrubbed = cfg.botToken
-      ? raw.split(cfg.botToken).join('<redacted>')
-      : raw;
-    return { ok: false, error: scrubbed };
+    // Scrub the bot token from any error surface before returning. Token is
+    // a URL path segment so leak is structural — undici/AggregateError can
+    // expose it via err.cause, err.errors[i], or err.stack. Stringify the
+    // whole error tree and scrub once. opus 4.7 R1 L1 + codex 5.5 R2.
+    return { ok: false, error: scrubBotToken(stringifyError(err), cfg.botToken) };
   }
+}
+
+function stringifyError(err: unknown): string {
+  if (err === null || err === undefined) return String(err);
+  if (typeof err !== 'object') return String(err);
+  const seen = new Set<unknown>();
+  // Collect nested message strings ONLY (skip stacks — they're noisy and
+  // already get scrubbed via the same path before logging). We surface
+  // cause + AggregateError.errors so undici-style nested failures don't
+  // hide a token-bearing inner message.
+  const collect = (node: unknown): string[] => {
+    if (node === null || node === undefined) return [];
+    if (typeof node !== 'object') return [String(node)];
+    if (seen.has(node)) return [];
+    seen.add(node);
+    const out: string[] = [];
+    const obj = node as { message?: unknown; cause?: unknown; errors?: unknown };
+    if (typeof obj.message === 'string') out.push(obj.message);
+    if (obj.cause !== undefined) out.push(...collect(obj.cause));
+    if (Array.isArray(obj.errors)) for (const inner of obj.errors) out.push(...collect(inner));
+    return out;
+  };
+  const parts = collect(err);
+  return parts.length > 0 ? parts.join(' | ') : String(err);
+}
+
+function scrubBotToken(text: string, botToken: string | undefined): string {
+  if (!botToken) return text;
+  return text.split(botToken).join('<redacted>');
 }

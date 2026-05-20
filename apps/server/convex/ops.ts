@@ -108,7 +108,7 @@ export const resetCheckpoint = mutation({
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
 
-    const existing = await ctx.db.query("eventCheckpoint").first();
+    const existing = await ctx.db.query("eventCheckpoint").order("desc").first();
     if (existing) {
       await ctx.db.delete(existing._id);
     }

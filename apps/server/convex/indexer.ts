@@ -597,7 +597,7 @@ export const ingestEvents = internalMutation({
     }
 
     if (args.advanceCheckpoint === true) {
-      const checkpoint = await ctx.db.query("eventCheckpoint").first();
+      const checkpoint = await ctx.db.query("eventCheckpoint").order("desc").first();
       const nextCheckpoint = {
         lastBlock: args.blockNumber,
         lastTxHash: args.txHash,
@@ -1131,7 +1131,7 @@ export const pollLogs = internalAction({
 export const readCheckpoint = internalQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("eventCheckpoint").first();
+    return await ctx.db.query("eventCheckpoint").order("desc").first();
   },
 });
 
@@ -1226,6 +1226,7 @@ export const pollerWatchdog = internalAction({
       return { stale: false, reason: "real indexer disabled" };
     }
     const health = (await ctx.runQuery(indexerApi.readPollerHealth, {})) as {
+      _creationTime: number;
       pollerLastInvokedAt: number;
       pollerLastSuccessAt?: number;
     } | null;
@@ -1248,11 +1249,14 @@ export const pollerWatchdog = internalAction({
       };
     }
     // Distinguish "cron firing but ingestion always crashing" from healthy.
+    // If lastSuccessAt is undefined (e.g. pollLogs has always crashed since
+    // pollerHealth row was created), fall back to the row's _creationTime
+    // — otherwise the watchdog returns stale:false forever for a never-
+    // succeeded poller. codex 5.3 R2 HIGH.
     // 180s window = 3 cron periods, tolerant of one-off RPC blips.
-    if (
-      health.pollerLastSuccessAt !== undefined &&
-      now - health.pollerLastSuccessAt > 180_000
-    ) {
+    const effectiveSuccessAt =
+      health.pollerLastSuccessAt ?? health._creationTime;
+    if (now - effectiveSuccessAt > 180_000) {
       console.error(
         "[indexer] poller invoked but no successful completion in >180s — pollLogs is crashing",
       );
@@ -1261,6 +1265,7 @@ export const pollerWatchdog = internalAction({
         reason: "poller success aged out",
         lastInvokedAt: health.pollerLastInvokedAt,
         lastSuccessAt: health.pollerLastSuccessAt,
+        effectiveSuccessAt,
       };
     }
     return {
@@ -1279,7 +1284,7 @@ export const pollerWatchdog = internalAction({
 export const resetCheckpoint = internalMutation({
   args: { lastBlock: v.number() },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.query("eventCheckpoint").first();
+    const existing = await ctx.db.query("eventCheckpoint").order("desc").first();
     if (existing) await ctx.db.delete(existing._id);
     await ctx.db.insert("eventCheckpoint", {
       lastBlock: args.lastBlock,

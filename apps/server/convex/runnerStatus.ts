@@ -23,6 +23,7 @@ export const getRunnerStatus = query({
       return await ctx.db
         .query("runnerStatus")
         .withIndex("by_runnerId", (q) => q.eq("runnerId", runnerId))
+      .order("desc")
         .first();
     }
     return await ctx.db.query("runnerStatus").order("desc").collect();
@@ -45,6 +46,7 @@ export const updateRunnerStatus = mutation({
     const existing = await ctx.db
       .query("runnerStatus")
       .withIndex("by_runnerId", (q) => q.eq("runnerId", args.runnerId))
+      .order("desc")
       .first();
 
     const row = {
