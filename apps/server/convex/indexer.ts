@@ -618,6 +618,7 @@ export const commitSnapshot = internalMutation({
           ? tickClockRow.tickEpochStartedAt
           : Math.floor(now / 1000),
       tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
       winterActive: asBool(world.winterActive),
