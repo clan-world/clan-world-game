@@ -243,7 +243,8 @@ export const advanceTick = internalMutation({
   handler: async (ctx): Promise<AdvanceTickResult> => {
     // Read tickClock first — authoritative cursor after worldSnapshot delta-check (#333).
     // worldSnapshot can freeze at tick N while tickClock advances to N+k.
-    const clockRow = await ctx.db.query("tickClock").order("desc").first();
+    // tickClock is a single-row table, so .first() (no ordering) is sufficient.
+    const clockRow = await ctx.db.query("tickClock").first();
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     if (!snap) return { status: "no-op", reason: "no snapshot to refresh" };
 

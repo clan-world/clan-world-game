@@ -72,7 +72,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
   }, []);
 
   const { currentSeasonNumber, seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick } = useMemo(() => {
-    // Season fields sourced from tickClock (PR #402 / issue #333) — was getSnapshot pre-split.
+    // Season fields sourced from tickClock (issue #333) — was getSnapshot pre-split.
     return {
       currentSeasonNumber: typeof clock?.currentSeasonNumber === 'number' ? clock.currentSeasonNumber : null,
       seasonStartTick: typeof clock?.seasonStartTick === 'number' ? clock.seasonStartTick : null,

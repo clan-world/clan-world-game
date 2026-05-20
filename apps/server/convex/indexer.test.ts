@@ -701,7 +701,7 @@ describe("legacy snapshot backfill", () => {
     expect(tables.worldSnapshot?.[0]?.clans).toEqual([{ id: "current" }]);
   });
 
-  it("does not rewrite worldSnapshot when only monotonic clansman fields change", async () => {
+  it("does not rewrite worldSnapshot content when only monotonic clansman fields change (tick still advances)", async () => {
     const { db, tables } = createDb();
 
     const makeClanView = (cooldownEndsAtTs: number) => ({
@@ -753,7 +753,7 @@ describe("legacy snapshot backfill", () => {
       ],
     });
 
-    // First commit — establishes clanView + worldSnapshot
+    // First commit — establishes clanView + worldSnapshot at tick 1.
     await (commitSnapshot as any)._handler(
       { db },
       {
@@ -765,9 +765,10 @@ describe("legacy snapshot backfill", () => {
       },
     );
 
-    const tickAfterFirst = tables.worldSnapshot?.[0]?.tick;
+    const clansAfterFirst = tables.worldSnapshot?.[0]?.clans;
 
-    // Second commit — only cooldownEndsAtTs/lastMissionNonce change (monotonic, stripped by stableClansman)
+    // Second commit — tick advances to 2, but only cooldownEndsAtTs/lastMissionNonce
+    // change on the clansman (monotonic, stripped by stableClansman).
     await (commitSnapshot as any)._handler(
       { db },
       {
@@ -779,8 +780,12 @@ describe("legacy snapshot backfill", () => {
       },
     );
 
-    // worldSnapshot was NOT patched — tick stays at 1, not advanced to 2.
-    // If the delta-check incorrectly fired, it would patch worldSnapshot with tick=2.
-    expect(tables.worldSnapshot?.[0]?.tick).toBe(tickAfterFirst);
+    // Per PR #402 codex P1: `tick` is intentionally included in the delta-check
+    // so the worldSnapshot tick advances for downstream readers (useCurrentWorldTick,
+    // WorldMap bandit-resolution, VaultTab T-label). Therefore tick is now 2.
+    expect(tables.worldSnapshot?.[0]?.tick).toBe(2);
+    // But the clans payload is stable — stableClansman strips the monotonic
+    // fields, so the actual clansman content the WorldMap reads is unchanged.
+    expect(tables.worldSnapshot?.[0]?.clans).toEqual(clansAfterFirst);
   });
 });

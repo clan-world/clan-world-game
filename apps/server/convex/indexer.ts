@@ -350,6 +350,28 @@ export function planPollLogRange(
 }
 
 function stableClansman(row: unknown): unknown {
+  // Null/non-object guard — fixture rows or malformed lens reads can hand us
+  // `null`/`undefined`/primitives, and the legacy projection below would crash
+  // on `r.clansman` access. Return the same shape with all-undefined fields so
+  // downstream stableJson hashing is deterministic. Per PR #402 gemini CRIT.
+  if (row === null || row === undefined || typeof row !== "object") {
+    return {
+      clansman: {
+        clansman: {
+          clansmanId: undefined,
+          clanId: undefined,
+          state: undefined,
+          currentRegion: undefined,
+          carryWood: undefined,
+          carryIron: undefined,
+          carryWheat: undefined,
+          carryFish: undefined,
+        },
+        effectiveRegion: undefined,
+      },
+      activeMission: undefined,
+    };
+  }
   const r = row as Record<string, unknown>;
   const derived = (r.clansman ?? r) as Record<string, unknown>;
   const cs = (derived.clansman ?? derived) as Record<string, unknown>;
@@ -594,7 +616,8 @@ export const commitSnapshot = internalMutation({
     // Fetch tickClock first — it's the always-advancing monotonic cursor.
     // worldSnapshot can freeze between content-change ticks (delta-check), so
     // previousWorldSnapshot.tick is not a reliable stale-gate cursor anymore.
-    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
+    // tickClock is a single-row table, so .first() (no ordering) is sufficient.
+    const tickClockRow = await ctx.db.query("tickClock").first();
     const previousTick = asNumber(tickClockRow?.tick ?? previousWorldSnapshot?.tick, -1);
     const previousBlock = asNumber(tickClockRow?.blockNumber ?? previousWorldSnapshot?.lastUpdatedBlock, -1);
     const incomingBlock = snapshot.blockNumber ?? -1;
@@ -609,12 +632,25 @@ export const commitSnapshot = internalMutation({
         skipped: "stale-snapshot",
       };
     }
+    // Detect worldPaused transition for the epoch-start refresh below. We
+    // recompute the canonical `worldPaused` again at the worldSnapshot
+    // construction site (~line 800) — kept in sync intentionally.
+    // Per PR #402 Copilot: a same-tick `worldPaused: true → false` transition
+    // must reset `tickEpochStartedAt`, otherwise the day/night animation
+    // resumes from a stale epoch and overshoots the cycle. We trigger an
+    // epoch refresh on ANY worldPaused-state change (true↔false) within the
+    // same tick.
+    const incomingWorldPaused = asBool(world.worldPaused);
+    const previousWorldPaused = previousWorldSnapshot?.worldPaused;
+    const worldPausedChanged =
+      previousWorldPaused !== undefined &&
+      previousWorldPaused !== incomingWorldPaused;
     // Write tickClock on every tick — cheap single-row table (~50 bytes).
     const tickClockData = {
       tick,
       blockNumber: snapshot.blockNumber,
       tickEpochStartedAt:
-        tickClockRow?.tick === tick
+        tickClockRow?.tick === tick && !worldPausedChanged
           ? tickClockRow.tickEpochStartedAt
           : Math.floor(now / 1000),
       tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
@@ -784,9 +820,11 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
-    // tickEpochStartedAt now sourced from tickClockData (PR #402) — see below.
+    // tickEpochStartedAt now sourced from tickClockData (issue #333) — see below.
     // worldPaused / pausedAtTs computation retained from dev for chain-pause semantics.
-    const worldPaused = asBool(world.worldPaused);
+    // `worldPaused` was already computed as `incomingWorldPaused` upstream for
+    // the tickClock epoch-refresh decision; re-alias here for readability.
+    const worldPaused = incomingWorldPaused;
     const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
     const pausedAtTs =
       Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)
@@ -834,12 +872,23 @@ export const commitSnapshot = internalMutation({
       }),
     };
     // Delta-check: only patch worldSnapshot when data actually changes.
-    // Strip audit/timestamp fields before comparing so a no-data tick is a no-op.
+    // Strip audit/timestamp + per-tick-monotonic fields before comparing so a
+    // no-data tick is a no-op.
+    //
+    // IMPORTANT (PR #402 codex P1): `tick` itself is INCLUDED in the comparison.
+    // Some web readers (apps/web/src/hooks/useCurrentWorldTick.ts, WorldMap
+    // bandit-resolution effect, VaultTab sync label) still source the live tick
+    // from `getSnapshot().tick`. If we stripped `tick`, the worldSnapshot row
+    // would freeze its tick value between content-change ticks and those
+    // readers would report a stale clock. Including `tick` here means every
+    // tick advance triggers a patch — which is the correct semantics for those
+    // downstream consumers. Migrating all web readers to `getTickClock` is
+    // tracked as a follow-up.
     const previousComparableSnapshot = previousWorldSnapshot
       ? (() => {
           const {
             _id, _creationTime, lastUpdatedAt, lastUpdatedBlock, txHash,
-            tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+            tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
             ...rest
           } =
             previousWorldSnapshot as typeof previousWorldSnapshot & {
@@ -847,18 +896,18 @@ export const commitSnapshot = internalMutation({
               _creationTime: unknown;
             };
           void _id; void _creationTime; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
-          void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
+          void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
           return rest;
         })()
       : undefined;
     const nextComparableSnapshot = (() => {
       const {
         lastUpdatedAt, lastUpdatedBlock, txHash,
-        tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+        tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
         ...rest
       } = worldSnapshot;
       void lastUpdatedAt; void lastUpdatedBlock; void txHash;
-      void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
+      void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
       return rest;
     })();
     if (

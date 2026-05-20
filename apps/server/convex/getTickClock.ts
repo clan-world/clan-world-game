@@ -2,10 +2,12 @@ import { query } from "./_generated/server";
 
 export const getTickClock = query({
   handler: async (ctx) => {
-    const clock = await ctx.db.query("tickClock").order("desc").first();
+    // tickClock is a single-row table — patched in place by the indexer on
+    // every tick. `.first()` is sufficient; no need to `.order("desc")`.
+    const clock = await ctx.db.query("tickClock").first();
     if (!clock) {
-      // Return null so callers can fall back to worldSnapshot.tick during
-      // migration window when tickClock table doesn't exist yet.
+      // Return null so callers can fall back to worldSnapshot.tick when the
+      // tickClock row has not yet been written (pre-first-heartbeat cold start).
       return null;
     }
     return {

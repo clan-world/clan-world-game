@@ -93,7 +93,7 @@ export const humanSteeringMessageFields = {
 
 export default defineSchema({
   // Single-row table patched every tick — holds tick counter + epoch +
-  // season fields for the cheap getTickClock query. See PR #402.
+  // season fields for the cheap getTickClock query. See issue #333.
   tickClock: defineTable({
     tick: v.number(),
     blockNumber: v.optional(v.number()),
