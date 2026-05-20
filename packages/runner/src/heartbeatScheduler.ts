@@ -210,13 +210,19 @@ async function attemptHeartbeatWithBackoff(
     try {
       const { txHash } = await deps.heartbeatCaller.callHeartbeat();
       deps.log.info(`heartbeat tx confirmed: ${txHash}`);
+      // Read the chain's new nextHeartbeatAtTs after success so runnerStatus
+      // doesn't carry the pre-fire (stale) value. Fall back to deps value if
+      // the read fails — runnerStatus is observability, not a hot path.
+      const nextAfterSuccess = await deps.heartbeatCaller
+        .readNextHeartbeatAtTs()
+        .catch(() => undefined);
       await postRunnerStatus(deps, {
         runnerId: deps.runnerId,
         lastFireAt: nowMs(),
         lastFireResult: 'success',
         lastFailureMessage: '',
         heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
-        nextHeartbeatAtTs: deps.nextHeartbeatAtTs,
+        nextHeartbeatAtTs: nextAfterSuccess ?? deps.nextHeartbeatAtTs,
       });
       return { success: true };
     } catch (err) {

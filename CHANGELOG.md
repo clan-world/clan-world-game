@@ -6,6 +6,68 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.13.0] — 2026-05-20
+
+**Phase 0 — Convex bandwidth optimization.** Six sub-PRs reshape the server's read path away from polling-and-pushing the whole world every 5 seconds into an event-driven model with on-chain governance of heartbeat cadence. Net effect: ~70% reduction in Convex bandwidth on a quiet chain, sub-second event surface latency on a busy chain, and the heartbeat interval is now an on-chain value the runner reads each loop (no redeploy required to change cadence).
+
+Note on intermediate versions: v2.9.0 → v2.12.0 were tagged on `main` but CHANGELOG entries were not backfilled (deferred to a future docs pass). Their on-chain tags + GitHub release notes remain authoritative for that history.
+
+### Added
+
+- **`heartbeatIntervalSeconds` is now an on-chain storage value** (PR #503): `ClanWorld.sol` exposes `heartbeatIntervalSeconds()` as a `view` function reading from `LibStorage.appStorage()` (previously a `pure` constant). The TypeScript runner reads it every loop via the canonical ABI and self-schedules its next heartbeat off the on-chain value. Operators can change cadence by writing storage on-chain — no contract redeploy, no runner restart needed for the new interval to take effect.
+- **Self-scheduling heartbeat runner with exponential retry backoff** (PR #503): `packages/runner/src/heartbeatScheduler.ts` replaces the old fixed-cron caller. Retry sequence is 1s → 2s → 5s → 10s on failure; success clears the per-class alert dedup map; rate-limited responses (`HeartbeatRateLimitedError`) early-return `{success: true, rateLimited: true}` to skip retry-and-alert (the chain already self-throttled). 152 runner tests cover the state machine including the settle-latch coordination with Cycle B (Elder settlement) at `convexSnapshotSettleLatch.ts`.
+- **Telegram alerting from the runner** (PR #503): `packages/runner/src/telegramAlert.ts` posts a message to the `do-crew` group when a heartbeat class fails repeatedly (revert / timeout / boot-error). Bounded by `AbortSignal.timeout(5000)` so a stalled Telegram API call can never wedge the runner loop. Resilient to missing bot token, non-OK responses, and fetch throws.
+- **`runnerStatus` Convex table for runner observability** (PR #503): `apps/server/convex/runnerStatus.ts` adds an `INDEXER_SECRET`-gated mutation the runner calls after each heartbeat attempt. Enum: `success | revert | timeout | error | rate-limited | boot-error`. Lets the cockpit + watchdogs see what the runner actually saw, not just whether a tx landed.
+- **`getBattleEvents` query — battle-event surface decoupled from ticker** (PR #505): new composite `by_event_tick` index on `chainEvents`; per-name parallel queries; `BATTLE_EVENT_NAMES` trimmed from 11 → 6 events that actually carry tick data. The ticker now reads a tighter slice; the battle log reads its own.
+- **`tickClock` + `worldSnapshot` Convex queries** (PR #402): `getSnapshot` split into the clock-only path (`tickClock` — 1 row, ~50 bytes) and the full state path (`worldSnapshot`). Cockpit consumers that only need the tick now subscribe to ~50 bytes instead of ~50KB.
+- **Event-driven Convex refresh + 60s safety fallback + watchdog cron** (PR #502): replaced the always-on 5s refresh cron with a per-chain-event refresh + a 60s fallback that fires only if the chain has been quiet AND no event-driven refresh happened in the window. Pollers' last-invoked timestamp is stamped via `markPollerInvoked`; the new `pollerWatchdog` cron alerts if the timestamp goes stale (dead-cron detection).
+- **Storage retention purges for Convex tables** (PR #404): new `purgeGroupedPreserveLatest` retention mutation keeps the latest row per group key and prunes the rest. Wired up for `chainEvents`, `runnerStatus`, and other append-tables that previously grew unbounded. 18 retention tests cover the preservation invariant on edge cases (full-stale batch, latest-preserved-but-not-truncated).
+- **`apps/web/src/eventTickerFormat.ts` — React-free pure formatter** (PR #464): extracted ~250 lines of formatting logic from `EventTicker.tsx` so it's unit-testable without a renderer. Closes a fragile regex test in `clanWorldAbi.test.ts` that broke whenever a new event was added to the canonical ABI; replaced with behavioural tests against the formatter.
+
+### Changed
+
+- **`indexer.refreshSnapshot`** now does four lens reads in a single `Promise.all` (world snapshot, market state, active bandit view, heartbeat interval seconds) — replaces the older mixed `readArgs` / `readLensArgs` shape that destructured 3 vars from 5 promises and silently assigned `bandit ← lens(WORLD_SNAPSHOT)`. (Merge resolution against `main` at PR #512 head — main's version was using an undefined `readArgs` helper, dev's version is the canonical replacement.)
+- **Heartbeat interval change semantics**: previously a runner restart was required to pick up a new interval. Now: write the on-chain storage value via the engine's owner functions; the runner picks it up on its next loop without intervention. Restart still affects observability fields cached at boot (logged on next status report).
+
+### Fixed
+
+- **`fix(web): EventTicker WallDamagedByBandit newLevel`** (PR #464): the formatter was reading `event.args.level` but the canonical ABI emits `newLevel` for the post-damage wall level. The ticker had been quietly omitting that field from rendered text since the event shipped. Now reads `newLevel` correctly + has a regression test.
+- **`fix(convex): no-op delta guards on banditView + marketState writes`** (PR #403): mutations now early-return when the incoming payload is byte-identical to the latest stored row. Saves a Convex write + a downstream subscription tick on every refresh where the chain is quiet on those surfaces.
+- **`fix: replace hardcoded Convex URL constants with env vars`** (PR #498): two dev-tools files held a literal Convex URL that pointed at the old deployment. Now read from `CONVEX_URL` like the rest of the codebase.
+- **`fix(chain-client): fail loud when CLAN_WORLD_LENS_ADDRESS missing`** (PR #496): chain-client previously silently constructed a contract instance with an empty address when the env var was unset, causing every lens read to revert at the chain layer. Now throws at construction time with a clear error.
+
+### Removed
+
+- **`refreshSnapshot`'s old `readArgs` shape + dead 5-promise / 3-var destructure**: dropped in the merge resolution + the on-chain SOT refactor (PR #503 + #512). Use `readWorldArgs` / `readLensArgs` going forward.
+- **The redundant 5-second refresh cron** (PR #502): event-driven refresh + 60s fallback supersedes it.
+- **Stale review docs** (`docs/reviews/pr<N>-*` for PRs already merged) (PR #495): super-swarm reviewers were hallucinating findings from old review files. Purged + the `phase-super-swarm` skill now pre-flight `rm -f`s them.
+
+### Infrastructure
+
+- **`CONVEX_WEBHOOK_URL` is now derivable** from `CONVEX_DEPLOY_URL` for the standard `*.convex.cloud` deployment shape (PR #503). Hostname-suffix check via `new URL().hostname.endsWith('.convex.cloud')` — substring matching was rejected during R5 super-swarm hardening (would have false-positive-rewritten `https://attacker.convex.cloud.evil.com` to `…convex.site.evil.com`).
+- **`chore(gemini): disable auto-review`** (PR #499): the auto-fire-on-PR-open behavior of `gemini-code-assist` was burning daily quota on PRs that the local 3-tier swarm had already cleared. Replaced with on-demand `/gemini review` slash command in the comment box. Daily quota now reserved for final-gate work.
+
+### Validation
+
+- **Per-PR swarm trail (all 6 sub-PRs):** every sub-PR went through the local 3-tier swarm (claude subagent + codex + gemini-3-flash). PR #503 specifically required **6 rounds of super-swarm + 5 fix-rounds** to converge — see `feedback_pr503_six_round_convergence_pattern.md` memory. Each fix-round introduced 1-3 new MEDs that the next swarm caught; R6 was unanimous CLEAN across all 6 reviewers (codex 5.3/5.4/5.5 + opus 4.6/4.7 + gemini 3.1 pro).
+- **Final test counts on dev HEAD `8675093`:**
+  - Server: 106/106 tests pass (`@clan-world/server`)
+  - Runner: 152/152 tests pass + 1 skipped (`@clan-world/runner`)
+  - Web: vitest suite passes incl. new `eventTickerFormat` behavioural tests
+  - Contracts + landing + mobile typecheck clean
+- **PR #512 merge-resolution verification:** local typecheck + server tests + runner tests all green on the merge commit (`8675093`). Super-swarm dispatched against the merged head.
+
+### Follow-up issues filed during the Phase 0 walkthrough
+
+- **#500, #501**: PR #502 super-swarm LOW findings (deferred to v2.13.x patch series)
+- **#504**: PR #505 super-swarm LOW (battle-event index extension)
+- **#506, #507**: PR #503 R3 deferred MEDs
+- **#508, #509**: PR #503 R4 deferred LOWs
+- **#510, #511**: PR #503 R5 deferred LOWs (test coverage on URL parse edge cases, doc-drift on restart-required wording)
+- **do-box #31**: Gemini → Antigravity CLI migration tracking (separate repo; tracked alongside Phase 0 because of model-policy overlap)
+
+---
+
 ## [2.8.5] — 2026-05-16
 
 Architecture cleanup. One PR — completing the elder-direct whisper path and deleting the vestigial on-chain whisper indexer. No game-visible change; whispers table was empty in production (events `Whisper`/`WhisperBroadcast` were never declared in the contract ABI so the indexer block had been dead code since it shipped). The dev→main release also includes the gitflow-light ADR (#0018) codifying the PR base-branch convention after the 2026-05-16 PR #399 misroute incident, and the canonical-scratch-path migration for the local + super-swarm review skills (`~/claudes-world/tmp/` instead of `/tmp/` — gemini-cli sandbox compat).

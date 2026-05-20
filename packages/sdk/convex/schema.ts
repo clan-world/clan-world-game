@@ -233,6 +233,11 @@ export default defineSchema({
   // pollLogs writes to this on every invocation; pollerWatchdog reads it.
   pollerHealth: defineTable({
     pollerLastInvokedAt: v.number(),
+    // Last time pollLogs reached its successful tail (post-ingestEvents).
+    // Distinguishes "cron firing but always crashes" (lastInvokedAt fresh,
+    // lastSuccessAt stale) from "cron not firing" (both stale). Watchdog
+    // alerts on either staleness. Optional so existing rows survive rollout.
+    pollerLastSuccessAt: v.optional(v.number()),
   }),
   clanView: defineTable({
     clanId: v.number(),

@@ -269,13 +269,13 @@ export const advanceTick = internalMutation({
     // indexer commit advanced tickClock past newTick between our read and commit.
     // Convex OCC serializes mutations, but this guard makes the intent explicit.
     if (!clockRow || newTick > clockRow.tick) {
+      const { _id: _prevId, _creationTime: _prevCreationTime, ...prevSnap } = snap;
       await ctx.db.insert("worldSnapshot", {
+        ...prevSnap,
         tick: newTick,
         tickEpochStartedAt: newEpochStartedAt,
         tickEpochDurationMs: baseEpochDurationMs,
         heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
-        regions: snap.regions,
-        clans: snap.clans,
       });
     }
     await ctx.db.insert("agentLogs", {
@@ -290,6 +290,7 @@ export const advanceTick = internalMutation({
         await ctx.db.patch(clockRow._id, {
           tick: newTick,
           tickEpochStartedAt: newEpochStartedAt,
+          tickEpochDurationMs: baseEpochDurationMs,
           heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
         });
       } else {

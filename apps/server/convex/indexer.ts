@@ -167,18 +167,18 @@ const stripNonContentFields = (
   );
 };
 
-// JSON.stringify-based content equality. Matches the existing `clanView`
-// delta pattern in `commitSnapshot` (`previousComparable` block). Field
-// order in object literals is stable across V8 for same-shape inserts,
-// so this is sound without a deep-equal dep — and consistent with the
-// pattern that PR #338 may later upgrade to fast-deep-equal.
+// Content equality via `stableJson` (key-order-independent). Matches the
+// `clanView` / `worldSnapshot` delta pattern in `commitSnapshot`. Using
+// `stableJson` here instead of raw `JSON.stringify` defends against future
+// callers that build the comparable object via spread / dynamic keys with
+// different insertion orders — opus 4.6 super-swarm M-1 hardening.
 const isContentEqualIgnoring = (
   previous: object | null | undefined,
   next: object,
   fieldsToStrip: readonly string[],
 ) =>
-  JSON.stringify(stripNonContentFields(previous, fieldsToStrip)) ===
-  JSON.stringify(stripNonContentFields(next, fieldsToStrip));
+  stableJson(stripNonContentFields(previous, fieldsToStrip)) ===
+  stableJson(stripNonContentFields(next, fieldsToStrip));
 
 export function bigintSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
@@ -1084,6 +1084,9 @@ export const pollLogs = internalAction({
       latest,
     );
     if (!shouldPoll) {
+      // Quiet chain is a successful poll outcome — stamp lastSuccessAt so the
+      // watchdog doesn't trip on a chain that's just idle.
+      await ctx.runMutation(indexerApi.markPollerSuccess, {});
       return {
         inserted: 0,
         fromBlock: Number(fromBlock),
@@ -1100,6 +1103,10 @@ export const pollLogs = internalAction({
         events[events.length - 1]?.transactionHash ?? checkpoint?.lastTxHash,
       advanceCheckpoint: true,
     });
+    // Stamp the success channel only after ingestEvents commits. The watchdog
+    // checks BOTH lastInvokedAt (cron is firing) AND lastSuccessAt (poll is
+    // actually completing) — codex 5.4/5.5 super-swarm finding.
+    await ctx.runMutation(indexerApi.markPollerSuccess, {});
     // Only schedule event-driven refresh when we're at chain tip. During
     // historical backfill `toBlock` is a chunked sub-range (9 blocks/tick),
     // each chunk-with-inserts would otherwise queue a refresh against stale
@@ -1156,6 +1163,30 @@ export const markPollerInvoked = internalMutation({
   },
 });
 
+/**
+ * Stamp `pollerLastSuccessAt` after pollLogs reaches its successful tail
+ * (post-ingestEvents). Paired with `markPollerInvoked` (called at the top of
+ * pollLogs) so the watchdog can distinguish "cron firing but always crashing"
+ * (lastInvokedAt fresh, lastSuccessAt stale) from "cron not firing at all"
+ * (both stale). Without this, a poll that crashed after `markPollerInvoked`
+ * would leave the watchdog reporting `stale: false` indefinitely.
+ */
+export const markPollerSuccess = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const health = await ctx.db.query("pollerHealth").first();
+    if (health) {
+      await ctx.db.patch(health._id, { pollerLastSuccessAt: now });
+    } else {
+      await ctx.db.insert("pollerHealth", {
+        pollerLastInvokedAt: now,
+        pollerLastSuccessAt: now,
+      });
+    }
+  },
+});
+
 export const readPollerHealth = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -1196,6 +1227,7 @@ export const pollerWatchdog = internalAction({
     }
     const health = (await ctx.runQuery(indexerApi.readPollerHealth, {})) as {
       pollerLastInvokedAt: number;
+      pollerLastSuccessAt?: number;
     } | null;
     if (!health) {
       console.error(
@@ -1203,7 +1235,8 @@ export const pollerWatchdog = internalAction({
       );
       return { stale: true, reason: "poller never ran" };
     }
-    if (Date.now() - health.pollerLastInvokedAt > 90_000) {
+    const now = Date.now();
+    if (now - health.pollerLastInvokedAt > 90_000) {
       console.error(
         "[indexer] poller invocation stale >90s — real-indexer-log-poller cron may be dead",
       );
@@ -1211,9 +1244,30 @@ export const pollerWatchdog = internalAction({
         stale: true,
         reason: "poller heartbeat aged out",
         lastInvokedAt: health.pollerLastInvokedAt,
+        lastSuccessAt: health.pollerLastSuccessAt,
       };
     }
-    return { stale: false, lastInvokedAt: health.pollerLastInvokedAt };
+    // Distinguish "cron firing but ingestion always crashing" from healthy.
+    // 180s window = 3 cron periods, tolerant of one-off RPC blips.
+    if (
+      health.pollerLastSuccessAt !== undefined &&
+      now - health.pollerLastSuccessAt > 180_000
+    ) {
+      console.error(
+        "[indexer] poller invoked but no successful completion in >180s — pollLogs is crashing",
+      );
+      return {
+        stale: true,
+        reason: "poller success aged out",
+        lastInvokedAt: health.pollerLastInvokedAt,
+        lastSuccessAt: health.pollerLastSuccessAt,
+      };
+    }
+    return {
+      stale: false,
+      lastInvokedAt: health.pollerLastInvokedAt,
+      lastSuccessAt: health.pollerLastSuccessAt,
+    };
   },
 });
 
