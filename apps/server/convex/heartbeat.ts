@@ -273,6 +273,15 @@ export const advanceTick = internalMutation({
     // indexer commit advanced tickClock past newTick between our read and commit.
     // Convex OCC serializes mutations, but this guard makes the intent explicit.
     if (!clockRow || newTick > clockRow.tick) {
+      // Synthetic tick advance for fake-heartbeat / demo mode. We spread the
+      // previous snapshot to preserve REGIONS + CLANS + SEASON state
+      // (currentSeasonNumber/seasonStart/seasonEnd/winter*/worldPaused) that
+      // R1 originally dropped — gemini super-swarm HIGH — but we explicitly
+      // CLEAR per-tick / per-block metadata (txHash, lastUpdatedBlock,
+      // currentTickSeed, lastUpdatedAt, seasonFinalized) and OVERRIDE
+      // nextHeartbeatAtTick to the canonical newTick+1 so consumers can't
+      // misread carried-over fields from the prior real-indexer commit.
+      // opus 4.7 R2 M2.
       const { _id: _prevId, _creationTime: _prevCreationTime, ...prevSnap } = snap;
       await ctx.db.insert("worldSnapshot", {
         ...prevSnap,
@@ -280,6 +289,14 @@ export const advanceTick = internalMutation({
         tickEpochStartedAt: newEpochStartedAt,
         tickEpochDurationMs: baseEpochDurationMs,
         heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
+        nextHeartbeatAtTick: newTick + 1,
+        // Clear per-tick / per-block metadata so UI consumers don't
+        // attribute this synthetic tick to a prior real-indexer commit.
+        txHash: undefined,
+        lastUpdatedAt: undefined,
+        lastUpdatedBlock: undefined,
+        currentTickSeed: undefined,
+        seasonFinalized: undefined,
       });
     }
     await ctx.db.insert("agentLogs", {

@@ -1216,6 +1216,62 @@ export const readPollerHealth = internalQuery({
  * `stale: false` against the synthetic cold-start row even when no real
  * ingest had run since).
  */
+export type PollerHealthRow = {
+  _creationTime: number;
+  pollerLastInvokedAt: number;
+  pollerLastSuccessAt?: number;
+};
+
+export const INVOKED_STALE_MS = 90_000;  // 1.5x the 60s safety-fallback period
+export const SUCCESS_STALE_MS = 180_000; // 3 cron periods of tolerance
+
+/**
+ * Pure decision logic for the poller watchdog. Extracted from the action
+ * handler so it can be unit-tested table-style without a Convex harness.
+ * Returns either `{ stale: false, ... }` or `{ stale: true, reason, ... }`.
+ */
+export function evaluatePollerHealth(
+  health: PollerHealthRow | null,
+  now: number,
+): {
+  stale: boolean;
+  reason?: string;
+  lastInvokedAt?: number;
+  lastSuccessAt?: number;
+  effectiveSuccessAt?: number;
+} {
+  if (!health) return { stale: true, reason: "poller never ran" };
+  if (now - health.pollerLastInvokedAt > INVOKED_STALE_MS) {
+    return {
+      stale: true,
+      reason: "poller heartbeat aged out",
+      lastInvokedAt: health.pollerLastInvokedAt,
+      lastSuccessAt: health.pollerLastSuccessAt,
+    };
+  }
+  // Cold-start blind spot fix: if pollLogs has never succeeded since the row
+  // was created (e.g. wrong RPC_URL_PRIMARY, every invocation crashes after
+  // markPollerInvoked but before markPollerSuccess), `pollerLastSuccessAt`
+  // stays undefined indefinitely. Fall back to row._creationTime so the
+  // staleness math still triggers. opus 4.7 R2 M1.
+  const effectiveSuccessAt =
+    health.pollerLastSuccessAt ?? health._creationTime;
+  if (now - effectiveSuccessAt > SUCCESS_STALE_MS) {
+    return {
+      stale: true,
+      reason: "poller success aged out",
+      lastInvokedAt: health.pollerLastInvokedAt,
+      lastSuccessAt: health.pollerLastSuccessAt,
+      effectiveSuccessAt,
+    };
+  }
+  return {
+    stale: false,
+    lastInvokedAt: health.pollerLastInvokedAt,
+    lastSuccessAt: health.pollerLastSuccessAt,
+  };
+}
+
 export const pollerWatchdog = internalAction({
   args: {},
   handler: async (ctx): Promise<unknown> => {
@@ -1225,54 +1281,15 @@ export const pollerWatchdog = internalAction({
     if (process.env.CLANWORLD_USE_REAL_INDEXER !== "true") {
       return { stale: false, reason: "real indexer disabled" };
     }
-    const health = (await ctx.runQuery(indexerApi.readPollerHealth, {})) as {
-      _creationTime: number;
-      pollerLastInvokedAt: number;
-      pollerLastSuccessAt?: number;
-    } | null;
-    if (!health) {
-      console.error(
-        "[indexer] poller never ran — real-indexer-log-poller cron has not produced a heartbeat since cold-start",
-      );
-      return { stale: true, reason: "poller never ran" };
+    const health = (await ctx.runQuery(
+      indexerApi.readPollerHealth,
+      {},
+    )) as PollerHealthRow | null;
+    const result = evaluatePollerHealth(health, Date.now());
+    if (result.stale) {
+      console.error(`[indexer] watchdog: ${result.reason}`);
     }
-    const now = Date.now();
-    if (now - health.pollerLastInvokedAt > 90_000) {
-      console.error(
-        "[indexer] poller invocation stale >90s — real-indexer-log-poller cron may be dead",
-      );
-      return {
-        stale: true,
-        reason: "poller heartbeat aged out",
-        lastInvokedAt: health.pollerLastInvokedAt,
-        lastSuccessAt: health.pollerLastSuccessAt,
-      };
-    }
-    // Distinguish "cron firing but ingestion always crashing" from healthy.
-    // If lastSuccessAt is undefined (e.g. pollLogs has always crashed since
-    // pollerHealth row was created), fall back to the row's _creationTime
-    // — otherwise the watchdog returns stale:false forever for a never-
-    // succeeded poller. codex 5.3 R2 HIGH.
-    // 180s window = 3 cron periods, tolerant of one-off RPC blips.
-    const effectiveSuccessAt =
-      health.pollerLastSuccessAt ?? health._creationTime;
-    if (now - effectiveSuccessAt > 180_000) {
-      console.error(
-        "[indexer] poller invoked but no successful completion in >180s — pollLogs is crashing",
-      );
-      return {
-        stale: true,
-        reason: "poller success aged out",
-        lastInvokedAt: health.pollerLastInvokedAt,
-        lastSuccessAt: health.pollerLastSuccessAt,
-        effectiveSuccessAt,
-      };
-    }
-    return {
-      stale: false,
-      lastInvokedAt: health.pollerLastInvokedAt,
-      lastSuccessAt: health.pollerLastSuccessAt,
-    };
+    return result;
   },
 });
 

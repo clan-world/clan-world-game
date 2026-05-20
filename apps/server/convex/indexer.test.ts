@@ -4,12 +4,15 @@ import { CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
 import {
   commitSnapshot,
   decodeClanWorldLogs,
+  evaluatePollerHealth,
   ingestEvents,
+  INVOKED_STALE_MS,
   lensAddress,
   planPollLogRange,
   pricePointFromEvent,
   shouldScheduleEventDrivenRefresh,
   stableJson,
+  SUCCESS_STALE_MS,
 } from "./indexer";
 
 const address = "0x1111111111111111111111111111111111111111" as const;
@@ -896,5 +899,80 @@ describe("legacy snapshot backfill", () => {
     // But the clans payload is stable — stableClansman strips the monotonic
     // fields, so the actual clansman content the WorldMap reads is unchanged.
     expect(tables.worldSnapshot?.[0]?.clans).toEqual(clansAfterFirst);
+  });
+});
+
+describe("evaluatePollerHealth (watchdog decision logic)", () => {
+  const NOW = 1_000_000_000_000;
+
+  it("reports stale=true when health row is missing", () => {
+    expect(evaluatePollerHealth(null, NOW)).toEqual({
+      stale: true,
+      reason: "poller never ran",
+    });
+  });
+
+  it("reports stale=false when both timestamps are fresh", () => {
+    const health = {
+      _creationTime: NOW - 60_000,
+      pollerLastInvokedAt: NOW - 5_000,
+      pollerLastSuccessAt: NOW - 5_000,
+    };
+    const result = evaluatePollerHealth(health, NOW);
+    expect(result.stale).toBe(false);
+    expect(result.lastInvokedAt).toBe(NOW - 5_000);
+    expect(result.lastSuccessAt).toBe(NOW - 5_000);
+  });
+
+  it("reports stale=true when lastInvokedAt aged out", () => {
+    const health = {
+      _creationTime: NOW - 200_000,
+      pollerLastInvokedAt: NOW - INVOKED_STALE_MS - 1_000,
+      pollerLastSuccessAt: NOW - INVOKED_STALE_MS - 500,
+    };
+    const result = evaluatePollerHealth(health, NOW);
+    expect(result.stale).toBe(true);
+    expect(result.reason).toBe("poller heartbeat aged out");
+  });
+
+  it("opus 4.7 R2 M1: catches the cold-start blind spot where lastSuccessAt is undefined forever", () => {
+    // pollLogs fires every 3s, markPollerInvoked succeeds each time, but
+    // the next step crashes (wrong RPC, network down). pollerLastSuccessAt
+    // stays undefined indefinitely. Pre-fix this returned stale:false; the
+    // _creationTime fallback now catches it after SUCCESS_STALE_MS.
+    const health = {
+      _creationTime: NOW - SUCCESS_STALE_MS - 1_000,
+      pollerLastInvokedAt: NOW - 1_000, // cron is alive
+      pollerLastSuccessAt: undefined,    // ...but has NEVER succeeded
+    };
+    const result = evaluatePollerHealth(health, NOW);
+    expect(result.stale).toBe(true);
+    expect(result.reason).toBe("poller success aged out");
+    expect(result.effectiveSuccessAt).toBe(NOW - SUCCESS_STALE_MS - 1_000);
+  });
+
+  it("does NOT trip success-aged-out when lastSuccessAt is undefined but _creationTime is recent", () => {
+    // Fresh cold-start: pollerHealth row was just created, lastSuccessAt
+    // is undefined but the row is young enough that we're still inside
+    // the tolerance window. Should stay healthy.
+    const health = {
+      _creationTime: NOW - 30_000,
+      pollerLastInvokedAt: NOW - 2_000,
+      pollerLastSuccessAt: undefined,
+    };
+    const result = evaluatePollerHealth(health, NOW);
+    expect(result.stale).toBe(false);
+  });
+
+  it("reports stale=true when lastSuccessAt is defined but aged out", () => {
+    const health = {
+      _creationTime: NOW - 1_000_000,
+      pollerLastInvokedAt: NOW - 1_000,
+      pollerLastSuccessAt: NOW - SUCCESS_STALE_MS - 5_000,
+    };
+    const result = evaluatePollerHealth(health, NOW);
+    expect(result.stale).toBe(true);
+    expect(result.reason).toBe("poller success aged out");
+    expect(result.effectiveSuccessAt).toBe(NOW - SUCCESS_STALE_MS - 5_000);
   });
 });
