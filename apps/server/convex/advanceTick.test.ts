@@ -167,11 +167,11 @@ describe("advanceTick", () => {
     // must reset to false (no chain finalize ran in synthetic mode).
     const boundarySnap = {
       ...baseSnap,
-      tick: 720,                       // last tick of season 7 (SEASON_LEN=360)
-      seasonStartTick: 360,            // season 7 spans [360, 720)
+      tick: 720,                       // last tick of season 2 (SEASON_LEN=360, season 2 spans [360, 720))
+      seasonStartTick: 360,            // prevSnap belongs to season 2
       seasonEndTick: 720,
-      currentSeasonNumber: 7,
-      seasonFinalized: true,           // season 7 was finalized on chain
+      currentSeasonNumber: 2,
+      seasonFinalized: true,           // season 2 was finalized on chain
     };
     const { tables, db } = createDb({ worldSnapshot: [{ ...boundarySnap, _id: "worldSnapshot:0", _creationTime: 1 }] });
 
@@ -179,7 +179,7 @@ describe("advanceTick", () => {
 
     const inserted = tables.worldSnapshot![1];
     expect(inserted.tick).toBe(721);
-    // Season 8: starts at 720, ends at 1080
+    // After crossing boundary: now in season 3 — starts at 720, ends at 1080
     expect(inserted.currentSeasonNumber).toBe(3);  // Math.floor(721/360)+1
     expect(inserted.seasonStartTick).toBe(720);
     expect(inserted.seasonEndTick).toBe(1080);
