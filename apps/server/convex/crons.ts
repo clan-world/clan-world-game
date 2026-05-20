@@ -25,4 +25,13 @@ crons.interval("gold-quote-refresh", { minutes: 5 }, internal.goldQuote.refreshG
 crons.interval("kickstart-leaderboard-refresh", { minutes: 5 }, internal.kickstart.refreshKickstartLeaderboard, {});
 crons.interval("kickstart-watched-candles-refresh", { minutes: 1 }, internal.kickstart.refreshWatchedTokenCandles, {});
 
+// Issue #337: hourly storage retention purge. Frequent smaller runs keep
+// append-only tables bounded without spiky mutation load.
+crons.hourly(
+  "retention-purge-stale-data",
+  { minuteUTC: 0 },
+  internal.retention.purgeStaleData,
+  {},
+);
+
 export default crons;
