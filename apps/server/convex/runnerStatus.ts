@@ -13,9 +13,12 @@ const resultValidator = v.union(
 
 export const getRunnerStatus = query({
   args: {
+    secret: v.string(),
     runnerId: v.optional(v.string()),
   },
-  handler: async (ctx, { runnerId }) => {
+  handler: async (ctx, { secret, runnerId }) => {
+    requireIndexerSecret(secret);
+
     if (runnerId) {
       return await ctx.db
         .query("runnerStatus")

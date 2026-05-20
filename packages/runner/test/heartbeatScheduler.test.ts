@@ -244,6 +244,36 @@ describe('heartbeatScheduler', () => {
     abort.abort();
   });
 
+  it('uses nowMs override for successful runnerStatus lastFireAt', async () => {
+    const callHeartbeat = vi.fn().mockResolvedValue({ txHash: '0x1' });
+    const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
+    let readNextCount = 0;
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readNextHeartbeatAtTs() {
+        readNextCount++;
+        return readNextCount === 2 ? 60 : 0;
+      },
+    });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 123_456,
+      convex: { postRunnerStatus },
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(501);
+
+    expect(postRunnerStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ lastFireAt: 123_456, lastFireResult: 'success' }),
+    );
+
+    abort.abort();
+  });
+
   it('waits for Cycle B settle latch before firing', async () => {
     const callHeartbeat = vi.fn().mockResolvedValue({ txHash: '0x1' });
     const caller = makeHeartbeatCaller({

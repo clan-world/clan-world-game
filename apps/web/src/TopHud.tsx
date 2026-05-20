@@ -25,6 +25,14 @@ type TickCountdownAnchor = {
 
 type SnapshotBandit = Pick<Doc<'banditView'>, 'state' | 'nextActionTick'>;
 
+export function shouldRefreshTickCountdownAnchor(
+  anchor: TickCountdownAnchor,
+  liveTick: number,
+  fallbackTickDurationMs: number,
+): boolean {
+  return anchor.tick !== liveTick || anchor.durationMs !== fallbackTickDurationMs;
+}
+
 function useBanditWarning(liveTick: number, bandit: SnapshotBandit | null): { active: boolean; ticksUntil: number } {
   const attackTick = DEMO_MODE ? DEMO_BANDIT_ATTACKS_AT_TICK : bandit?.nextActionTick;
   if (typeof attackTick !== 'number') return { active: false, ticksUntil: 999 };
@@ -52,7 +60,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (tickCountdownAnchorRef.current.tick !== liveTick) {
+    if (shouldRefreshTickCountdownAnchor(tickCountdownAnchorRef.current, liveTick, fallbackTickDurationMs)) {
       const epoch = clock
         ? { startedAt: clock.tickEpochStartedAt, durationMs: clock.tickEpochDurationMs }
         : undefined;

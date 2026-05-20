@@ -199,13 +199,15 @@ async function attemptHeartbeatWithBackoff(
   | { success: false; aborted: true; message: string; lastFireResult?: HeartbeatFireResult }
   | { success: false; aborted: false; message: string; lastFireResult: HeartbeatFireResult }
 > {
+  const nowMs = deps.nowMs ?? (() => Date.now());
+
   for (let attempt = 0; attempt <= HEARTBEAT_RETRY_BACKOFF_MS.length; attempt++) {
     try {
       const { txHash } = await deps.heartbeatCaller.callHeartbeat();
       deps.log.info(`heartbeat tx confirmed: ${txHash}`);
       await postRunnerStatus(deps, {
         runnerId: deps.runnerId,
-        lastFireAt: Date.now(),
+        lastFireAt: nowMs(),
         lastFireResult: 'success',
         lastFailureMessage: undefined,
         heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
@@ -236,7 +238,7 @@ async function attemptHeartbeatWithBackoff(
           );
           await postRunnerStatus(deps, {
             runnerId: deps.runnerId,
-            lastFireAt: Date.now(),
+            lastFireAt: nowMs(),
             lastFireResult: 'success',
             lastFailureMessage: undefined,
             heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveSeasonState,
+  getSnapshot,
   normalizePausedAtTs,
   resolveHeartbeatIntervalSecondsForSnap,
   resolvePauseStateForSnap,
@@ -12,6 +13,42 @@ import {
 const SEASON_LEN = 360;
 const WINTER_START = 110;
 const WINTER_DUR = 10;
+
+function createDb(tables: Record<string, any[]> = {}) {
+  return {
+    query(table: string) {
+      let rows = [...(tables[table] ?? [])];
+      const builder = {
+        withIndex(_name: string, apply: (q: any) => unknown) {
+          const clauses: Array<{ field: string; value: unknown }> = [];
+          const q = {
+            eq(field: string, value: unknown) {
+              clauses.push({ field, value });
+              return q;
+            },
+          };
+          apply(q);
+          rows = rows.filter((row) =>
+            clauses.every((clause) => row[clause.field] === clause.value),
+          );
+          return builder;
+        },
+        order(direction: "asc" | "desc") {
+          rows = [...rows].sort((a, b) =>
+            direction === "desc"
+              ? (b._creationTime ?? 0) - (a._creationTime ?? 0)
+              : (a._creationTime ?? 0) - (b._creationTime ?? 0),
+          );
+          return builder;
+        },
+        async first() {
+          return rows[0] ?? null;
+        },
+      };
+      return builder;
+    },
+  };
+}
 
 describe("resolveSeasonStateForSnap (issue #435 regression)", () => {
   it("season-freeze window: tick === seasonEndTick && !seasonFinalized returns persisted OLD season, NOT derived next season", () => {
@@ -196,5 +233,39 @@ describe("resolveHeartbeatIntervalSecondsForSnap", () => {
     expect(resolveHeartbeatIntervalSecondsForSnap({
       tickEpochDurationMs: 30_000,
     })).toBe(30);
+  });
+});
+
+describe("getSnapshot heartbeat interval", () => {
+  it("returns the latest persisted on-chain heartbeatIntervalSeconds", async () => {
+    const db = createDb({
+      worldSnapshot: [
+        {
+          _creationTime: 1,
+          tick: 8,
+          heartbeatIntervalSeconds: 60,
+          tickEpochStartedAt: 1_000,
+          tickEpochDurationMs: 60_000,
+          regions: [],
+          clans: [],
+          activeBanditId: 0,
+        },
+        {
+          _creationTime: 2,
+          tick: 8,
+          heartbeatIntervalSeconds: 45,
+          tickEpochStartedAt: 2_000,
+          tickEpochDurationMs: 60_000,
+          regions: [],
+          clans: [],
+          activeBanditId: 0,
+        },
+      ],
+    });
+
+    const result = await (getSnapshot as any)._handler({ db });
+
+    expect(result.heartbeatIntervalSeconds).toBe(45);
+    expect(result.tickEpoch.durationMs).toBe(60_000);
   });
 });
