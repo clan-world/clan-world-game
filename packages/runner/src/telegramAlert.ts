@@ -38,6 +38,7 @@ export async function sendTelegramAlert(
   try {
     const response = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
       method: 'POST',
+      signal: AbortSignal.timeout(5_000),
       body,
     });
     if (!response.ok) {

@@ -49,11 +49,17 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
       `CLAN_WORLD_CONTRACT_ADDRESS missing or invalid; expected 0x-prefixed 40-hex-char address, got ${String(contractAddress)}`,
     );
   }
+  const convexWebhookUrl = env['CONVEX_WEBHOOK_URL'] || deriveConvexWebhookUrl(env['CONVEX_DEPLOY_URL']);
+  if (!env['CONVEX_WEBHOOK_URL'] && convexWebhookUrl) {
+    console.warn(
+      'Deriving CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL — set CONVEX_WEBHOOK_URL explicitly in env',
+    );
+  }
   return {
     privateKey: pk,
     rpcUrl: env['RPC_URL_PRIMARY'] || env['RPC_URL_FALLBACK'],
     contractAddress: contractAddress as `0x${string}`,
-    convexWebhookUrl: env['CONVEX_WEBHOOK_URL'],
+    convexWebhookUrl,
     webhookSharedSecret: env['WEBHOOK_SHARED_SECRET'],
   };
 }
@@ -167,10 +173,11 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     blockNumber?: bigint | number | null;
   }): Promise<void> {
     if (!this.convexWebhookUrl) return;
-    const webhookUrl = new URL('/api/heartbeat-webhook', this.convexWebhookUrl);
     try {
+      const webhookUrl = new URL('/api/heartbeat-webhook', this.convexWebhookUrl);
       const response = await fetch(webhookUrl, {
         method: 'POST',
+        signal: AbortSignal.timeout(5_000),
         headers: {
           'content-type': 'application/json',
           ...(this.webhookSharedSecret
@@ -215,4 +222,9 @@ function normalizePk(pk: string): `0x${string}` {
     );
   }
   return withPrefix as `0x${string}`;
+}
+
+function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
+  if (!convexDeployUrl) return undefined;
+  return convexDeployUrl.replace('.convex.cloud', '.convex.site');
 }

@@ -131,7 +131,7 @@ async function runHeartbeatScheduler(
     if (deps.signal.aborted) break;
 
     const settledSnapshot = deps.settleLatch ? deps.settleLatch.lastSettledTick() : -1;
-    if (deps.settleLatch && settledSnapshot <= lastHeartbeatForTick) {
+    if (deps.settleLatch && lastHeartbeatForTick >= 0 && settledSnapshot <= lastHeartbeatForTick) {
       deps.log.info(
         `waiting for Cycle B to settle (last settled: ${settledSnapshot}, last heartbeat for: ${lastHeartbeatForTick})`,
       );
@@ -146,9 +146,11 @@ async function runHeartbeatScheduler(
       nextHeartbeatAtTs,
       settledSnapshot,
     });
+    if (result.success && !result.rateLimited) {
+      if (deps.settleLatch) lastHeartbeatForTick = Math.max(0, settledSnapshot);
+      lastAlertAtMs.clear();
+    }
     if (result.success) {
-      if (deps.settleLatch) lastHeartbeatForTick = settledSnapshot;
-      if (!result.rateLimited) lastAlertAtMs.clear();
       const nextAfterSuccess = await deps.heartbeatCaller
         .readNextHeartbeatAtTs()
         .catch(() => undefined);
@@ -172,11 +174,12 @@ async function runHeartbeatScheduler(
       deps.log.warn(`suppressing duplicate heartbeat alert: ${result.message}`);
       continue;
     }
-    lastAlertAtMs.set(alertClass, currentMs);
     const alertMessage =
       `ClanWorld heartbeat failed after retries: ${result.message}`;
     const alertResult = await alert(alertMessage);
-    if (!alertResult.ok) {
+    if (alertResult.ok) {
+      lastAlertAtMs.set(alertClass, currentMs);
+    } else {
       const msg = `Telegram alert failed: ${alertResult.error ?? 'unknown error'}`;
       deps.log.error(msg);
       await postRunnerStatus(deps, {

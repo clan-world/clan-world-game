@@ -37,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('configFromEnv', () => {
@@ -49,6 +50,22 @@ describe('configFromEnv', () => {
     });
 
     expect(cfg.rpcUrl).toBe('https://fallback.example');
+  });
+
+  it('derives CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL when explicit URL is unset', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const cfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CONVEX_DEPLOY_URL: 'https://oceanic-hound-951.convex.cloud',
+    });
+
+    expect(cfg.convexWebhookUrl).toBe('https://oceanic-hound-951.convex.site');
+    expect(warn).toHaveBeenCalledWith(
+      'Deriving CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL — set CONVEX_WEBHOOK_URL explicitly in env',
+    );
+    warn.mockRestore();
   });
 });
 
@@ -106,5 +123,62 @@ describe('RunnerCastHeartbeat', () => {
       blockNumber: 123,
       source: 'ts-runner',
     });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
+
+  it('reports heartbeat success when webhook URL is malformed', async () => {
+    const hash = `0x${'a'.repeat(64)}` as const;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    viemMocks.writeContract.mockResolvedValue(hash);
+    viemMocks.waitForTransactionReceipt.mockResolvedValue({
+      status: 'success',
+      blockNumber: 123n,
+    });
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+      convexWebhookUrl: 'not-a-url',
+    });
+
+    await expect(heartbeat.callHeartbeat()).resolves.toEqual({ txHash: hash });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      '[RunnerCastHeartbeat] heartbeat webhook POST failed:',
+      expect.any(TypeError),
+    );
+    warn.mockRestore();
+  });
+
+  it('bounds hung heartbeat webhook POSTs with a timeout', async () => {
+    const hash = `0x${'a'.repeat(64)}` as const;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn((_url: URL, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    viemMocks.writeContract.mockResolvedValue(hash);
+    viemMocks.waitForTransactionReceipt.mockResolvedValue({
+      status: 'success',
+      blockNumber: 123n,
+    });
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+      convexWebhookUrl: 'https://convex.example',
+    });
+
+    const result = heartbeat.callHeartbeat();
+
+    await expect(result).resolves.toEqual({ txHash: hash });
+    expect(warn).toHaveBeenCalledWith(
+      '[RunnerCastHeartbeat] heartbeat webhook POST failed:',
+      expect.any(Error),
+    );
+    warn.mockRestore();
+  }, 7_000);
 });

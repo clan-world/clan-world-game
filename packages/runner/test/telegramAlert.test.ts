@@ -48,7 +48,10 @@ describe('telegramAlert', () => {
     expect(result).toEqual({ ok: true });
     expect(fetch).toHaveBeenCalledWith(
       'https://api.telegram.org/bottoken/sendMessage',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        signal: expect.any(AbortSignal),
+      }),
     );
     const body = fetch.mock.calls[0]?.[1]?.body as URLSearchParams;
     expect(body.get('chat_id')).toBe('-1003806628027');

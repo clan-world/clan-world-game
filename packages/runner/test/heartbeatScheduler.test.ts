@@ -113,6 +113,37 @@ describe('heartbeatScheduler', () => {
     abort.abort();
   });
 
+  it('does not advance settle-latch watermark for rate-limited heartbeats', async () => {
+    const callHeartbeat = vi.fn()
+      .mockRejectedValueOnce(new HeartbeatRateLimitedError(60))
+      .mockResolvedValue({ txHash: '0x1' });
+    const alert = vi.fn().mockResolvedValue({ ok: true });
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readNextHeartbeatAtTs() { return 0; },
+    });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 0,
+      alert,
+      settleLatch: {
+        lastSettledTick: () => 0,
+        markSettled: vi.fn(),
+      },
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_002);
+
+    expect(callHeartbeat).toHaveBeenCalledTimes(2);
+    expect(alert).not.toHaveBeenCalled();
+
+    abort.abort();
+  });
+
   it('exits silently when aborted during retry sleep', async () => {
     const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
     const alert = vi.fn().mockResolvedValue({ ok: true });
@@ -156,6 +187,36 @@ describe('heartbeatScheduler', () => {
 
     expect(callHeartbeat).toHaveBeenCalledTimes((HEARTBEAT_RETRY_BACKOFF_MS.length + 1) * 2);
     expect(alert).toHaveBeenCalledTimes(1);
+
+    abort.abort();
+  });
+
+  it('does not deduplicate heartbeat alerts when alert delivery fails', async () => {
+    vi.setSystemTime(0);
+    const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
+    const readNextHeartbeatAtTs = vi.fn()
+      .mockResolvedValueOnce(0)
+      .mockResolvedValue(120);
+    const alert = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: 'telegram down' })
+      .mockResolvedValue({ ok: true });
+    const caller = makeHeartbeatCaller({ callHeartbeat, readNextHeartbeatAtTs });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      alert,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const failureCycleMs =
+      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+    await vi.advanceTimersByTimeAsync(failureCycleMs);
+    await vi.advanceTimersByTimeAsync(120_000 - failureCycleMs);
+    await vi.advanceTimersByTimeAsync(failureCycleMs);
+
+    expect(alert).toHaveBeenCalledTimes(2);
 
     abort.abort();
   });
@@ -345,7 +406,7 @@ describe('heartbeatScheduler', () => {
     abort.abort();
   });
 
-  it('waits for Cycle B settle latch before firing', async () => {
+  it('allows the first fire before Cycle B settle latch has observed a tick', async () => {
     const callHeartbeat = vi.fn().mockResolvedValue({ txHash: '0x1' });
     const caller = makeHeartbeatCaller({
       callHeartbeat,
@@ -363,10 +424,41 @@ describe('heartbeatScheduler', () => {
     });
 
     await vi.advanceTimersByTimeAsync(501);
-    expect(callHeartbeat).not.toHaveBeenCalled();
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     settleLatch.markSettled(1);
     await vi.advanceTimersByTimeAsync(1_501);
+    expect(callHeartbeat).toHaveBeenCalledTimes(2);
+
+    abort.abort();
+  });
+
+  it('fires first heartbeat when standalone snapshot latch cannot read Convex', async () => {
+    const getSnapshot = vi.fn().mockRejectedValue(new Error('convex down'));
+    const callHeartbeat = vi.fn().mockResolvedValue({ txHash: '0x1' });
+    const readNextHeartbeatAtTs = vi.fn().mockResolvedValue(0);
+    const caller = makeHeartbeatCaller({ callHeartbeat, readNextHeartbeatAtTs });
+    const abort = new AbortController();
+    const settleLatch = makeConvexSnapshotSettleLatch({
+      convex: { getSnapshot },
+      signal: abort.signal,
+      log: { warn: vi.fn() },
+      pollMs: 100,
+    });
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 0,
+      settleLatch,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(501);
+
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     abort.abort();
