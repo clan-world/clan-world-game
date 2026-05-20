@@ -47,9 +47,15 @@ export async function sendTelegramAlert(
     }
     return { ok: true };
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    // Scrub the bot token from any error message before returning to the
+    // caller (which logs it via heartbeatScheduler). Some undici/Node 20.x
+    // error variants include the request URL in err.cause/err.message; the
+    // bot token is a URL path segment so a structural redaction is required.
+    // opus 4.7 R1 L1.
+    const raw = err instanceof Error ? err.message : String(err);
+    const scrubbed = cfg.botToken
+      ? raw.split(cfg.botToken).join('<redacted>')
+      : raw;
+    return { ok: false, error: scrubbed };
   }
 }

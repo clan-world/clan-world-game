@@ -661,7 +661,7 @@ export const commitSnapshot = internalMutation({
     // worldSnapshot can freeze between content-change ticks (delta-check), so
     // previousWorldSnapshot.tick is not a reliable stale-gate cursor anymore.
     // tickClock is a single-row table, so .first() (no ordering) is sufficient.
-    const tickClockRow = await ctx.db.query("tickClock").first();
+    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
     const previousTick = asNumber(tickClockRow?.tick ?? previousWorldSnapshot?.tick, -1);
     const previousBlock = asNumber(tickClockRow?.blockNumber ?? previousWorldSnapshot?.lastUpdatedBlock, -1);
     const incomingBlock = snapshot.blockNumber ?? -1;
@@ -1154,7 +1154,7 @@ export const markPollerInvoked = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const health = await ctx.db.query("pollerHealth").first();
+    const health = await ctx.db.query("pollerHealth").order("desc").first();
     if (health) {
       await ctx.db.patch(health._id, { pollerLastInvokedAt: now });
     } else {
@@ -1175,7 +1175,7 @@ export const markPollerSuccess = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const health = await ctx.db.query("pollerHealth").first();
+    const health = await ctx.db.query("pollerHealth").order("desc").first();
     if (health) {
       await ctx.db.patch(health._id, { pollerLastSuccessAt: now });
     } else {
@@ -1190,7 +1190,7 @@ export const markPollerSuccess = internalMutation({
 export const readPollerHealth = internalQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("pollerHealth").first();
+    return await ctx.db.query("pollerHealth").order("desc").first();
   },
 });
 

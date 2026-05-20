@@ -244,7 +244,11 @@ export const advanceTick = internalMutation({
     // Read tickClock first — authoritative cursor after worldSnapshot delta-check (#333).
     // worldSnapshot can freeze at tick N while tickClock advances to N+k.
     // tickClock is a single-row table, so .first() (no ordering) is sufficient.
-    const clockRow = await ctx.db.query("tickClock").first();
+    // Singleton table; .order("desc") defends against dup-row scenarios
+    // (manual seed, demo-reset race, cold-start TOCTOU) where the read site
+    // would otherwise see the OLDEST row while writers see the NEWEST. Standardize
+    // across all 5 singleton .first() call sites per opus 4.7 R1 M1.
+    const clockRow = await ctx.db.query("tickClock").order("desc").first();
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     if (!snap) return { status: "no-op", reason: "no snapshot to refresh" };
 
