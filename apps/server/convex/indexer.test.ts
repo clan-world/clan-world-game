@@ -8,6 +8,7 @@ import {
   lensAddress,
   planPollLogRange,
   pricePointFromEvent,
+  shouldScheduleEventDrivenRefresh,
   stableJson,
 } from "./indexer";
 
@@ -252,6 +253,71 @@ describe("pollLogs range planning", () => {
     if (previousDepth === undefined)
       delete process.env.INDEXER_CONFIRMATION_DEPTH;
     else process.env.INDEXER_CONFIRMATION_DEPTH = previousDepth;
+  });
+});
+
+describe("shouldScheduleEventDrivenRefresh", () => {
+  // Per PR #502 Copilot finding — gating predicate has two relevant branches
+  // that pollLogs depends on. Exercise both explicitly so the contract is
+  // pinned independent of the action handler.
+
+  it("at chain tip with new inserts: schedules refresh", () => {
+    // Tip case: toBlock === safeLatest && inserted > 0 → refresh scheduled
+    expect(
+      shouldScheduleEventDrivenRefresh({
+        inserted: 3,
+        toBlock: 1_000n,
+        safeLatest: 1_000n,
+      }),
+    ).toBe(true);
+  });
+
+  it("ahead of safeLatest with new inserts: schedules refresh", () => {
+    // Defensive: toBlock > safeLatest shouldn't normally happen given planPollLogRange's
+    // safeLatest cap, but the predicate must still authorize a refresh if it does.
+    expect(
+      shouldScheduleEventDrivenRefresh({
+        inserted: 1,
+        toBlock: 1_001n,
+        safeLatest: 1_000n,
+      }),
+    ).toBe(true);
+  });
+
+  it("backfill chunk with new inserts: does NOT schedule refresh", () => {
+    // Backfill case: toBlock < safeLatest && inserted > 0 → 60s fallback cron handles it.
+    // This is the catch the Copilot finding flagged — without this gate, every
+    // 9-block backfill chunk with inserts would queue a refresh against a stale
+    // block, hammering the RPC + competing with the real chain-tip refresh.
+    expect(
+      shouldScheduleEventDrivenRefresh({
+        inserted: 5,
+        toBlock: 100n,
+        safeLatest: 1_000n,
+      }),
+    ).toBe(false);
+  });
+
+  it("at chain tip with zero inserts: does NOT schedule refresh", () => {
+    // No new state → nothing for the snapshot to reflect → don't waste an RPC trip.
+    expect(
+      shouldScheduleEventDrivenRefresh({
+        inserted: 0,
+        toBlock: 1_000n,
+        safeLatest: 1_000n,
+      }),
+    ).toBe(false);
+  });
+
+  it("backfill chunk with zero inserts: does NOT schedule refresh", () => {
+    // Belt-and-suspenders: both gates fail, both reasons would suppress.
+    expect(
+      shouldScheduleEventDrivenRefresh({
+        inserted: 0,
+        toBlock: 100n,
+        safeLatest: 1_000n,
+      }),
+    ).toBe(false);
   });
 });
 

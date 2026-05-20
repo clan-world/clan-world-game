@@ -99,6 +99,7 @@ export default defineSchema({
     blockNumber: v.optional(v.number()),
     tickEpochStartedAt: v.number(),
     tickEpochDurationMs: v.number(),
+    heartbeatIntervalSeconds: v.optional(v.number()),
     currentSeasonNumber: v.optional(v.number()),
     seasonStartTick: v.number(),
     seasonEndTick: v.number(),
@@ -109,6 +110,7 @@ export default defineSchema({
     tick: v.number(),
     tickEpochStartedAt: v.number(),
     tickEpochDurationMs: v.number(),
+    heartbeatIntervalSeconds: v.optional(v.number()),
     // Season + winter timers (Phase 4.4)
     currentSeasonNumber: v.optional(v.number()),
     seasonStartTick: v.optional(v.number()),
@@ -167,6 +169,22 @@ export default defineSchema({
       )
     ),
   }).index("by_tick", ["tick"]),
+  runnerStatus: defineTable({
+    runnerId: v.string(),
+    lastFireAt: v.optional(v.number()),
+    lastFireResult: v.union(
+      v.literal("success"),
+      v.literal("revert"),
+      v.literal("timeout"),
+      v.literal("error"),
+      v.literal("rate-limited"),
+      v.literal("boot-error"),
+    ),
+    lastFailureMessage: v.optional(v.string()),
+    heartbeatIntervalSeconds: v.optional(v.number()),
+    nextHeartbeatAtTs: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_runnerId", ["runnerId"]),
   chainEvents: defineTable({
     txHash: v.string(),
     logIndex: v.number(),
@@ -200,6 +218,20 @@ export default defineSchema({
     lastBlock: v.number(),
     lastTxHash: v.optional(v.string()),
     lastSeenAt: v.number(),
+    // DEPRECATED: superseded by the singleton `pollerHealth` table below.
+    // Kept as `v.optional` so existing rows survive Convex schema validation
+    // during rollout; `pollerWatchdog` no longer reads this field.
+    pollerLastInvokedAt: v.optional(v.number()),
+  }),
+  // Singleton "cron is alive" heartbeat for `real-indexer-log-poller`.
+  // Decoupled from `eventCheckpoint` so cold-start no longer needs to insert
+  // a synthetic checkpoint row (which polluted the ingest path and made the
+  // watchdog structurally unable to detect a stuck cold-start: a synthetic
+  // row would set `pollerLastInvokedAt` then never advance `lastBlock`,
+  // causing the watchdog to report `stale: false` indefinitely).
+  // pollLogs writes to this on every invocation; pollerWatchdog reads it.
+  pollerHealth: defineTable({
+    pollerLastInvokedAt: v.number(),
   }),
   clanView: defineTable({
     clanId: v.number(),

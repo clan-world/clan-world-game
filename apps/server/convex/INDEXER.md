@@ -6,11 +6,50 @@ place during production soak.
 ## Flags
 
 - `CLANWORLD_USE_REAL_INDEXER=true` enables receipt decoding in the heartbeat
-  webhook, the 5s snapshot refresher, and the 3s log poller.
+  webhook, the 3s log poller, the 60s fallback snapshot refresher, and the
+  60s poller liveness watchdog.
 - `CLANWORLD_USE_FAKE_HEARTBEAT=true` keeps the MUST-13 fake tick cron alive for
   demos and fallback environments.
 - Do not enable both in production. They coexist only so migration and rollback
   do not require deleting code.
+
+## Crons (under `CLANWORLD_USE_REAL_INDEXER=true`)
+
+The real-indexer posture registers three Convex crons (defined in
+`crons.ts`):
+
+1. **`real-indexer-log-poller`** — every **3s**. Calls `internal.indexer.pollLogs`.
+   - Stamps the singleton `pollerHealth` row via `markPollerInvoked` BEFORE
+     any early-return, so a quiet chain (`shouldPoll === false`) doesn't look
+     like a dead cron.
+   - Decodes any new logs up to `latestConfirmedBlock - INDEXER_CONFIRMATION_DEPTH`,
+     persists `chainEvents` + `eventCheckpoint`.
+   - When `inserted > 0 && toBlock >= safeLatest` (i.e. AT chain tip), schedules
+     `refreshSnapshot` immediately. During historical backfill (`toBlock < safeLatest`),
+     the 60s fallback cron handles snapshot refreshes — avoids hammering the
+     RPC with refreshes against stale block numbers.
+
+2. **`real-indexer-snapshot-refresh-fallback`** — every **60s**. Calls
+   `internal.indexer.refreshSnapshot` unconditionally.
+   - Backstops transient RPC failures in the event-driven path.
+   - Covers periodic snapshot updates during historical backfill, when the
+     event-driven refresh is intentionally suppressed (see above).
+
+3. **`real-indexer-poller-watchdog`** — every **60s**. Calls
+   `internal.indexer.pollerWatchdog`.
+   - Reads the `pollerHealth` singleton (NOT `eventCheckpoint`) so it can
+     detect a stuck cold-start where `pollLogs` has never produced even one
+     successful heartbeat.
+   - Returns `stale: false` when `CLANWORLD_USE_REAL_INDEXER !== "true"` —
+     environments that don't run the real indexer don't produce false alerts.
+   - Returns `stale: true` with reason `"poller never ran"` when the
+     `pollerHealth` row is missing — catches import-time crashes, misconfigured
+     env vars, totally-dead cron at startup.
+   - Returns `stale: true` with reason `"poller heartbeat aged out"` when
+     `pollerLastInvokedAt > 90s old` — catches the running-but-stuck failure
+     mode (the original v1.0.1 concern).
+   - Logs an `[indexer]` error on stale; downstream alerting hooks off the
+     Convex logs.
 
 ## Required Env
 
