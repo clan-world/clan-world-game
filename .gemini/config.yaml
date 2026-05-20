@@ -1,0 +1,22 @@
+# Gemini Code Assist configuration
+# https://developers.google.com/gemini-code-assist/docs/customize-gemini-behavior-github
+#
+# DECISION (Liam directive 2026-05-20 voice msg 15314):
+# Disable auto-review on PR open to prevent external contributors from burning
+# the 33/day per-installation quota. The /gemini review slash command STILL
+# works for any commenter, so team members trigger reviews manually when needed.
+#
+# Trade-off: team-member PRs lose auto-review. ~10 seconds of inconvenience per
+# PR for total external-quota protection.
+#
+# To re-enable auto-review, set `code_review.disable: false` and add an
+# `author_association` filter via `.github/workflows/gemini-review.yml`. See
+# `~/claudes-world/tmp/gemini-review-external-contrib-research-20260520.md`
+# for Path 1 / Path 2 alternatives.
+
+code_review:
+  disable: true   # no automatic reviews on PR open
+
+pull_request_opened:
+  code_review: false
+  summary: false
