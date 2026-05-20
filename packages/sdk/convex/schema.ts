@@ -200,6 +200,11 @@ export default defineSchema({
     lastBlock: v.number(),
     lastTxHash: v.optional(v.string()),
     lastSeenAt: v.number(),
+    // Patched on EVERY pollLogs invocation (before the no-op early-return).
+    // True "cron is alive" heartbeat — `lastSeenAt` only updates when there
+    // are new events to ingest, so a quiet chain looks identical to a dead
+    // cron from `lastSeenAt` alone. v.optional so pre-existing rows survive.
+    pollerLastInvokedAt: v.optional(v.number()),
   }),
   clanView: defineTable({
     clanId: v.number(),

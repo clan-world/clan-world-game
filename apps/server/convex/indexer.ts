@@ -1014,6 +1014,11 @@ export const pollLogs = internalAction({
       return { inserted: 0, skipped: true, resetLocked: true };
     }
 
+    // Heartbeat: stamp the "cron is alive" signal BEFORE any early-return so
+    // a quiet chain (shouldPoll === false) doesn't masquerade as a dead cron.
+    // The `pollerWatchdog` cron reads this and alerts if it goes stale.
+    await ctx.runMutation(indexerApi.markPollerInvoked, {});
+
     const client = createClient();
     const address = engineAddress();
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
@@ -1034,10 +1039,6 @@ export const pollLogs = internalAction({
       };
     }
 
-    if (checkpoint?.lastSeenAt && Date.now() - checkpoint.lastSeenAt > 90_000) {
-      console.error("[indexer] liveness: pollLogs stalled >90s — cron may be dead");
-    }
-
     const logs = await client.getLogs({ address, fromBlock, toBlock });
     const events = decodeClanWorldLogs(logs);
     const result = await ctx.runMutation(indexerApi.ingestEvents, {
@@ -1047,7 +1048,15 @@ export const pollLogs = internalAction({
         events[events.length - 1]?.transactionHash ?? checkpoint?.lastTxHash,
       advanceCheckpoint: true,
     });
-    if ((result as { inserted: number }).inserted > 0) {
+    // Only schedule event-driven refresh when we're at chain tip. During
+    // historical backfill `toBlock` is a chunked sub-range (9 blocks/tick),
+    // each chunk-with-inserts would otherwise queue a refresh against stale
+    // block numbers — wasteful + RPC-rate-limit risk. The 60s fallback cron
+    // covers periodic refreshes during backfill.
+    if (
+      (result as { inserted: number }).inserted > 0 &&
+      toBlock >= safeLatest
+    ) {
       await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {
         blockNumber: Number(toBlock),
       });
@@ -1060,6 +1069,68 @@ export const readCheckpoint = internalQuery({
   args: {},
   handler: async (ctx) => {
     return await ctx.db.query("eventCheckpoint").first();
+  },
+});
+
+/**
+ * Stamp `pollerLastInvokedAt = Date.now()` on the singleton checkpoint row.
+ * Called at the top of `pollLogs` (BEFORE shouldPoll early-return) so the
+ * field is a true "cron is alive" heartbeat — independent of whether there
+ * are new blocks to ingest. `pollerWatchdog` reads this to detect a dead
+ * `real-indexer-log-poller` cron.
+ *
+ * If no checkpoint row exists yet (cold start before the first ingest),
+ * insert a placeholder with `lastBlock: 0` + `lastSeenAt: now`. The first
+ * real ingest will overwrite lastBlock via the monotonic guard in
+ * `ingestEvents`.
+ */
+export const markPollerInvoked = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const checkpoint = await ctx.db.query("eventCheckpoint").first();
+    if (checkpoint) {
+      await ctx.db.patch(checkpoint._id, { pollerLastInvokedAt: now });
+    } else {
+      await ctx.db.insert("eventCheckpoint", {
+        lastBlock: 0,
+        lastSeenAt: now,
+        pollerLastInvokedAt: now,
+      });
+    }
+  },
+});
+
+/**
+ * Liveness watchdog for the `real-indexer-log-poller` cron. Registered as
+ * its own 60s cron so it fires INDEPENDENTLY of pollLogs — making it
+ * structurally capable of detecting that pollLogs has stopped running.
+ *
+ * Reads `pollerLastInvokedAt` (patched on every pollLogs invocation) and
+ * logs an error if it's older than 90s. A previous version of this check
+ * lived inside pollLogs itself, which (a) couldn't detect a truly dead cron
+ * and (b) false-positived during chain-quiet periods because the field it
+ * read (`lastSeenAt`) only updates inside the ingest path.
+ */
+export const pollerWatchdog = internalAction({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    if (resetLocked()) {
+      return { skipped: true, resetLocked: true };
+    }
+    const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
+      pollerLastInvokedAt?: number;
+    } | null;
+    if (
+      checkpoint?.pollerLastInvokedAt &&
+      Date.now() - checkpoint.pollerLastInvokedAt > 90_000
+    ) {
+      console.error(
+        "[indexer] poller invocation stale >90s — real-indexer-log-poller cron may be dead",
+      );
+      return { stale: true, lastInvokedAt: checkpoint.pollerLastInvokedAt };
+    }
+    return { stale: false };
   },
 });
 

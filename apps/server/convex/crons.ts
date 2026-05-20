@@ -20,6 +20,10 @@ if (process.env.CLANWORLD_USE_REAL_INDEXER === "true") {
   crons.interval("real-indexer-log-poller", { seconds: 3 }, internal.indexer.pollLogs, {});
   // 60s fallback: backstops transient refreshSnapshot failures from pollLogs/webhook paths.
   crons.interval("real-indexer-snapshot-refresh-fallback", { seconds: 60 }, internal.indexer.refreshSnapshot, {});
+  // 60s liveness watchdog: fires INDEPENDENTLY of pollLogs, so it can detect
+  // the case where pollLogs itself has stopped running (the failure mode the
+  // previous in-pollLogs check was structurally incapable of catching).
+  crons.interval("real-indexer-poller-watchdog", { seconds: 60 }, internal.indexer.pollerWatchdog, {});
 }
 
 crons.interval("gold-quote-refresh", { minutes: 5 }, internal.goldQuote.refreshGoldQuote, {});
