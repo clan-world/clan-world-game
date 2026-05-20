@@ -221,6 +221,43 @@ describe('heartbeatScheduler', () => {
     abort.abort();
   });
 
+  it('keeps heartbeat failure runnerStatus when Telegram alert delivery fails', async () => {
+    const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
+    const alert = vi.fn().mockResolvedValue({ ok: false, error: 'telegram down' });
+    const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
+    const caller = makeHeartbeatCaller({ callHeartbeat });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 0,
+      alert,
+      convex: { postRunnerStatus },
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0),
+    );
+
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(postRunnerStatus).toHaveBeenCalledTimes(HEARTBEAT_RETRY_BACKOFF_MS.length + 1);
+    expect(postRunnerStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        lastFireResult: 'error',
+        lastFailureMessage: 'rpc down',
+      }),
+    );
+    expect(postRunnerStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        lastFailureMessage: 'Telegram alert failed: telegram down',
+      }),
+    );
+
+    abort.abort();
+  });
+
   it('does not suppress different heartbeat failure classes inside the dedup window', async () => {
     vi.setSystemTime(0);
     const callHeartbeat = vi.fn()

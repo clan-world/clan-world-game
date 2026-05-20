@@ -147,6 +147,11 @@ async function runHeartbeatScheduler(
       settledSnapshot,
     });
     if (result.success && !result.rateLimited) {
+      // First-fire (lastHeartbeatForTick === -1) is allowed to bypass the latch to avoid
+      // boot-deadlock when Convex is unreachable. Subsequent iterations only require
+      // settledSnapshot > Math.max(0, prev). This trades strict "wait for prior tick to
+      // settle in Convex" for liveness -- acceptable for hackathon scope, but should
+      // be hardened with an "expected next tick" watermark for production. See follow-up.
       if (deps.settleLatch) lastHeartbeatForTick = Math.max(0, settledSnapshot);
       lastAlertAtMs.clear();
     }
@@ -180,15 +185,7 @@ async function runHeartbeatScheduler(
     if (alertResult.ok) {
       lastAlertAtMs.set(alertClass, currentMs);
     } else {
-      const msg = `Telegram alert failed: ${alertResult.error ?? 'unknown error'}`;
-      deps.log.error(msg);
-      await postRunnerStatus(deps, {
-        runnerId,
-        lastFireResult: 'error',
-        lastFailureMessage: msg,
-        heartbeatIntervalSeconds,
-        nextHeartbeatAtTs,
-      });
+      deps.log.error('[heartbeatScheduler] Telegram alert failed:', alertResult.error);
     }
   }
 }

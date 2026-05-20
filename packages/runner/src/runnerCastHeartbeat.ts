@@ -49,11 +49,24 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
       `CLAN_WORLD_CONTRACT_ADDRESS missing or invalid; expected 0x-prefixed 40-hex-char address, got ${String(contractAddress)}`,
     );
   }
-  const convexWebhookUrl = env['CONVEX_WEBHOOK_URL'] || deriveConvexWebhookUrl(env['CONVEX_DEPLOY_URL']);
-  if (!env['CONVEX_WEBHOOK_URL'] && convexWebhookUrl) {
-    console.warn(
-      'Deriving CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL — set CONVEX_WEBHOOK_URL explicitly in env',
-    );
+  const hasExplicitWebhookUrl = Object.prototype.hasOwnProperty.call(env, 'CONVEX_WEBHOOK_URL');
+  let convexWebhookUrl: string | undefined;
+  if (hasExplicitWebhookUrl) {
+    convexWebhookUrl = env['CONVEX_WEBHOOK_URL'] || undefined;
+    if (env['CONVEX_WEBHOOK_URL'] === '') {
+      console.info('CONVEX_WEBHOOK_URL is empty; heartbeat webhook disabled');
+    }
+  } else {
+    convexWebhookUrl = deriveConvexWebhookUrl(env['CONVEX_DEPLOY_URL']);
+    if (convexWebhookUrl) {
+      console.warn(
+        'Deriving CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL — set CONVEX_WEBHOOK_URL explicitly in env',
+      );
+    } else if (env['CONVEX_DEPLOY_URL']) {
+      console.warn(
+        'CONVEX_DEPLOY_URL is non-standard; CONVEX_WEBHOOK_URL required for webhook ingest',
+      );
+    }
   }
   return {
     privateKey: pk,
@@ -226,5 +239,6 @@ function normalizePk(pk: string): `0x${string}` {
 
 function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   if (!convexDeployUrl) return undefined;
+  if (!convexDeployUrl.includes('.convex.cloud')) return undefined;
   return convexDeployUrl.replace('.convex.cloud', '.convex.site');
 }

@@ -67,6 +67,55 @@ describe('configFromEnv', () => {
     );
     warn.mockRestore();
   });
+
+  it('does not derive webhook URL from non-standard CONVEX_DEPLOY_URL', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const hash = `0x${'a'.repeat(64)}` as const;
+    viemMocks.writeContract.mockResolvedValue(hash);
+    viemMocks.waitForTransactionReceipt.mockResolvedValue({
+      status: 'success',
+      blockNumber: 123n,
+    });
+
+    const cfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CONVEX_DEPLOY_URL: 'https://convex.mycompany.com',
+    });
+
+    expect(cfg.convexWebhookUrl).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      'CONVEX_DEPLOY_URL is non-standard; CONVEX_WEBHOOK_URL required for webhook ingest',
+    );
+
+    const heartbeat = new RunnerCastHeartbeat({
+      ...cfg,
+      rpcUrl: 'https://rpc.example',
+    });
+    await expect(heartbeat.callHeartbeat()).resolves.toEqual({ txHash: hash });
+    expect(fetchMock).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('treats explicit empty CONVEX_WEBHOOK_URL as disabled without derivation warning', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const cfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CONVEX_WEBHOOK_URL: '',
+      CONVEX_DEPLOY_URL: 'https://oceanic-hound-951.convex.cloud',
+    });
+
+    expect(cfg.convexWebhookUrl).toBeUndefined();
+    expect(info).toHaveBeenCalledWith('CONVEX_WEBHOOK_URL is empty; heartbeat webhook disabled');
+    expect(warn).not.toHaveBeenCalled();
+    info.mockRestore();
+    warn.mockRestore();
+  });
 });
 
 describe('RunnerCastHeartbeat', () => {
