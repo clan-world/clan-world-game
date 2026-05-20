@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { iClanWorldAbi } from '@clan-world/contract-types';
 import { decodeFunctionResult, encodeAbiParameters, getAbiItem, type Abi, type AbiFunction } from 'viem';
@@ -15,7 +14,10 @@ const worldStateOutputs = getFunctionOutputs('getWorldState');
 const worldSnapshotOutputs = getFunctionOutputs('getWorldSnapshot');
 
 describe('ClanWorld generated ABI tuple decoding', () => {
-  it('keeps WallDamagedByBandit ticker synced to the ABI newLevel field', () => {
+  it('exposes WallDamagedByBandit with the newLevel input (consumed by EventTicker)', () => {
+    // Pinning the ABI field name guards EventTicker's `args.newLevel` read against
+    // contract renames. The behavioral coverage that the ticker actually formats
+    // this field lives in apps/web/src/eventTickerFormat.test.ts.
     const event = iClanWorldAbi.find(
       (item) => item.type === 'event' && item.name === 'WallDamagedByBandit',
     );
@@ -23,16 +25,6 @@ describe('ClanWorld generated ABI tuple decoding', () => {
 
     expect(inputNames).toContain('newLevel');
     expect(inputNames).not.toContain('wallLevel');
-
-    const tickerSource = readFileSync(
-      new URL('../../../apps/web/src/EventTicker.tsx', import.meta.url),
-      'utf8',
-    );
-    const wallDamageCase =
-      tickerSource.match(/case 'WallDamagedByBandit': \{([\s\S]*?)\n    \}/)?.[1] ?? '';
-
-    expect(wallDamageCase).toContain('args.newLevel');
-    expect(wallDamageCase).not.toContain('args.wallLevel');
   });
 
   it('decodes a known-good getWorldState() result with the current Solidity order', () => {
