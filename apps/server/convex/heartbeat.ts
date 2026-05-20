@@ -14,6 +14,7 @@ import {
   type Hex,
   type Log,
 } from "viem";
+import { deriveSeasonState } from "./getSnapshot";
 
 const indexerApi = internal.indexer;
 
@@ -277,16 +278,30 @@ export const advanceTick = internalMutation({
     // stale-but-present) should re-evaluate. opus 4.7 R3 M1 + follow-up.
     if (!clockRow || newTick > clockRow.tick) {
       // Synthetic tick advance for fake-heartbeat / demo mode. Spread the
-      // previous snapshot to preserve REGIONS + CLANS + SEASON state
-      // (currentSeasonNumber/seasonStart/seasonEnd/winter*/worldPaused/
-      // seasonFinalized) that R1 originally dropped — gemini super-swarm
-      // HIGH. CLEAR per-tick / per-block PROVENANCE (txHash, lastUpdatedAt,
-      // lastUpdatedBlock, currentTickSeed) so cockpit UI doesn't attribute
-      // this synthetic tick to a prior real-indexer commit. OVERRIDE
-      // nextHeartbeatAtTick to newTick+1 (chain semantic is currentTick+1).
-      // opus 4.7 R2 M2 + codex 5.3 R3 MED (seasonFinalized is season-level
-      // state, NOT per-block provenance — preserve it).
+      // previous snapshot to preserve REGIONS + CLANS + SEASON state that
+      // R1 originally dropped — gemini super-swarm HIGH. CLEAR per-tick /
+      // per-block PROVENANCE (txHash, lastUpdatedAt, lastUpdatedBlock,
+      // currentTickSeed) so cockpit UI doesn't attribute this synthetic
+      // tick to a prior real-indexer commit. OVERRIDE nextHeartbeatAtTick
+      // to newTick+1 (chain semantic is currentTick+1).
+      // opus 4.7 R2 M2 + codex 5.3 R3 (seasonFinalized preserved).
+      //
+      // If we just crossed a season boundary in synthetic mode, recompute
+      // season fields via `deriveSeasonState(newTick)` and reset
+      // `seasonFinalized` to false (no chain `finalizeSeason()` ran).
+      // Without this, currentSeasonNumber/seasonStartTick/seasonEndTick
+      // freeze on the old season + seasonFinalized stays stale.
+      // codex 5.3 R4 MED.
       const { _id: _prevId, _creationTime: _prevCreationTime, ...prevSnap } = snap;
+      const crossedBoundary =
+        typeof prevSnap.seasonEndTick === "number" &&
+        newTick > prevSnap.seasonEndTick;
+      const seasonOverrides = crossedBoundary
+        ? {
+            ...deriveSeasonState(newTick),
+            seasonFinalized: false,
+          }
+        : {};
       await ctx.db.insert("worldSnapshot", {
         ...prevSnap,
         tick: newTick,
@@ -294,6 +309,7 @@ export const advanceTick = internalMutation({
         tickEpochDurationMs: baseEpochDurationMs,
         heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
         nextHeartbeatAtTick: newTick + 1,
+        ...seasonOverrides,
         // Clear per-block provenance so UI consumers don't attribute this
         // synthetic tick to a prior real-indexer commit.
         txHash: undefined,

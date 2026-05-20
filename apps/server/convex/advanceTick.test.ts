@@ -159,6 +159,35 @@ describe("advanceTick", () => {
     expect(result).toEqual({ status: "no-op", reason: "no snapshot to refresh" });
   });
 
+  it("crosses season boundary: recomputes season fields + resets seasonFinalized (codex R4 MED)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_SECONDS * 1000);
+    // Previous snap is at the LAST tick of season 7. The next synthetic tick
+    // crosses into season 8 — season fields must recompute, seasonFinalized
+    // must reset to false (no chain finalize ran in synthetic mode).
+    const boundarySnap = {
+      ...baseSnap,
+      tick: 720,                       // last tick of season 7 (SEASON_LEN=360)
+      seasonStartTick: 360,            // season 7 spans [360, 720)
+      seasonEndTick: 720,
+      currentSeasonNumber: 7,
+      seasonFinalized: true,           // season 7 was finalized on chain
+    };
+    const { tables, db } = createDb({ worldSnapshot: [{ ...boundarySnap, _id: "worldSnapshot:0", _creationTime: 1 }] });
+
+    await (advanceTick as any)._handler({ db });
+
+    const inserted = tables.worldSnapshot![1];
+    expect(inserted.tick).toBe(721);
+    // Season 8: starts at 720, ends at 1080
+    expect(inserted.currentSeasonNumber).toBe(3);  // Math.floor(721/360)+1
+    expect(inserted.seasonStartTick).toBe(720);
+    expect(inserted.seasonEndTick).toBe(1080);
+    // Critical: new season is NOT yet finalized
+    expect(inserted.seasonFinalized).toBe(false);
+    vi.useRealTimers();
+  });
+
   it("returns no-op when current epoch has not elapsed yet", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW_SECONDS * 1000);
