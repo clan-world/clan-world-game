@@ -25,6 +25,7 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
     async getSnapshot() { return STUB_SNAPSHOT; },
     async getClanFullView() { return STUB_CLAN_VIEW; },
     async postLog() {},
+    async postRunnerStatus() {},
     async postWhisper() {},
     async postOrchEvent() {},
     async postHumanSteering() {},

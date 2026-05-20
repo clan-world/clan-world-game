@@ -25,10 +25,17 @@ export interface IHeartbeatCaller {
   callHeartbeat(): Promise<{ txHash: string }>;
 
   /**
-   * Check whether the rate limit window has elapsed without submitting a tx.
-   * Used by the runner to decide whether to attempt a heartbeat call.
+   * Read the owner-configured on-chain heartbeat interval.
+   * Runners read this once at boot; changing it operationally means calling
+   * setHeartbeatIntervalSeconds() on-chain, then restarting the runner.
    */
-  isHeartbeatDue(): Promise<boolean>;
+  readHeartbeatIntervalSeconds(): Promise<number>;
+
+  /**
+   * Read the chain's next accepted heartbeat timestamp (Unix seconds).
+   * This drives runner scheduling; no local heartbeat-duration env var exists.
+   */
+  readNextHeartbeatAtTs(): Promise<number>;
 }
 
 /** Thrown when heartbeat() is called before nextHeartbeatAtTs has elapsed. */

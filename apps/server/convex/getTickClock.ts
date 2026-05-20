@@ -15,6 +15,7 @@ export const getTickClock = query({
       blockNumber: clock.blockNumber,
       tickEpochStartedAt: clock.tickEpochStartedAt,
       tickEpochDurationMs: clock.tickEpochDurationMs,
+      heartbeatIntervalSeconds: clock.heartbeatIntervalSeconds,
       currentSeasonNumber: clock.currentSeasonNumber,
       seasonStartTick: clock.seasonStartTick,
       seasonEndTick: clock.seasonEndTick,

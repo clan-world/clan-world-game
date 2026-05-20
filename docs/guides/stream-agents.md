@@ -24,7 +24,7 @@ Four LLM "Elders" — one per clan. Each runs as a long-running Claude Code subp
 
 (Wave 1+ implementation)
 
-1. Orchestrator reads `CLAN_WORLD_CONTRACT_ADDRESS`, `CONVEX_URL`, `TICK_DURATION_MS` from env.
+1. Orchestrator reads `CLAN_WORLD_CONTRACT_ADDRESS` and `CONVEX_URL` from env. Heartbeat cadence is read from chain by the heartbeat runner.
 2. Orchestrator creates 4 Claude Code config dirs at `~/.claude-clan-{1..4}/` (one per Elder, isolation per `~/claudes-world` ADR 0013).
 3. Orchestrator spawns 4 `claude --print --resume <sid>` subprocesses with `CLAUDE_CONFIG_DIR` env override per Elder.
 4. Each Elder receives a startup prompt establishing its clan identity + toolbelt instructions.

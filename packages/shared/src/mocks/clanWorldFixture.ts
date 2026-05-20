@@ -31,6 +31,7 @@ import type {
   Whisper,
   WorldSnapshot,
 } from '../types';
+import { HEARTBEAT_INTERVAL_SECONDS } from '../generated/constants';
 
 // Local demo-only types. Kept out of types.ts to preserve Wave 0 minimalism.
 
@@ -190,12 +191,15 @@ const SORA: ClanDemoState = {
 
 const CLANS: ClanDemoState[] = [ALDRIC, MIRA, BRENNAN, SORA];
 
-// World snapshot — currentTick = 80, 20s tick window for Submission 1.
+const HEARTBEAT_INTERVAL = Number(HEARTBEAT_INTERVAL_SECONDS);
+
+// World snapshot — currentTick = 80, heartbeat window mirrors the generated contract default.
 const WORLD_SNAPSHOT: WorldSnapshot = {
   tick: 80,
+  heartbeatIntervalSeconds: HEARTBEAT_INTERVAL,
   tickEpoch: {
     startedAt: Math.floor(Date.now() / 1000) - 5, // current tick window opened ~5s ago
-    durationMs: 20_000,
+    durationMs: HEARTBEAT_INTERVAL * 1000,
   },
   regions: REGIONS,
   clans: CLANS, // ClanDemoState extends Clan so this satisfies WorldSnapshot.clans.

@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from 'convex/browser';
 import type { ClanFullView, WorldSnapshot } from '../types';
+import { HEARTBEAT_INTERVAL_SECONDS } from '../generated/constants';
 import { readEnv } from './_env';
 import { convexApiRefs } from './convexApiRefs';
 
@@ -19,9 +20,11 @@ declare module 'convex/browser' {
 }
 
 export interface IConvexClient {
+  readonly isStub?: boolean;
   getSnapshot(): Promise<WorldSnapshot>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
   postLog(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
+  postRunnerStatus(args: RunnerStatusUpdate): Promise<void>;
 
   // Cockpit Comms write-side. Each method is best-effort: callers wrap in
   // try/catch + treat failures as non-fatal so the cockpit display stays
@@ -56,11 +59,25 @@ export interface IConvexClient {
   }): Promise<void>;
 }
 
+export type RunnerStatusUpdate = {
+  runnerId: string;
+  lastFireAt?: number;
+  lastFireResult: 'success' | 'revert' | 'timeout' | 'error' | 'rate-limited' | 'boot-error';
+  lastFailureMessage?: string;
+  heartbeatIntervalSeconds?: number;
+  nextHeartbeatAtTs?: number;
+};
+
+const DEFAULT_TICK_DURATION_MS = Number(HEARTBEAT_INTERVAL_SECONDS) * 1000;
+
 class StubConvexClient implements IConvexClient {
+  readonly isStub = true;
+
   async getSnapshot(): Promise<WorldSnapshot> {
     return {
       tick: 0,
-      tickEpoch: { startedAt: 0, durationMs: 20_000 },
+      heartbeatIntervalSeconds: Number(HEARTBEAT_INTERVAL_SECONDS),
+      tickEpoch: { startedAt: 0, durationMs: DEFAULT_TICK_DURATION_MS },
       regions: [],
       clans: [],
     };
@@ -76,6 +93,9 @@ class StubConvexClient implements IConvexClient {
   async postLog(_level: 'info' | 'warn' | 'error', _message: string): Promise<void> {
     // no-op stub
   }
+  async postRunnerStatus(_args: RunnerStatusUpdate): Promise<void> {
+    // no-op stub
+  }
 
   async postWhisper(_args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string; signal?: AbortSignal }): Promise<void> {}
   async postOrchEvent(_args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {}
@@ -88,8 +108,11 @@ const sendWhisperRef = convexApiRefs.comms.sendWhisper;
 const seedOrchEventRef = convexApiRefs.comms.seedOrchEvent;
 const seedHumanSteeringRef = convexApiRefs.comms.seedHumanSteering;
 const seedBulletinRef = convexApiRefs.bulletins.seedBulletin;
+const updateRunnerStatusRef = convexApiRefs.runnerStatus.updateRunnerStatus;
 
 class RealConvexClient implements IConvexClient {
+  readonly isStub = false;
+
   private readonly http: ConvexHttpClient;
   private readonly url: string;
 
@@ -117,7 +140,13 @@ class RealConvexClient implements IConvexClient {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('not found') || msg.includes('Could not find')) {
         console.warn('[RealConvexClient] getSnapshot query not found on server, using stub data');
-        return { tick: 0, tickEpoch: { startedAt: 0, durationMs: 20_000 }, regions: [], clans: [] };
+        return {
+          tick: 0,
+          heartbeatIntervalSeconds: Number(HEARTBEAT_INTERVAL_SECONDS),
+          tickEpoch: { startedAt: 0, durationMs: DEFAULT_TICK_DURATION_MS },
+          regions: [],
+          clans: [],
+        };
       }
       throw err;
     }
@@ -134,6 +163,19 @@ class RealConvexClient implements IConvexClient {
 
   async postLog(_level: 'info' | 'warn' | 'error', _message: string): Promise<void> {
     // Phase 4: postLog via Convex not yet used by CLI path
+  }
+
+  async postRunnerStatus(args: RunnerStatusUpdate): Promise<void> {
+    const secret = this.indexerSecret();
+    if (!secret) {
+      console.warn('[ConvexClient] postRunnerStatus skipped: INDEXER_SECRET not set');
+      return;
+    }
+    try {
+      await this.http.mutation(updateRunnerStatusRef, { secret, ...args });
+    } catch (err) {
+      console.warn('[ConvexClient] postRunnerStatus failed (non-fatal):', err);
+    }
   }
 
   // Cockpit Comms write-side — best-effort, swallow + warn on failure so the

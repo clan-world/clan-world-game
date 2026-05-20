@@ -63,7 +63,9 @@ npx convex env set CLANWORLD_RESET_LOCK true --prod
 npx convex deploy --prod
 ```
 
-Wait at least 60 seconds after stopping heartbeat before deploying, so any in-flight nonce settles.
+Wait at least one heartbeat interval after stopping heartbeat before deploying,
+or confirm `getWorldState().nextHeartbeatAtTs` is safely in the past, so any
+in-flight nonce settles.
 
 ## 2. Deploy Active And Backup Diamonds
 
@@ -276,7 +278,7 @@ Restart heartbeat:
 
 ```bash
 tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
-  'export PATH="$HOME/.foundry/bin:$PATH"; bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log'
+  'bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log'
 ```
 
 Restart runner and four Elder sessions using the current package scripts or host wrappers. Confirm each new process reads the new `.env.local` / elder `.env` values.
@@ -371,7 +373,7 @@ npx convex run indexer:refreshSnapshot '{}' --prod
 
 cd ../..
 tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
-  'export PATH="$HOME/.foundry/bin:$PATH"; bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log'
+  'bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log'
 tmux new-session -d -s clanworld-runner -c "$PWD" \
   'pnpm --filter @clan-world/runner start 2>&1 | tee -a /tmp/clanworld-runner.log'
 ```

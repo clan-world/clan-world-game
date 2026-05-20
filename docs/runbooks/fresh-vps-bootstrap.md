@@ -344,24 +344,34 @@ cast call "$LENS" 'getActiveClanCount()(uint32)' --rpc-url "$RPC_URL_PRIMARY"
 
 ### 9.1 `clanworld-heartbeat`
 
-Calls `heartbeat()` every **61 s** (3 s slack past the on-chain **58 s** rate-limit guard — see "Canonical defaults" below). The heartbeat advances the world tick + emits ChainHeartbeat events that the Convex webhook ingests.
+Runs the TypeScript heartbeat scheduler. The scheduler reads the on-chain
+`heartbeatIntervalSeconds()` value once at boot, then schedules each
+`heartbeat()` from `getWorldState().nextHeartbeatAtTs` with a 500 ms jitter
+buffer. The heartbeat advances the world tick + emits ChainHeartbeat events
+that Convex ingests.
 
 ```bash
 cd ~/code/clan-world/clan-world-game
 tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
-  'export HEARTBEAT_SLEEP_SECONDS=61; while true; do bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log; echo "[$(date)] loop exited; restart in 5s" >> /tmp/clanworld-heartbeat.log; sleep 5; done'
+  'while true; do bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log; echo "[$(date)] loop exited; restart in 5s" >> /tmp/clanworld-heartbeat.log; sleep 5; done'
 ```
 
-The outer `while true` wrapper restarts the inner loop if it errors out (e.g., on a transient RPC blip — `start-heartbeat-loop.sh` has `set -e` so it exits on first error).
+The outer `while true` wrapper restarts the TypeScript scheduler if the process exits unexpectedly.
 
-#### Canonical defaults (heartbeat cadence)
+#### Changing heartbeat cadence
 
-| Setting | Value | How to set |
-|---|---|---|
-| **On-chain `heartbeatIntervalSeconds()` guard** | `58` s | `cast send $DIAMOND 'setHeartbeatIntervalSeconds(uint64)' 58 --rpc-url $RPC_URL_PRIMARY --private-key $DEPLOYER_PRIVATE_KEY` (owner-only) |
-| **Loop fire interval** (`HEARTBEAT_SLEEP_SECONDS`) | `61` s | env var on the heartbeat tmux session (see launch command above) |
+The on-chain value is the single source of truth. To change it:
 
-The relationship: `loop interval = on-chain guard + 3 s slack`. The 3 s prevents "rate limited" reverts from clock drift / RPC propagation lag. Adjust both together if you want to change cadence — e.g., 30 s ticks = on-chain `28`, loop `31`. The per-tick game economics calibrate to 60 s bins, so don't change without considering downstream impacts (mission durations, season length, etc.).
+```bash
+cast send $DIAMOND 'setHeartbeatIntervalSeconds(uint64)' 60 \
+  --rpc-url $RPC_URL_PRIMARY --private-key $DEPLOYER_PRIVATE_KEY
+tmux kill-session -t clanworld-heartbeat
+# Re-spawn per the command above so the scheduler reads the new interval at boot.
+```
+
+Do not set a separate loop interval env var. The per-tick game economics
+calibrate to 60 s bins, so don't change cadence without considering downstream
+impacts (mission durations, season length, etc.).
 
 ### 9.2 `clanworld-finalize`
 
@@ -530,9 +540,9 @@ For heavier loads, get a new Alchemy account or use Infura/Quicknode.
 
 ### 14.3 "ClanWorld: heartbeat rate limited" on every heartbeat call
 
-**Cause:** the diamond enforces a min interval (default 60 s) between heartbeats. If you re-spawn the heartbeat-loop within 60 s of the last call, the next call reverts.
+**Cause:** the diamond enforces the configured on-chain `heartbeatIntervalSeconds()` between heartbeats. If you re-spawn the heartbeat-loop before `getWorldState().nextHeartbeatAtTs`, the next call reverts.
 
-**Fix:** wait 60 s, or call the owner-only `setHeartbeatIntervalSeconds(uint64)` to change the interval (don't go below 1 second; default is 60).
+**Fix:** wait until `nextHeartbeatAtTs`, or call the owner-only `setHeartbeatIntervalSeconds(uint64)` to change the interval, then restart the heartbeat runner.
 
 ### 14.4 Heartbeat fires but ticks don't advance
 

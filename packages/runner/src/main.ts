@@ -44,7 +44,6 @@ function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
   const settleWindowSec = parseIntEnv(env, 'RUNNER_SETTLE_WINDOW_SEC', 90);
   const deliveryTimeoutMs = parseIntEnv(env, 'RUNNER_DELIVERY_TIMEOUT_MS', 10_000);
   const ackTimeoutMs = parseIntEnv(env, 'RUNNER_ACK_TIMEOUT_MS', 30_000);
-  const heartbeatCheckIntervalMs = parseIntEnv(env, 'RUNNER_HEARTBEAT_CHECK_INTERVAL_MS', 30_000);
   const tmuxSessionPrefix = env['RUNNER_TMUX_SESSION_PREFIX'] ?? 'elder';
   const elderToClanId: Record<ElderId, string> = {
     1: env['ELDER_1_CLAN_ID'] ?? '1',
@@ -57,7 +56,6 @@ function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
     settleWindowSec,
     deliveryTimeoutMs,
     ackTimeoutMs,
-    heartbeatCheckIntervalMs,
     stateDir,
     tmuxSessionPrefix,
     elderToClanId,
@@ -142,8 +140,9 @@ async function main(): Promise<void> {
   startHeartbeatScheduler({
     heartbeatCaller,
     signal: abort.signal,
-    checkIntervalMs: config.heartbeatCheckIntervalMs,
     settleLatch,
+    convex,
+    runnerId: process.env['RUNNER_ID'] ?? 'clanworld-runner',
   });
 
   try {
