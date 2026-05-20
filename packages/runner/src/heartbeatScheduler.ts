@@ -151,7 +151,7 @@ async function runHeartbeatScheduler(
       // boot-deadlock when Convex is unreachable. Subsequent iterations only require
       // settledSnapshot > Math.max(0, prev). This trades strict "wait for prior tick to
       // settle in Convex" for liveness -- acceptable for hackathon scope, but should
-      // be hardened with an "expected next tick" watermark for production. See follow-up.
+      // be hardened with an "expected next tick" watermark for production. See #511.
       if (deps.settleLatch) lastHeartbeatForTick = Math.max(0, settledSnapshot);
       lastAlertAtMs.clear();
     }

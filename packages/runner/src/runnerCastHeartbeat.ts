@@ -239,6 +239,17 @@ function normalizePk(pk: string): `0x${string}` {
 
 function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   if (!convexDeployUrl) return undefined;
-  if (!convexDeployUrl.includes('.convex.cloud')) return undefined;
-  return convexDeployUrl.replace('.convex.cloud', '.convex.site');
+  // Hostname-suffix check (not substring) so URLs like
+  // `https://attacker.convex.cloud.evil.com` or `https://example.com/.convex.cloud/x`
+  // don't false-positive into a rewritten webhook target. R5 super-swarm hardening.
+  let url: URL;
+  try {
+    url = new URL(convexDeployUrl);
+  } catch {
+    return undefined;
+  }
+  if (!url.hostname.endsWith('.convex.cloud')) return undefined;
+  url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
+  // Preserve protocol/port; strip trailing slash if URL had no explicit path.
+  return url.toString().replace(/\/$/, '');
 }

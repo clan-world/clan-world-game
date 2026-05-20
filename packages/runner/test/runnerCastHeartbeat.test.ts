@@ -99,6 +99,35 @@ describe('configFromEnv', () => {
     warn.mockRestore();
   });
 
+  it('rejects hostnames that contain .convex.cloud as a substring (R5 hardening)', () => {
+    // Substring match would incorrectly rewrite https://attacker.convex.cloud.evil.com
+    // to https://attacker.convex.site.evil.com — defeats the security intent.
+    // Hostname-suffix check via URL parsing prevents this.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const cfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CONVEX_DEPLOY_URL: 'https://attacker.convex.cloud.evil.com',
+    });
+
+    expect(cfg.convexWebhookUrl).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      'CONVEX_DEPLOY_URL is non-standard; CONVEX_WEBHOOK_URL required for webhook ingest',
+    );
+    warn.mockRestore();
+  });
+
+  it('correctly derives webhook URL for legitimate .convex.cloud hostnames', () => {
+    const cfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CONVEX_DEPLOY_URL: 'https://oceanic-hound-951.convex.cloud',
+    });
+
+    expect(cfg.convexWebhookUrl).toBe('https://oceanic-hound-951.convex.site');
+  });
+
   it('treats explicit empty CONVEX_WEBHOOK_URL as disabled without derivation warning', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
