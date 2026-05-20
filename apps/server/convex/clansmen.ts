@@ -137,8 +137,14 @@ export const getClanClansmen = query({
 
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     const currentTick = snap?.tick ?? Number(view.derivedAtTick) ?? 0;
+    const snapshotHeartbeatIntervalSeconds =
+      typeof snap?.heartbeatIntervalSeconds === "number" && snap.heartbeatIntervalSeconds > 0
+        ? snap.heartbeatIntervalSeconds
+        : undefined;
     const tickDurationMs =
-      snap?.tickEpochDurationMs ?? Number(HEARTBEAT_INTERVAL_SECONDS) * 1000;
+      snapshotHeartbeatIntervalSeconds !== undefined
+        ? snapshotHeartbeatIntervalSeconds * 1000
+        : snap?.tickEpochDurationMs ?? Number(HEARTBEAT_INTERVAL_SECONDS) * 1000;
     const tickDurationSeconds = Math.max(1, Math.floor(tickDurationMs / 1000));
 
     const rows = Array.isArray(view.clansmen) ? view.clansmen : [];

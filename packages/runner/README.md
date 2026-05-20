@@ -28,6 +28,33 @@ satisfies four seam interfaces from `@clan-world/agents/seams`:
 | `IElderPeerInbox`     | `FilePeerInbox` / `AxlPeerInbox` | JSONL per recipient clan or Gensyn AXL transport |
 | `IHeartbeatCaller`    | `RunnerCastHeartbeat`      | viem `writeContract`, dedicated runner wallet     |
 
+## Heartbeat timing
+
+Heartbeat cadence comes from the diamond's owner-configured
+`heartbeatIntervalSeconds()` value. To change cadence:
+
+1. Call `setHeartbeatIntervalSeconds(uint64)` on-chain as the contract owner.
+2. Restart the runner or `scripts/start-heartbeat-loop.sh`.
+
+The scheduler reads `heartbeatIntervalSeconds()` once at boot, then schedules
+each fire from `getWorldState().nextHeartbeatAtTs` with a 500 ms jitter buffer.
+When the full Elder runner is active, Cycle A still waits for Cycle B to settle
+before firing, so a heartbeat can intentionally land after the next-allowed
+timestamp if Elders are still in their settle window.
+
+## Alerts and status
+
+The scheduler writes a `runnerStatus` row to Convex after heartbeat attempts
+when `CONVEX_URL` and `INDEXER_SECRET` are configured. Telegram alerting is
+best-effort and never crashes the loop.
+
+| Variable | Description |
+|---|---|
+| `RUNNER_ID` | Stable `runnerStatus` id. Defaults to `clanworld-runner` in the full runner and `clanworld-heartbeat-loop` in the standalone loop. |
+| `TELEGRAM_BOT_TOKEN` | Bot token used for heartbeat retry-exhaustion alerts. If unset, the runner logs locally and keeps running. |
+| `TELEGRAM_ALERT_CHAT_ID` | Alert target chat. Defaults to do-crew group `-1003806628027`. |
+| `TELEGRAM_ALERT_THREAD_ID` | Optional Telegram forum topic id. If unset, alerts post to the main group. |
+
 ## Run it
 
 ```bash
@@ -37,6 +64,8 @@ export RUNNER_PRIVATE_KEY=0x...
 export CLAN_WORLD_CONTRACT_ADDRESS=0xC012275376b867944cd874FB2d600d6dA3B4A56e
 export RPC_URL_PRIMARY=https://base-sepolia.g.alchemy.com/v2/...
 export CONVEX_URL=https://...convex.cloud   # optional; runner idles without it
+export INDEXER_SECRET=...                    # optional; enables runnerStatus writes
+export TELEGRAM_BOT_TOKEN=...                # optional; enables heartbeat failure alerts
 
 # 2. Make sure 4 tmux sessions exist with Elder Claude Code already attached:
 #    elder-1, elder-2, elder-3, elder-4

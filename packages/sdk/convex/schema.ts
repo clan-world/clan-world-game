@@ -99,6 +99,7 @@ export default defineSchema({
     blockNumber: v.optional(v.number()),
     tickEpochStartedAt: v.number(),
     tickEpochDurationMs: v.number(),
+    heartbeatIntervalSeconds: v.optional(v.number()),
     currentSeasonNumber: v.optional(v.number()),
     seasonStartTick: v.number(),
     seasonEndTick: v.number(),
@@ -109,6 +110,7 @@ export default defineSchema({
     tick: v.number(),
     tickEpochStartedAt: v.number(),
     tickEpochDurationMs: v.number(),
+    heartbeatIntervalSeconds: v.optional(v.number()),
     // Season + winter timers (Phase 4.4)
     currentSeasonNumber: v.optional(v.number()),
     seasonStartTick: v.optional(v.number()),
@@ -167,6 +169,20 @@ export default defineSchema({
       )
     ),
   }).index("by_tick", ["tick"]),
+  runnerStatus: defineTable({
+    runnerId: v.string(),
+    lastFireAt: v.optional(v.number()),
+    lastFireResult: v.union(
+      v.literal("success"),
+      v.literal("revert"),
+      v.literal("timeout"),
+      v.literal("error"),
+    ),
+    lastFailureMessage: v.optional(v.string()),
+    heartbeatIntervalSeconds: v.optional(v.number()),
+    nextHeartbeatAtTs: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_runnerId", ["runnerId"]),
   chainEvents: defineTable({
     txHash: v.string(),
     logIndex: v.number(),

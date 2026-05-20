@@ -52,6 +52,8 @@ const GET_MARKET_STATE = "getMarketState" satisfies LensFunctionName;
 const GET_ACTIVE_BANDIT_VIEW =
   "getActiveBanditView" satisfies LensFunctionName;
 const GET_CLAN_IDS = "getClanIds" satisfies ClanWorldFunctionName;
+const GET_HEARTBEAT_INTERVAL_SECONDS =
+  "heartbeatIntervalSeconds" satisfies ClanWorldFunctionName;
 const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies LensFunctionName;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
@@ -114,6 +116,7 @@ type ParsedIndexerEvent = {
 type SnapshotPayload = {
   blockNumber?: number;
   txHash?: string;
+  heartbeatIntervalSeconds?: number;
   world: Record<string, unknown>;
   market?: Record<string, unknown>;
   bandit?: Record<string, unknown>;
@@ -213,6 +216,19 @@ const asNumber = (value: unknown, fallback = 0): number => {
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "string" && value !== "") return Number(value);
   return fallback;
+};
+
+const DEFAULT_HEARTBEAT_INTERVAL_SECONDS = Number(HEARTBEAT_INTERVAL_SECONDS);
+
+const resolveHeartbeatIntervalSeconds = (
+  incoming: unknown,
+  previous: unknown,
+): number => {
+  const next = asNumber(incoming, 0);
+  if (next > 0) return next;
+  const prior = asNumber(previous, 0);
+  if (prior > 0) return prior;
+  return DEFAULT_HEARTBEAT_INTERVAL_SECONDS;
 };
 
 const asString = (value: unknown, fallback = "0"): string =>
@@ -584,6 +600,7 @@ export const ingestEvents = internalMutation({
 const snapshotValidator = v.object({
   blockNumber: v.optional(v.number()),
   txHash: v.optional(v.string()),
+  heartbeatIntervalSeconds: v.optional(v.number()),
   // TODO(post-demo): tighten world/market/bandit/clans inner record shapes
   // once contract structs stabilize (M-5 audit).
   world: v.any(),
@@ -613,6 +630,10 @@ export const commitSnapshot = internalMutation({
       .query("worldSnapshot")
       .order("desc")
       .first();
+    const heartbeatIntervalSeconds = resolveHeartbeatIntervalSeconds(
+      snapshot.heartbeatIntervalSeconds,
+      previousWorldSnapshot?.heartbeatIntervalSeconds,
+    );
     // Fetch tickClock first — it's the always-advancing monotonic cursor.
     // worldSnapshot can freeze between content-change ticks (delta-check), so
     // previousWorldSnapshot.tick is not a reliable stale-gate cursor anymore.
@@ -653,7 +674,8 @@ export const commitSnapshot = internalMutation({
         tickClockRow?.tick === tick && !worldPausedChanged
           ? tickClockRow.tickEpochStartedAt
           : Math.floor(now / 1000),
-      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      tickEpochDurationMs: heartbeatIntervalSeconds * 1000,
+      heartbeatIntervalSeconds,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
@@ -834,6 +856,7 @@ export const commitSnapshot = internalMutation({
       tick,
       tickEpochStartedAt: tickClockData.tickEpochStartedAt,
       tickEpochDurationMs: tickClockData.tickEpochDurationMs,
+      heartbeatIntervalSeconds,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
@@ -957,13 +980,16 @@ export const refreshSnapshot = internalAction({
       blockNumber: pinnedBlockNumber,
     });
 
-    const [worldRaw, market, bandit] = await Promise.all([
+    const [worldRaw, market, bandit, heartbeatIntervalSecondsRaw] = await Promise.all([
       client
         .readContract(readLensArgs(GET_WORLD_SNAPSHOT))
         .catch(() => undefined),
       client.readContract(readLensArgs(GET_MARKET_STATE)).catch(() => undefined),
       client
         .readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW))
+        .catch(() => undefined),
+      client
+        .readContract(readWorldArgs(GET_HEARTBEAT_INTERVAL_SECONDS))
         .catch(() => undefined),
     ]);
 
@@ -998,6 +1024,9 @@ export const refreshSnapshot = internalAction({
     return await ctx.runMutation(indexerApi.commitSnapshot, {
       snapshot: {
         blockNumber,
+        heartbeatIntervalSeconds: heartbeatIntervalSecondsRaw === undefined
+          ? undefined
+          : asNumber(heartbeatIntervalSecondsRaw, DEFAULT_HEARTBEAT_INTERVAL_SECONDS),
         world: bigintSafe(world),
         market: bigintSafe(market),
         bandit: bigintSafe(bandit),

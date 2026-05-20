@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
 import type { Doc } from '../../server/convex/_generated/dataModel';
-import { SEASON_DURATION_TICKS } from '@clan-world/shared/generated/constants';
+import { HEARTBEAT_INTERVAL_SECONDS, SEASON_DURATION_TICKS } from '@clan-world/shared/generated/constants';
 import { DEMO_MODE } from './config/env';
 
 const TICKS_PER_SEASON = Number(SEASON_DURATION_TICKS);
+const GENERATED_TICK_DURATION_MS = Number(HEARTBEAT_INTERVAL_SECONDS) * 1000;
 
 // Demo bandit state mirrors WorldMap.tsx DEMO_BANDIT so both components agree.
 const DEMO_BANDIT_ATTACKS_AT_TICK = 48;
@@ -15,7 +16,6 @@ const BANDIT_RED = '#b23a48';
 const GOLD = '#d4a24c';
 const PARCHMENT = '#e8d8b5';
 const INK = '#3d2817';
-const FALLBACK_TICK_DURATION_MS = 59_000;
 
 type TickCountdownAnchor = {
   tick: number;
@@ -35,10 +35,19 @@ function useBanditWarning(liveTick: number, bandit: SnapshotBandit | null): { ac
 export function TopHud({ liveTick }: { liveTick: number }) {
   const clock = useQuery(api.getTickClock.getTickClock);
   const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
+  const fallbackTickDurationMs =
+    positiveDurationMs(clock?.tickEpochDurationMs) ??
+    positiveDurationMs(
+      typeof liveSnapshot?.heartbeatIntervalSeconds === 'number'
+        ? liveSnapshot.heartbeatIntervalSeconds * 1000
+        : undefined,
+    ) ??
+    positiveDurationMs(liveSnapshot?.tickEpoch.durationMs) ??
+    GENERATED_TICK_DURATION_MS;
   const tickCountdownAnchorRef = useRef<TickCountdownAnchor>({
     tick: liveTick,
     startedAtMs: Date.now(),
-    durationMs: FALLBACK_TICK_DURATION_MS,
+    durationMs: fallbackTickDurationMs,
   });
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -60,11 +69,11 @@ export function TopHud({ liveTick }: { liveTick: number }) {
             ? epoch.startedAt * 1000
             : epoch.startedAt
           : Date.now(),
-        durationMs: canUseClockEpoch ? epoch.durationMs : FALLBACK_TICK_DURATION_MS,
+        durationMs: canUseClockEpoch ? epoch.durationMs : fallbackTickDurationMs,
       };
     }
     setNowMs(Date.now());
-  }, [liveTick, clock?.tick, clock?.tickEpochStartedAt, clock?.tickEpochDurationMs]);
+  }, [liveTick, clock?.tick, clock?.tickEpochStartedAt, clock?.tickEpochDurationMs, fallbackTickDurationMs]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -112,7 +121,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
       remainingPct: Math.max(0, Math.min(100, (1 - progress) * 100)),
       durationMs,
     };
-  }, [liveTick, nowMs, clock?.tick, clock?.tickEpochStartedAt, clock?.tickEpochDurationMs]);
+  }, [liveTick, nowMs, clock?.tick, clock?.tickEpochStartedAt, clock?.tickEpochDurationMs, fallbackTickDurationMs]);
 
   // Bar fill color: green → amber → red as season ages
   const barColor = seasonProgress < 0.5
@@ -320,6 +329,12 @@ export function TopHud({ liveTick }: { liveTick: number }) {
       `}</style>
     </div>
   );
+}
+
+function positiveDurationMs(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
 }
 
 // Lightweight version for contexts where we only have liveTick and no snapshot

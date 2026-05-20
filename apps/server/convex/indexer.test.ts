@@ -76,6 +76,7 @@ type CommitSnapshotTestHandler = (
     snapshot: {
       blockNumber: number;
       txHash?: string;
+      heartbeatIntervalSeconds?: number;
       world: Record<string, unknown>;
       clans: unknown[];
     };
@@ -631,6 +632,48 @@ describe("legacy snapshot backfill", () => {
     expect(advancedClock.tick).toBe(13);
     expect(advancedClock.tickEpochStartedAt).toBe(1_060);
     expect(advancedClock.tickEpochDurationMs).toBe(60_000);
+
+    now.mockRestore();
+  });
+
+  it("persists on-chain heartbeatIntervalSeconds and patches interval-only changes", async () => {
+    const { db, tables } = createDb();
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(2_000_000);
+
+    await runCommitSnapshot(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 200,
+          heartbeatIntervalSeconds: 45,
+          world: { currentTick: 20 },
+          clans: [],
+        },
+      },
+    );
+
+    expect(tables.tickClock?.[0]?.heartbeatIntervalSeconds).toBe(45);
+    expect(tables.tickClock?.[0]?.tickEpochDurationMs).toBe(45_000);
+    expect(tables.worldSnapshot?.[0]?.heartbeatIntervalSeconds).toBe(45);
+    expect(tables.worldSnapshot?.[0]?.tickEpochDurationMs).toBe(45_000);
+
+    await runCommitSnapshot(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 201,
+          heartbeatIntervalSeconds: 30,
+          world: { currentTick: 20 },
+          clans: [],
+        },
+      },
+    );
+
+    expect(tables.tickClock?.[0]?.heartbeatIntervalSeconds).toBe(30);
+    expect(tables.tickClock?.[0]?.tickEpochDurationMs).toBe(30_000);
+    expect(tables.worldSnapshot?.[0]?.heartbeatIntervalSeconds).toBe(30);
+    expect(tables.worldSnapshot?.[0]?.tickEpochDurationMs).toBe(30_000);
 
     now.mockRestore();
   });

@@ -81,6 +81,7 @@ export function deriveSeasonState(tick: number): DerivedSeasonState {
  */
 export interface PersistedSnapshotSeasonFields {
   tick: number;
+  heartbeatIntervalSeconds?: number;
   currentSeasonNumber?: number;
   seasonStartTick?: number;
   seasonEndTick?: number;
@@ -141,13 +142,36 @@ export function resolvePauseStateForSnap(snap: {
   };
 }
 
+export function resolveHeartbeatIntervalSecondsForSnap(snap: {
+  heartbeatIntervalSeconds?: unknown;
+  tickEpochDurationMs?: unknown;
+}): number {
+  if (
+    typeof snap.heartbeatIntervalSeconds === "number" &&
+    Number.isFinite(snap.heartbeatIntervalSeconds) &&
+    snap.heartbeatIntervalSeconds > 0
+  ) {
+    return snap.heartbeatIntervalSeconds;
+  }
+  if (
+    typeof snap.tickEpochDurationMs === "number" &&
+    Number.isFinite(snap.tickEpochDurationMs) &&
+    snap.tickEpochDurationMs > 0
+  ) {
+    return Math.max(1, Math.floor(snap.tickEpochDurationMs / 1000));
+  }
+  return Number(HEARTBEAT_INTERVAL_SECONDS);
+}
+
 export const getSnapshot = query({
   handler: async (ctx) => {
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
+    const defaultHeartbeatIntervalSeconds = Number(HEARTBEAT_INTERVAL_SECONDS);
     if (!snap) {
       return {
         tick: 0,
-        tickEpoch: { startedAt: 0, durationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000 },
+        heartbeatIntervalSeconds: defaultHeartbeatIntervalSeconds,
+        tickEpoch: { startedAt: 0, durationMs: defaultHeartbeatIntervalSeconds * 1000 },
         regions: [],
         clans: [],
         activeBanditId: undefined,
@@ -185,6 +209,7 @@ export const getSnapshot = query({
         : null;
     return {
       tick: snap.tick,
+      heartbeatIntervalSeconds: resolveHeartbeatIntervalSecondsForSnap(snap),
       tickEpoch: {
         startedAt: snap.tickEpochStartedAt,
         durationMs: snap.tickEpochDurationMs,

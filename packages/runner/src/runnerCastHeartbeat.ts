@@ -3,6 +3,7 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  WaitForTransactionReceiptTimeoutError,
   type Account,
   type PublicClient,
   type WalletClient,
@@ -21,6 +22,8 @@ export interface RunnerHeartbeatConfig {
   rpcUrl?: string;
   /** ClanWorld contract address. */
   contractAddress: `0x${string}`;
+  /** Wait time for heartbeat receipt confirmation. */
+  receiptTimeoutMs?: number;
 }
 
 /**
@@ -63,6 +66,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   private readonly walletClient: WalletClient;
   private readonly account: Account;
   private readonly contractAddress: `0x${string}`;
+  private readonly receiptTimeoutMs: number;
 
   constructor(cfg: RunnerHeartbeatConfig) {
     const pk = normalizePk(cfg.privateKey);
@@ -75,6 +79,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       transport,
     });
     this.contractAddress = cfg.contractAddress;
+    this.receiptTimeoutMs = cfg.receiptTimeoutMs ?? 15_000;
   }
 
   async callHeartbeat(): Promise<{ txHash: string }> {
@@ -88,12 +93,15 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         args: [],
       });
       // Wait for confirmation per the seam contract ("not fire-and-forget").
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: this.receiptTimeoutMs,
+      });
       if (receipt.status !== 'success') {
         // Mined-but-reverted. Most common cause is the rate-limit window
         // hadn't elapsed yet (when simulation succeeded but execution didn't).
         // Re-read state to upgrade to HeartbeatRateLimitedError when applicable.
-        const next = await this.readNextHeartbeatAt().catch(() => undefined);
+        const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
         if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
           throw new HeartbeatRateLimitedError(next);
         }
@@ -103,10 +111,15 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     } catch (err) {
       // Already a rate-limit error — rethrow immediately; no second RPC read.
       if (err instanceof HeartbeatRateLimitedError) throw err;
+      if (err instanceof WaitForTransactionReceiptTimeoutError) {
+        throw new HeartbeatTimeoutError(
+          `heartbeat tx receipt timed out after ${this.receiptTimeoutMs}ms`,
+        );
+      }
       // Attempt to upgrade only simulation-level contract reverts to
       // HeartbeatRateLimitedError; pre-flight/RPC errors must surface unchanged.
       if (!(err instanceof ContractFunctionRevertedError)) throw err;
-      const next = await this.readNextHeartbeatAt().catch(() => undefined);
+      const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
       if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
         throw new HeartbeatRateLimitedError(next);
       }
@@ -114,12 +127,17 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     }
   }
 
-  async isHeartbeatDue(): Promise<boolean> {
-    const next = await this.readNextHeartbeatAt();
-    return next <= Math.floor(Date.now() / 1000);
+  async readHeartbeatIntervalSeconds(): Promise<number> {
+    const interval = await this.publicClient.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'heartbeatIntervalSeconds',
+      args: [],
+    });
+    return Number(interval);
   }
 
-  private async readNextHeartbeatAt(): Promise<number> {
+  async readNextHeartbeatAtTs(): Promise<number> {
     const state = await this.publicClient.readContract({
       address: this.contractAddress,
       abi: CLAN_WORLD_ABI,
@@ -128,6 +146,13 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     });
     // viem decodes the named tuple into an object with the same field names.
     return Number((state as { nextHeartbeatAtTs: bigint }).nextHeartbeatAtTs);
+  }
+}
+
+export class HeartbeatTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HeartbeatTimeoutError';
   }
 }
 

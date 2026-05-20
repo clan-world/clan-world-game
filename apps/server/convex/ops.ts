@@ -25,6 +25,7 @@ const RESET_TABLES = [
   "whispers",
   "orchEvents",
   "humanSteeringMessages",
+  "runnerStatus",
 ] as const;
 
 const MAX_FLUSH_WRITES = 9000;

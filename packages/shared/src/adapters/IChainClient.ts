@@ -2767,6 +2767,19 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
+    "name": "heartbeatIntervalSeconds",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "initTreasury",
     "inputs": [
       {

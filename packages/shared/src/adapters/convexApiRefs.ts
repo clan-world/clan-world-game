@@ -39,6 +39,16 @@ type SeedBulletinArgs = {
   txHash?: string;
 };
 
+type UpdateRunnerStatusArgs = {
+  secret: string;
+  runnerId: string;
+  lastFireAt?: number;
+  lastFireResult: 'success' | 'revert' | 'timeout' | 'error';
+  lastFailureMessage?: string;
+  heartbeatIntervalSeconds?: number;
+  nextHeartbeatAtTs?: number;
+};
+
 type ClanWorldConvexApi = {
   getSnapshot: {
     getSnapshot: PublicQuery<Record<string, never>, WorldSnapshot>;
@@ -50,6 +60,9 @@ type ClanWorldConvexApi = {
   };
   bulletins: {
     seedBulletin: PublicMutation<SeedBulletinArgs>;
+  };
+  runnerStatus: {
+    updateRunnerStatus: PublicMutation<UpdateRunnerStatusArgs, string>;
   };
 };
 

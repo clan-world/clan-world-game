@@ -5166,6 +5166,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return _worldStateView();
     }
 
+    function heartbeatIntervalSeconds() external pure override returns (uint64) {
+        return ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+    }
+
     function getTreasuryState() external view override returns (TreasuryState memory) {
         return _treasury;
     }

@@ -840,6 +840,8 @@ interface IClanWorld is IClanWorldEvents {
 
     function getWorldState() external view returns (WorldState memory);
 
+    function heartbeatIntervalSeconds() external view returns (uint64);
+
     function getTreasuryState() external view returns (TreasuryState memory);
 
     function getResourceToken(uint8 resourceType) external view returns (address);

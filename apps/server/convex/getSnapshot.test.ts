@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveSeasonState,
   normalizePausedAtTs,
+  resolveHeartbeatIntervalSecondsForSnap,
   resolvePauseStateForSnap,
   resolveSeasonStateForSnap,
   type PersistedSnapshotSeasonFields,
@@ -180,5 +181,20 @@ describe("normalizePausedAtTs", () => {
       worldPaused: false,
       pausedAtTs: null,
     });
+  });
+});
+
+describe("resolveHeartbeatIntervalSecondsForSnap", () => {
+  it("prefers persisted on-chain heartbeatIntervalSeconds", () => {
+    expect(resolveHeartbeatIntervalSecondsForSnap({
+      heartbeatIntervalSeconds: 45,
+      tickEpochDurationMs: 60_000,
+    })).toBe(45);
+  });
+
+  it("falls back to legacy tickEpochDurationMs", () => {
+    expect(resolveHeartbeatIntervalSecondsForSnap({
+      tickEpochDurationMs: 30_000,
+    })).toBe(30);
   });
 });

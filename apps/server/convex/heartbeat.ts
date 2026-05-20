@@ -251,6 +251,10 @@ export const advanceTick = internalMutation({
     const baseTick = clockRow?.tick ?? snap.tick;
     const baseEpochStartedAt = clockRow?.tickEpochStartedAt ?? snap.tickEpochStartedAt;
     const baseEpochDurationMs = clockRow?.tickEpochDurationMs ?? snap.tickEpochDurationMs;
+    const baseHeartbeatIntervalSeconds =
+      clockRow?.heartbeatIntervalSeconds ??
+      snap.heartbeatIntervalSeconds ??
+      Math.max(1, Math.floor(baseEpochDurationMs / 1000));
 
     // Staleness gate: only advance if the current epoch has elapsed.
     const nowSeconds = Math.floor(Date.now() / 1000);
@@ -269,6 +273,7 @@ export const advanceTick = internalMutation({
         tick: newTick,
         tickEpochStartedAt: newEpochStartedAt,
         tickEpochDurationMs: baseEpochDurationMs,
+        heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
         regions: snap.regions,
         clans: snap.clans,
       });
@@ -285,12 +290,14 @@ export const advanceTick = internalMutation({
         await ctx.db.patch(clockRow._id, {
           tick: newTick,
           tickEpochStartedAt: newEpochStartedAt,
+          heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
         });
       } else {
         await ctx.db.insert("tickClock", {
           tick: newTick,
           tickEpochStartedAt: newEpochStartedAt,
           tickEpochDurationMs: baseEpochDurationMs,
+          heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
           seasonStartTick: 0,
           seasonEndTick: 0,
           winterActive: false,
