@@ -1338,7 +1338,18 @@ export function WorldMap() {
   // Grace period before showing the "no chain data yet" placeholder — see the
   // useEffect a few hooks below for the 5s debounce.
   const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
-  const rawChainEvents = useQuery(api.events.getRecentChainEvents);
+  // Subscribed to the battle-only feed (issue #336). This invalidates only on
+  // battle-cluster events within the last 3 ticks, dropping ~25% of the
+  // pre-split chainEvents egress that came from re-pushing 60 events per
+  // every-event insert. The WorldMap consumer only reacts to
+  // `BanditAttackResolved` (see the combat-vignette effect below), which
+  // currently only fires in DEMO_MODE — so we skip the subscription entirely
+  // in live mode to avoid an unused reactive query (Convex `'skip'` short-
+  // circuits both the WS push and the egress).
+  const rawChainEvents = useQuery(
+    api.events.getBattleEvents,
+    DEMO_MODE ? { tickWindow: 3 } : 'skip',
+  );
 
   // Derived live tick counter — prefer tickClock (cheap, always fresh) over
   // snapshot.tick (only updates when world data changes after delta-check).
