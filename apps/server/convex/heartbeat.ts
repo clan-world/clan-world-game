@@ -241,32 +241,62 @@ type AdvanceTickResult =
 
 export const advanceTick = internalMutation({
   handler: async (ctx): Promise<AdvanceTickResult> => {
+    // Read tickClock first — authoritative cursor after worldSnapshot delta-check (#333).
+    // worldSnapshot can freeze at tick N while tickClock advances to N+k.
+    // tickClock is a single-row table, so .first() (no ordering) is sufficient.
+    const clockRow = await ctx.db.query("tickClock").first();
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     if (!snap) return { status: "no-op", reason: "no snapshot to refresh" };
 
+    const baseTick = clockRow?.tick ?? snap.tick;
+    const baseEpochStartedAt = clockRow?.tickEpochStartedAt ?? snap.tickEpochStartedAt;
+    const baseEpochDurationMs = clockRow?.tickEpochDurationMs ?? snap.tickEpochDurationMs;
+
     // Staleness gate: only advance if the current epoch has elapsed.
-    // Prevents cron from double-advancing (fires 4x/epoch) and concurrent
-    // calls from inserting duplicate tick rows.
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const epochEndSeconds =
-      snap.tickEpochStartedAt + Math.floor(snap.tickEpochDurationMs / 1000);
+    const epochEndSeconds = baseEpochStartedAt + Math.floor(baseEpochDurationMs / 1000);
     if (nowSeconds < epochEndSeconds) {
       return { status: "no-op", reason: "epoch not yet elapsed" };
     }
 
-    const newTick = snap.tick + 1;
-    await ctx.db.insert("worldSnapshot", {
-      tick: newTick,
-      tickEpochStartedAt: Math.floor(Date.now() / 1000),
-      tickEpochDurationMs: snap.tickEpochDurationMs,
-      regions: snap.regions,
-      clans: snap.clans,
-    });
+    const newTick = baseTick + 1;
+    const newEpochStartedAt = Math.floor(Date.now() / 1000);
+    // Monotonic guard covers both writes — prevents stale insert if a concurrent
+    // indexer commit advanced tickClock past newTick between our read and commit.
+    // Convex OCC serializes mutations, but this guard makes the intent explicit.
+    if (!clockRow || newTick > clockRow.tick) {
+      await ctx.db.insert("worldSnapshot", {
+        tick: newTick,
+        tickEpochStartedAt: newEpochStartedAt,
+        tickEpochDurationMs: baseEpochDurationMs,
+        regions: snap.regions,
+        clans: snap.clans,
+      });
+    }
     await ctx.db.insert("agentLogs", {
       level: "info",
-      message: `heartbeat: tick ${snap.tick} → ${newTick}`,
+      message: `heartbeat: tick ${baseTick} → ${newTick}`,
       timestamp: Date.now(),
     });
+
+    // Also keep tickClock in sync (same monotonic guard — reuses condition above).
+    if (!clockRow || newTick > clockRow.tick) {
+      if (clockRow) {
+        await ctx.db.patch(clockRow._id, {
+          tick: newTick,
+          tickEpochStartedAt: newEpochStartedAt,
+        });
+      } else {
+        await ctx.db.insert("tickClock", {
+          tick: newTick,
+          tickEpochStartedAt: newEpochStartedAt,
+          tickEpochDurationMs: baseEpochDurationMs,
+          seasonStartTick: 0,
+          seasonEndTick: 0,
+          winterActive: false,
+        });
+      }
+    }
 
     return { status: "ok", tick: newTick };
   },

@@ -8,6 +8,7 @@ import {
   lensAddress,
   planPollLogRange,
   pricePointFromEvent,
+  stableJson,
 } from "./indexer";
 
 const address = "0x1111111111111111111111111111111111111111" as const;
@@ -124,6 +125,24 @@ function fixtureLog(
     removed: false,
   };
 }
+
+describe("stableJson", () => {
+  it("is key-order-independent", () => {
+    const a = { b: 1, a: 2 };
+    const b = { a: 2, b: 1 };
+    expect(stableJson(a)).toBe(stableJson(b));
+  });
+  it("two worldSnapshot-like objects differing only in tick-family fields produce equal stableJson when those fields are stripped", () => {
+    const strip = (o: Record<string, unknown>) => {
+      const { tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick, lastUpdatedAt, lastUpdatedBlock, txHash, ...rest } = o;
+      void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+      return rest;
+    };
+    const prev = { tick: 10, tickEpochStartedAt: 1000, regions: [{ id: "A" }], clans: [] };
+    const next = { tick: 11, tickEpochStartedAt: 1060, regions: [{ id: "A" }], clans: [] };
+    expect(stableJson(strip(prev))).toBe(stableJson(strip(next)));
+  });
+});
 
 describe("decodeClanWorldLogs", () => {
   it("decodes representative ClanWorld events with bigint-safe args", () => {
@@ -605,9 +624,13 @@ describe("legacy snapshot backfill", () => {
       },
     );
 
-    const advancedTickSnapshot = tables.worldSnapshot?.[0];
-    expect(advancedTickSnapshot.tickEpochStartedAt).toBe(1_060);
-    expect(advancedTickSnapshot.tickEpochDurationMs).toBe(60_000);
+    // tickClock is always patched — it's the authoritative epoch source after the
+    // worldSnapshot delta-check (#333). worldSnapshot may not be updated when
+    // content (clans, regions) didn't change, so read epoch from tickClock.
+    const advancedClock = tables.tickClock?.[0];
+    expect(advancedClock.tick).toBe(13);
+    expect(advancedClock.tickEpochStartedAt).toBe(1_060);
+    expect(advancedClock.tickEpochDurationMs).toBe(60_000);
 
     now.mockRestore();
   });
@@ -676,5 +699,93 @@ describe("legacy snapshot backfill", () => {
     expect(result.skipped).toBe("stale-snapshot");
     expect(tables.worldSnapshot?.[0]?.lastUpdatedBlock).toBe(100);
     expect(tables.worldSnapshot?.[0]?.clans).toEqual([{ id: "current" }]);
+  });
+
+  it("does not rewrite worldSnapshot content when only monotonic clansman fields change (tick still advances)", async () => {
+    const { db, tables } = createDb();
+
+    const makeClanView = (cooldownEndsAtTs: number) => ({
+      // view.clan.clan = the on-chain struct; view.clan = derived view with effectiveRegion
+      clan: {
+        clan: {
+          clanId: 1,
+          owner: "0x0000000000000000000000000000000000000000",
+          baseRegion: 1,
+          clanState: 0,
+          baseLevel: 1,
+          wallLevel: 1,
+          monumentLevel: 0,
+          livingClansmen: 1,
+          isStarving: false,
+          starvationStartsAtTick: 0,
+          coldDamage: 0,
+          goldBalance: "0",
+          blueprintBalance: "0",
+          vaultWood: "0",
+          vaultIron: "0",
+          vaultWheat: "0",
+          vaultFish: "0",
+          lootValue: "0",
+        },
+        derivedAtTick: 1,
+        effectiveRegion: 1,
+      },
+      // view.clansmen = top-level field consumed by the handler (line 611)
+      clansmen: [
+        {
+          clansman: {
+            clansman: {
+              clansmanId: 1,
+              clanId: 1,
+              state: 0,
+              currentRegion: 1,
+              cooldownEndsAtTs,       // monotonic — stripped by stableClansman
+              lastMissionNonce: cooldownEndsAtTs,  // monotonic — stripped
+              carryWood: "0",
+              carryIron: "0",
+              carryWheat: "0",
+              carryFish: "0",
+            },
+            effectiveRegion: 1,
+          },
+          activeMission: { active: false, action: 0, startRegion: 1, targetRegion: 1 },
+        },
+      ],
+    });
+
+    // First commit — establishes clanView + worldSnapshot at tick 1.
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 1,
+          world: { currentTick: 1 },
+          clans: [makeClanView(100)],
+        },
+      },
+    );
+
+    const clansAfterFirst = tables.worldSnapshot?.[0]?.clans;
+
+    // Second commit — tick advances to 2, but only cooldownEndsAtTs/lastMissionNonce
+    // change on the clansman (monotonic, stripped by stableClansman).
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 2,
+          world: { currentTick: 2 },
+          clans: [makeClanView(101)],
+        },
+      },
+    );
+
+    // Per PR #402 codex P1: `tick` is intentionally included in the delta-check
+    // so the worldSnapshot tick advances for downstream readers (useCurrentWorldTick,
+    // WorldMap bandit-resolution, VaultTab T-label). Therefore tick is now 2.
+    expect(tables.worldSnapshot?.[0]?.tick).toBe(2);
+    // But the clans payload is stable — stableClansman strips the monotonic
+    // fields, so the actual clansman content the WorldMap reads is unchanged.
+    expect(tables.worldSnapshot?.[0]?.clans).toEqual(clansAfterFirst);
   });
 });

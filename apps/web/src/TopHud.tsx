@@ -33,7 +33,8 @@ function useBanditWarning(liveTick: number, bandit: SnapshotBandit | null): { ac
 }
 
 export function TopHud({ liveTick }: { liveTick: number }) {
-  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const clock = useQuery(api.getTickClock.getTickClock);
+  const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
   const tickCountdownAnchorRef = useRef<TickCountdownAnchor>({
     tick: liveTick,
     startedAtMs: Date.now(),
@@ -43,25 +44,27 @@ export function TopHud({ liveTick }: { liveTick: number }) {
 
   useEffect(() => {
     if (tickCountdownAnchorRef.current.tick !== liveTick) {
-      const epoch = snapshot?.tickEpoch;
-      const canUseSnapshotEpoch =
-        snapshot?.tick === liveTick &&
+      const epoch = clock
+        ? { startedAt: clock.tickEpochStartedAt, durationMs: clock.tickEpochDurationMs }
+        : undefined;
+      const canUseClockEpoch =
+        clock?.tick === liveTick &&
         epoch &&
         typeof epoch.startedAt === 'number' &&
         typeof epoch.durationMs === 'number' &&
         epoch.durationMs > 0;
       tickCountdownAnchorRef.current = {
         tick: liveTick,
-        startedAtMs: canUseSnapshotEpoch
+        startedAtMs: canUseClockEpoch
           ? epoch.startedAt < 10_000_000_000
             ? epoch.startedAt * 1000
             : epoch.startedAt
           : Date.now(),
-        durationMs: canUseSnapshotEpoch ? epoch.durationMs : FALLBACK_TICK_DURATION_MS,
+        durationMs: canUseClockEpoch ? epoch.durationMs : FALLBACK_TICK_DURATION_MS,
       };
     }
     setNowMs(Date.now());
-  }, [liveTick, snapshot?.tick, snapshot?.tickEpoch]);
+  }, [liveTick, clock?.tick, clock?.tickEpochStartedAt, clock?.tickEpochDurationMs]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -69,16 +72,15 @@ export function TopHud({ liveTick }: { liveTick: number }) {
   }, []);
 
   const { currentSeasonNumber, seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick } = useMemo(() => {
-    // getSnapshot returns persisted chain season fields when present and
-    // derives only legacy missing fields server-side.
+    // Season fields sourced from tickClock (issue #333) — was getSnapshot pre-split.
     return {
-      currentSeasonNumber: typeof snapshot?.currentSeasonNumber === 'number' ? snapshot.currentSeasonNumber : null,
-      seasonStartTick: typeof snapshot?.seasonStartTick === 'number' ? snapshot.seasonStartTick : null,
-      seasonEndTick: typeof snapshot?.seasonEndTick === 'number' ? snapshot.seasonEndTick : null,
-      winterActive: snapshot?.winterActive === true,
-      winterStartsAtTick: typeof snapshot?.winterStartsAtTick === 'number' ? snapshot.winterStartsAtTick : null,
+      currentSeasonNumber: typeof clock?.currentSeasonNumber === 'number' ? clock.currentSeasonNumber : null,
+      seasonStartTick: typeof clock?.seasonStartTick === 'number' ? clock.seasonStartTick : null,
+      seasonEndTick: typeof clock?.seasonEndTick === 'number' ? clock.seasonEndTick : null,
+      winterActive: clock?.winterActive === true,
+      winterStartsAtTick: typeof clock?.winterStartsAtTick === 'number' ? clock.winterStartsAtTick : null,
     };
-  }, [snapshot]);
+  }, [clock]);
 
   // Season progress bar: 0..1
   const seasonProgress = useMemo(() => {
@@ -101,8 +103,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
     return winterStartsAtTick - liveTick <= 20 && winterStartsAtTick > liveTick;
   }, [winterActive, winterStartsAtTick, liveTick]);
 
-  const snapshotBandit = snapshot?.bandit ?? null;
-  const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick, snapshotBandit);
+  const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick, liveSnapshot?.bandit ?? null);
   const tickCountdown = useMemo(() => {
     const { startedAtMs, durationMs } = tickCountdownAnchorRef.current;
     const elapsed = Math.max(0, nowMs - startedAtMs);
@@ -111,7 +112,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
       remainingPct: Math.max(0, Math.min(100, (1 - progress) * 100)),
       durationMs,
     };
-  }, [liveTick, nowMs, snapshot?.tick, snapshot?.tickEpoch]);
+  }, [liveTick, nowMs, clock?.tick, clock?.tickEpochStartedAt, clock?.tickEpochDurationMs]);
 
   // Bar fill color: green → amber → red as season ages
   const barColor = seasonProgress < 0.5

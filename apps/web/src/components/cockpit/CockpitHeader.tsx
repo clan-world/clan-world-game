@@ -12,10 +12,13 @@ function useMemoryWipeCountdown(): {
   ticksUntilWipe: number;
   intervalTicks: number;
 } {
+  const clock = useQuery(api.getTickClock.getTickClock);
   const snapshot = useQuery(api.getSnapshot.getSnapshot);
-  const tick = typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
-    ? snapshot.tick
-    : 0;
+  const tick = typeof clock?.tick === 'number' && Number.isFinite(clock.tick)
+    ? clock.tick
+    : typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
+      ? snapshot.tick
+      : 0;
   const remainder = tick % MEMORY_WIPE_INTERVAL_TICKS;
   const ticksUntilWipe = remainder === 0
     ? MEMORY_WIPE_INTERVAL_TICKS

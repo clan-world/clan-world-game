@@ -1230,6 +1230,7 @@ export function WorldMap() {
   const seenCombatEventKeysRef = useRef<Set<string>>(new Set());
   const combatEventsInitializedRef = useRef(false);
   const liveTickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
+  const tickClockEpochRef = useRef<{ tick: number; startedAt: number; durationMs: number } | null>(null);
   const liveTickRef = useRef(0);
 
   // Zone-pulse ticker (visual heartbeat for clan zone halos).
@@ -1322,6 +1323,9 @@ export function WorldMap() {
 
   const logs = useAgentLogs();
   const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
+  // Lightweight tick-only subscription (~50 bytes/tick). Invalidates every tick
+  // so WorldMap always has a fresh tick counter without pulling 40KB of world data.
+  const tickClock = useQuery(api.getTickClock.getTickClock);
   // Cache the snapshot in localStorage so iOS Safari (and other browsers that
   // pause background tabs) can render the last-known world state instantly on
   // PWA return — instead of flashing the "no chain data yet" placeholder
@@ -1336,13 +1340,14 @@ export function WorldMap() {
   const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
   const rawChainEvents = useQuery(api.events.getRecentChainEvents);
 
-  // Derived live tick counter — the worldSnapshot.tick field is currently
-  // unwritten by the orchestrator script (it only writes to agentLogs), so
-  // we surface a moving counter by deriving from log count. Floors at the
-  // snapshot value so we never go BACKWARDS if the schema is wired later.
-  const liveTick = useMemo(() => {
-    return Math.max(snapshot?.tick ?? 0, logs.length);
-  }, [logs, snapshot?.tick]);
+  // Derived live tick counter — prefer tickClock (cheap, always fresh) over
+  // snapshot.tick (only updates when world data changes after delta-check).
+  // Fall back to snapshot.tick for continuity during tickClock cold-start.
+  // Floor against log count so we never go BACKWARDS.
+  const liveTick = useMemo(
+    () => Math.max(tickClock?.tick ?? snapshot?.tick ?? 0, logs.length),
+    [logs, tickClock?.tick, snapshot?.tick],
+  );
   const liveBandit = snapshot?.bandit ?? null;
   const visibleBandit = DEMO_MODE
     ? {
@@ -1375,6 +1380,16 @@ export function WorldMap() {
       liveTickClockRef.current = { tick: liveTick, seenAtMs: Date.now() };
     }
   }, [liveTick]);
+
+  useEffect(() => {
+    if (tickClock) {
+      tickClockEpochRef.current = {
+        tick: tickClock.tick,
+        startedAt: tickClock.tickEpochStartedAt,
+        durationMs: tickClock.tickEpochDurationMs,
+      };
+    }
+  }, [tickClock]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -1475,9 +1490,12 @@ export function WorldMap() {
   }, [snapshot]);
 
   function getDayNightProgress() {
+    const clockEpoch = tickClockEpochRef.current;
     const snap = snapshotRef.current;
-    const tick = snap?.tick;
-    const epoch = snap?.tickEpoch;
+    const tick = clockEpoch?.tick ?? snap?.tick;
+    const epoch = clockEpoch
+      ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+      : snap?.tickEpoch;
     const hasEpoch = !!epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0;
     if (typeof tick === 'number' && Number.isFinite(tick) && (tick > 0 || hasEpoch)) {
       let subTickProgress = 0;
@@ -3021,12 +3039,16 @@ export function WorldMap() {
   }
 
   function currentTickFloat() {
+    const clockEpoch = tickClockEpochRef.current;
     const snap = snapshotRef.current;
-    const tick = typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current;
+    const tick = clockEpoch?.tick ?? (typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current);
+    // World-paused short-circuit (dev): freeze tick float when chain pause flag set.
     if (snap?.worldPaused === true) {
       return tick;
     }
-    const epoch = snap?.tickEpoch;
+    const epoch = clockEpoch
+      ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+      : snap?.tickEpoch;
     if (!epoch || typeof epoch.startedAt !== 'number' || typeof epoch.durationMs !== 'number' || epoch.durationMs <= 0) {
       return tick;
     }
@@ -4562,13 +4584,16 @@ export function WorldMap() {
   }
 
   function getMsUntilTickClose() {
+    const clockEpoch = tickClockEpochRef.current;
     const snap = snapshotRef.current;
-    const epoch = snap?.tickEpoch;
+    const epoch = clockEpoch
+      ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+      : snap?.tickEpoch;
     const durationMs =
       epoch && typeof epoch.durationMs === 'number' && epoch.durationMs > 0
         ? epoch.durationMs
         : FALLBACK_DAY_TICK_MS;
-    if (epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0 && snap?.tick === liveTickRef.current) {
+    if (epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0 && (clockEpoch?.tick ?? snap?.tick) === liveTickRef.current) {
       const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
       return Math.max(0, durationMs - (Date.now() - startedAtMs));
     }
@@ -4589,8 +4614,11 @@ export function WorldMap() {
       // only triggers post-close (line below). Detect fallback mode and
       // trigger as soon as we enter the pre-attack tick. Vignette occupies the
       // first 4s of the pre-attack tick instead of the last 4s; visually similar.
+      const clockEpoch = tickClockEpochRef.current;
       const snap = snapshotRef.current;
-      const epoch = snap?.tickEpoch;
+      const epoch = clockEpoch
+        ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+        : snap?.tickEpoch;
       const havePreciseEpoch =
         epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0
         && typeof epoch.durationMs === 'number' && epoch.durationMs > 0;
