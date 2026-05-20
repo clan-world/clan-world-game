@@ -8,11 +8,10 @@
  *   - `getEventTickerFeed`: limit clamping (1..30), default 10, ordering.
  *   - `getBattleEvents`: tickWindow clamping (1..20), event-name filtering,
  *     fallback when tickClock is empty, hard cap, cap-before-filter hazard
- *     (PR #505 super-swarm MUST-fix-1), and dead-letter exclusion for events
- *     without a tick arg at the contract level (PR #505 super-swarm
- *     MUST-fix-2).
+ *     (issue #336 MUST-fix-1), and dead-letter exclusion for events
+ *     without a tick arg at the contract level (issue #336 MUST-fix-2).
  *   - `getRecentChainEvents`: back-compat wrapper still returns last 60 with
- *     correct ordering (PR #505 super-swarm SHOULD-fix-2).
+ *     correct ordering (issue #336 SHOULD-fix-2).
  */
 
 import { describe, expect, it } from "vitest";
@@ -118,6 +117,16 @@ function createDb(initial: Record<string, Row[]> = {}) {
   };
 
   return { tables, db };
+}
+
+// Tiny helper to narrow an `unknown` field to `number`. We use this instead
+// of `as number` casts so a fixture regression (tick accidentally undefined)
+// fails the test instead of silently coercing through the type system.
+function asNumber(value: unknown, label: string): number {
+  if (typeof value !== "number") {
+    throw new Error(`expected ${label} to be a number, got ${typeof value}`);
+  }
+  return value;
 }
 
 // Tiny helper to invoke a Convex query's handler against our mock ctx.
@@ -310,7 +319,7 @@ describe("getBattleEvents", () => {
     expect(result[0]!.tick).toBe(18);
   });
 
-  it("tickWindow=3 includes exactly 3 ticks (super-swarm SHOULD-fix-1)", async () => {
+  it("tickWindow=3 includes exactly 3 ticks (issue #336 SHOULD-fix-1)", async () => {
     // With current tick=10 and tickWindow=3, the contract says the window
     // covers ticks 8, 9, 10 — three ticks inclusive of the current one.
     // The pre-fix implementation included 4 (ticks 7..10).
@@ -328,7 +337,7 @@ describe("getBattleEvents", () => {
       { db },
       { tickWindow: 3 },
     );
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+    expect(result.map((r) => asNumber(r.tick, "r.tick")).sort((a, b) => a - b)).toEqual([
       8, 9, 10,
     ]);
   });
@@ -348,7 +357,7 @@ describe("getBattleEvents", () => {
       { db },
       {},
     );
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+    expect(result.map((r) => asNumber(r.tick, "r.tick")).sort((a, b) => a - b)).toEqual([
       8, 10,
     ]);
   });
@@ -368,7 +377,7 @@ describe("getBattleEvents", () => {
       { db },
       { tickWindow: 1000 },
     );
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+    expect(result.map((r) => asNumber(r.tick, "r.tick")).sort((a, b) => a - b)).toEqual([
       81, 100,
     ]);
   });
@@ -389,7 +398,7 @@ describe("getBattleEvents", () => {
       { tickWindow: 0 },
     );
     // tickWindow=1 → minTick = 10, only the current tick included.
-    expect(result.map((r) => r.tick as number).sort((a, b) => a - b)).toEqual([
+    expect(result.map((r) => asNumber(r.tick, "r.tick")).sort((a, b) => a - b)).toEqual([
       10,
     ]);
   });
@@ -445,7 +454,7 @@ describe("getBattleEvents", () => {
     expect(BATTLE_EVENT_PER_NAME_TAKE).toBeGreaterThanOrEqual(1);
   });
 
-  // ──────────────────── PR #505 super-swarm regression tests ───────────────
+  // ──────────────────── issue #336 regression tests ────────────────────────
 
   it("returns battle event even when 60+ non-battle events precede it in the window (MUST-fix-1)", async () => {
     // Repro of the cap-before-filter hazard: the pre-fix implementation
@@ -534,7 +543,7 @@ describe("getBattleEvents", () => {
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("getRecentChainEvents (back-compat)", () => {
-  it("returns the last 60 events newest-first (PR #505 super-swarm SHOULD-fix-2)", async () => {
+  it("returns the last 60 events newest-first (issue #336 SHOULD-fix-2)", async () => {
     const events = Array.from({ length: 100 }, () =>
       evt("MissionAssigned", 1),
     );

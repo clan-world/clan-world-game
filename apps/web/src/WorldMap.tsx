@@ -1342,8 +1342,14 @@ export function WorldMap() {
   // battle-cluster events within the last 3 ticks, dropping ~25% of the
   // pre-split chainEvents egress that came from re-pushing 60 events per
   // every-event insert. The WorldMap consumer only reacts to
-  // `BanditAttackResolved` (see the combat-vignette effect ~line 4983).
-  const rawChainEvents = useQuery(api.events.getBattleEvents, { tickWindow: 3 }) as ChainEvent[] | undefined;
+  // `BanditAttackResolved` (see the combat-vignette effect below), which
+  // currently only fires in DEMO_MODE — so we skip the subscription entirely
+  // in live mode to avoid an unused reactive query (Convex `'skip'` short-
+  // circuits both the WS push and the egress).
+  const rawChainEvents = useQuery(
+    api.events.getBattleEvents,
+    DEMO_MODE ? { tickWindow: 3 } : 'skip',
+  );
 
   // Derived live tick counter — prefer tickClock (cheap, always fresh) over
   // snapshot.tick (only updates when world data changes after delta-check).
