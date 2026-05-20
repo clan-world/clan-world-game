@@ -25,8 +25,10 @@
  */
 
 import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import type { GenericMutationCtx } from "convex/server";
+import { v } from "convex/values";
 import {
   PURGE_BATCH_SIZE,
   RETENTION_HOURS,
@@ -70,11 +72,19 @@ export async function purgeTimeWindowTable(
     .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
     .take(PURGE_BATCH_SIZE);
 
-  await Promise.all(stale.map((row) => ctx.db.delete(row._id)));
+  // Sequential delete loop — Convex enforces a per-function concurrent I/O
+  // cap (~1000); Promise.all over PURGE_BATCH_SIZE=5000 deletes would blow
+  // through that and fail the mutation. `deleted` is incremented post-await
+  // so it accurately reflects rows actually purged even on partial failure.
+  let deleted = 0;
+  for (const row of stale) {
+    await ctx.db.delete(row._id);
+    deleted += 1;
+  }
 
   return {
     table,
-    deleted: stale.length,
+    deleted,
     truncated: stale.length === PURGE_BATCH_SIZE,
   };
 }
@@ -116,28 +126,32 @@ export async function purgeGroupedPreserveLatest<T extends GroupedTable>(
     .take(PURGE_BATCH_SIZE);
 
   // Cache "latest row per group" lookups so we don't re-query for every
-  // stale row from the same group.
-  const latestByGroup = new Map<string, { _id: string; _creationTime: number } | null>();
+  // stale row from the same group. We cache the PROMISE (not the resolved
+  // value) so that even if callers ever process stale rows concurrently
+  // (today they don't — the loop below is sequential — but defense in
+  // depth), the second caller awaits the in-flight query rather than
+  // launching a duplicate.
+  const latestByGroup = new Map<string, Promise<{ _id: string; _creationTime: number } | null>>();
 
-  async function latestFor(groupKey: number | null) {
+  function latestFor(groupKey: number | null) {
     const cacheKey = groupKey === null ? "__singleton__" : String(groupKey);
-    if (latestByGroup.has(cacheKey)) return latestByGroup.get(cacheKey)!;
+    const cached = latestByGroup.get(cacheKey);
+    if (cached) return cached;
 
-    let latest: { _id: string; _creationTime: number } | null;
-    if (indexName && indexField && groupKey !== null) {
-      latest = (await (ctx.db.query(table) as any)
-        .withIndex(indexName, (q: any) => q.eq(indexField, groupKey))
-        .order("desc")
-        .first()) as { _id: string; _creationTime: number } | null;
-    } else {
-      // Singleton-style: find the newest row in the whole table.
-      latest = (await (ctx.db.query(table) as any)
-        .withIndex("by_creation_time")
-        .order("desc")
-        .first()) as { _id: string; _creationTime: number } | null;
-    }
-    latestByGroup.set(cacheKey, latest);
-    return latest;
+    const lookup: Promise<{ _id: string; _creationTime: number } | null> =
+      indexName && indexField && groupKey !== null
+        ? ((ctx.db.query(table) as any)
+            .withIndex(indexName, (q: any) => q.eq(indexField, groupKey))
+            .order("desc")
+            .first() as Promise<{ _id: string; _creationTime: number } | null>)
+        : // Singleton-style: find the newest row in the whole table.
+          ((ctx.db.query(table) as any)
+            .withIndex("by_creation_time")
+            .order("desc")
+            .first() as Promise<{ _id: string; _creationTime: number } | null>);
+
+    latestByGroup.set(cacheKey, lookup);
+    return lookup;
   }
 
   let deleted = 0;
@@ -160,84 +174,158 @@ export async function purgeGroupedPreserveLatest<T extends GroupedTable>(
 }
 
 /**
- * Hourly purge entry point. Walks every retention-managed table, emits
- * per-table summary logs, and warns when any per-table purge truncates
- * (signal that retention isn't keeping up — see #337 acceptance criteria).
+ * Per-grouped-table arg packs. Centralized so the orchestrator and the
+ * `purgeOneGroupedTable` worker agree on the index/groupKey shape for each
+ * preserve-latest table.
+ */
+type GroupedTableConfig = {
+  table: GroupedTable;
+  indexName: string | null;
+  indexField: string | null;
+  groupKeyOf: (row: any) => number | null;
+};
+
+const GROUPED_TABLE_CONFIGS: readonly GroupedTableConfig[] = [
+  {
+    table: "clanView",
+    indexName: "by_clanId",
+    indexField: "clanId",
+    groupKeyOf: (row) => (typeof row.clanId === "number" ? row.clanId : null),
+  },
+  {
+    table: "banditView",
+    indexName: "by_bandit_id",
+    indexField: "id",
+    groupKeyOf: (row) => (typeof row.id === "number" ? row.id : null),
+  },
+  {
+    table: "marketState",
+    indexName: null,
+    indexField: null,
+    groupKeyOf: () => null,
+  },
+  {
+    table: "worldSnapshot",
+    indexName: null,
+    indexField: null,
+    groupKeyOf: () => null,
+  },
+] as const;
+
+function logPurgeResult(r: PurgeResult): void {
+  console.log(
+    `[retention] purged ${r.deleted} rows from ${r.table}` +
+      (r.truncated ? " (truncated=true; more pending)" : ""),
+  );
+  if (r.truncated) {
+    console.warn(
+      `[retention] table ${r.table} purge truncated at batch size ` +
+        `${PURGE_BATCH_SIZE}; backlog will be drained on next hourly run`,
+    );
+  }
+}
+
+/**
+ * Per-table worker: purge ONE time-window table. Exposed as an internal
+ * mutation so the orchestrator can schedule one of these per table — each
+ * scheduled call runs in its own mutation transaction with its own op
+ * budget, preventing cumulative-cap failures across tables.
+ */
+export const purgeOneTimeWindowTable = internalMutation({
+  args: {
+    table: v.string(),
+    cutoff: v.number(),
+  },
+  handler: async (ctx, { table, cutoff }) => {
+    if (!(TIME_WINDOW_TABLES as readonly string[]).includes(table)) {
+      throw new Error(
+        `[retention] purgeOneTimeWindowTable: unknown table "${table}"`,
+      );
+    }
+    const result = await purgeTimeWindowTable(
+      ctx,
+      table as TimeWindowTable,
+      cutoff,
+    );
+    logPurgeResult(result);
+    return result;
+  },
+});
+
+/**
+ * Per-table worker: purge ONE preserve-latest grouped table. Same isolation
+ * rationale as `purgeOneTimeWindowTable`.
+ */
+export const purgeOneGroupedTable = internalMutation({
+  args: {
+    table: v.union(
+      v.literal("clanView"),
+      v.literal("banditView"),
+      v.literal("marketState"),
+      v.literal("worldSnapshot"),
+    ),
+    cutoff: v.number(),
+  },
+  handler: async (ctx, { table, cutoff }) => {
+    const config = GROUPED_TABLE_CONFIGS.find((c) => c.table === table);
+    if (!config) {
+      throw new Error(
+        `[retention] purgeOneGroupedTable: unknown table "${table}"`,
+      );
+    }
+    const result = await purgeGroupedPreserveLatest(ctx, {
+      table: config.table,
+      cutoff,
+      indexName: config.indexName,
+      indexField: config.indexField,
+      groupKeyOf: config.groupKeyOf,
+    });
+    logPurgeResult(result);
+    return result;
+  },
+});
+
+/**
+ * Hourly purge orchestrator. Schedules one independent mutation per
+ * retention-managed table so each table's purge gets its own per-mutation
+ * op budget (Convex caps a single mutation at ~16k document ops). With 10+
+ * tables × PURGE_BATCH_SIZE=5000, running them all inline could exceed the
+ * cap and silently skip retention work; the scheduler split prevents that.
+ *
+ * Per-table observability lives inside each per-table worker (see
+ * `purgeOneTimeWindowTable` / `purgeOneGroupedTable`). The orchestrator
+ * emits a single line stating how many tables were scheduled.
  */
 export const purgeStaleData = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
     const cutoff = now - RETENTION_HOURS * 60 * 60 * 1000;
-    const results: PurgeResult[] = [];
+    let scheduled = 0;
 
-    // Time-window tables: pure age-based purge.
     for (const table of TIME_WINDOW_TABLES) {
-      const result = await purgeTimeWindowTable(ctx, table, cutoff);
-      results.push(result);
-    }
-
-    // Preserve-latest tables: keep newest-per-group even if it's old.
-    results.push(
-      await purgeGroupedPreserveLatest(ctx, {
-        table: "clanView",
-        cutoff,
-        indexName: "by_clanId",
-        indexField: "clanId",
-        groupKeyOf: (row) => (typeof row.clanId === "number" ? row.clanId : null),
-      }),
-    );
-    results.push(
-      await purgeGroupedPreserveLatest(ctx, {
-        table: "banditView",
-        cutoff,
-        indexName: "by_bandit_id",
-        indexField: "id",
-        groupKeyOf: (row) => (typeof row.id === "number" ? row.id : null),
-      }),
-    );
-    results.push(
-      await purgeGroupedPreserveLatest(ctx, {
-        table: "marketState",
-        cutoff,
-        indexName: null,
-        indexField: null,
-        groupKeyOf: () => null,
-      }),
-    );
-    results.push(
-      await purgeGroupedPreserveLatest(ctx, {
-        table: "worldSnapshot",
-        cutoff,
-        indexName: null,
-        indexField: null,
-        groupKeyOf: () => null,
-      }),
-    );
-
-    // Observability: one log line per table + a summary. `truncated=true`
-    // is the "retention not keeping up" signal — it means the hourly purge
-    // couldn't drain the stale set in one mutation. Dashboard alerts can
-    // grep for "truncated=true".
-    for (const r of results) {
-      console.log(
-        `[retention] purged ${r.deleted} rows from ${r.table}` +
-          (r.truncated ? " (truncated=true; more pending)" : ""),
+      await ctx.scheduler.runAfter(
+        0,
+        internal.retention.purgeOneTimeWindowTable,
+        { table, cutoff },
       );
-      if (r.truncated) {
-        console.warn(
-          `[retention] table ${r.table} purge truncated at batch size ` +
-            `${PURGE_BATCH_SIZE}; backlog will be drained on next hourly run`,
-        );
-      }
+      scheduled += 1;
     }
 
-    const totalDeleted = results.reduce((sum, r) => sum + r.deleted, 0);
+    for (const config of GROUPED_TABLE_CONFIGS) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.retention.purgeOneGroupedTable,
+        { table: config.table, cutoff },
+      );
+      scheduled += 1;
+    }
+
     console.log(
-      `[retention] purge run complete: deleted=${totalDeleted}` +
-        ` across ${results.length} tables (cutoff=${new Date(cutoff).toISOString()})`,
+      `[retention] orchestrator scheduled ${scheduled} per-table purges ` +
+        `(cutoff=${new Date(cutoff).toISOString()})`,
     );
 
-    return { results, totalDeleted, cutoff };
+    return { scheduled, cutoff };
   },
 });

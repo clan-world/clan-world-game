@@ -14,9 +14,12 @@
  *   3. Assert which rows survived.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import {
   purgeGroupedPreserveLatest,
+  purgeOneGroupedTable,
+  purgeOneTimeWindowTable,
   purgeStaleData,
   purgeTimeWindowTable,
 } from "./retention";
@@ -168,6 +171,48 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
+
+// Restore console spies so they don't leak into other test files / later
+// `vi.spyOn(console, ...)` calls. Without this, Convex's global `restoreMocks`
+// is not configured and the mocks would persist file-to-file.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Mock scheduler for purgeStaleData (orchestrator) tests
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a mock `ctx.scheduler` that runs each scheduled mutation
+ * synchronously by dispatching to the per-table worker's `_handler`.
+ *
+ * Convex's `internal.retention.*` resolves to a Proxy at runtime; calling
+ * `getFunctionName(ref)` on it returns the string `"retention:purgeOne…"`.
+ * We use that name to route to the correct worker handle.
+ *
+ * The scheduler mock runs jobs SYNCHRONOUSLY (still awaits each) so the
+ * orchestrator tests can assert end-to-end purge behavior — the same
+ * observable rows-deleted outcome as if the real scheduler ran the workers.
+ */
+function createSchedulerMock(db: any) {
+  const calls: Array<{ name: string; args: any }> = [];
+  const scheduler = {
+    async runAfter(_delay: number, ref: any, args: any) {
+      const name = getFunctionName(ref);
+      calls.push({ name, args });
+
+      if (name === "retention:purgeOneTimeWindowTable") {
+        await (purgeOneTimeWindowTable as any)._handler({ db, scheduler }, args);
+      } else if (name === "retention:purgeOneGroupedTable") {
+        await (purgeOneGroupedTable as any)._handler({ db, scheduler }, args);
+      } else {
+        throw new Error(`mock scheduler got unknown function ref: ${name}`);
+      }
+    },
+  };
+  return { scheduler, calls };
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // purgeTimeWindowTable — pure age-based delete
@@ -467,6 +512,80 @@ describe("purgeGroupedPreserveLatest", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Per-table workers (purgeOneTimeWindowTable / purgeOneGroupedTable)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("purgeOneTimeWindowTable (per-table worker)", () => {
+  it("drains a single time-window table and returns its PurgeResult", async () => {
+    const { db, tables } = createDb({
+      chainEvents: [
+        ...rows("chainEvents", [old(10), old(5), old(1)]),
+        ...rows("chainEvents", [fresh(1), fresh(5)]),
+      ],
+    });
+
+    const result = await (purgeOneTimeWindowTable as any)._handler(
+      { db },
+      { table: "chainEvents", cutoff: CUTOFF },
+    );
+
+    expect(result.deleted).toBe(3);
+    expect(result.truncated).toBe(false);
+    expect(result.table).toBe("chainEvents");
+    expect(tables.chainEvents).toHaveLength(2);
+  });
+
+  it("rejects an unknown table name", async () => {
+    const { db } = createDb();
+    await expect(
+      (purgeOneTimeWindowTable as any)._handler(
+        { db },
+        { table: "notATable", cutoff: CUTOFF },
+      ),
+    ).rejects.toThrow(/unknown table/);
+  });
+});
+
+describe("purgeOneGroupedTable (per-table worker)", () => {
+  it("purges clanView and preserves latest per clan", async () => {
+    const seed: Row[] = [
+      { _id: "clanView:0", _creationTime: old(20), clanId: 1 },
+      { _id: "clanView:1", _creationTime: old(10), clanId: 1 },
+      { _id: "clanView:2", _creationTime: fresh(5), clanId: 1 },
+      { _id: "clanView:3", _creationTime: old(20), clanId: 2 }, // sole row for clan 2
+    ];
+    const { db, tables } = createDb({ clanView: seed });
+
+    const result = await (purgeOneGroupedTable as any)._handler(
+      { db },
+      { table: "clanView", cutoff: CUTOFF },
+    );
+
+    expect(result.table).toBe("clanView");
+    expect(result.deleted).toBe(2); // both old clan-1 rows; clan-2 sole row preserved
+    expect(tables.clanView).toHaveLength(2);
+    expect(tables.clanView!.find((r) => r._id === "clanView:3")).toBeTruthy();
+  });
+
+  it("purges worldSnapshot singleton-style", async () => {
+    const seed: Row[] = [
+      { _id: "worldSnapshot:0", _creationTime: old(30), tick: 1 },
+      { _id: "worldSnapshot:1", _creationTime: old(20), tick: 2 },
+      { _id: "worldSnapshot:2", _creationTime: old(10), tick: 3 }, // latest
+    ];
+    const { db, tables } = createDb({ worldSnapshot: seed });
+
+    await (purgeOneGroupedTable as any)._handler(
+      { db },
+      { table: "worldSnapshot", cutoff: CUTOFF },
+    );
+
+    expect(tables.worldSnapshot).toHaveLength(1);
+    expect(tables.worldSnapshot![0]!._id).toBe("worldSnapshot:2");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // purgeStaleData — full cron entry point, all tables in one run
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -556,8 +675,32 @@ describe("purgeStaleData (cron entry)", () => {
       };
 
       const { db, tables } = createDb(timeWindowSeed);
+      const { scheduler, calls } = createSchedulerMock(db);
 
-      const out = await (purgeStaleData as any)._handler({ db });
+      const out = await (purgeStaleData as any)._handler({ db, scheduler });
+
+      // Orchestrator scheduled one mutation per retention-managed table.
+      expect(out.scheduled).toBe(TIME_WINDOW_TABLES.length + 4);
+      expect(out.cutoff).toBe(CUTOFF);
+      expect(calls).toHaveLength(TIME_WINDOW_TABLES.length + 4);
+      // All time-window calls came first, in TIME_WINDOW_TABLES order.
+      for (let i = 0; i < TIME_WINDOW_TABLES.length; i++) {
+        expect(calls[i]!.name).toBe("retention:purgeOneTimeWindowTable");
+        expect(calls[i]!.args.table).toBe(TIME_WINDOW_TABLES[i]);
+        expect(calls[i]!.args.cutoff).toBe(CUTOFF);
+      }
+      // Grouped calls follow in [clanView, banditView, marketState, worldSnapshot] order.
+      const groupedCalls = calls.slice(TIME_WINDOW_TABLES.length);
+      expect(groupedCalls.map((c) => c.args.table)).toEqual([
+        "clanView",
+        "banditView",
+        "marketState",
+        "worldSnapshot",
+      ]);
+      for (const c of groupedCalls) {
+        expect(c.name).toBe("retention:purgeOneGroupedTable");
+        expect(c.args.cutoff).toBe(CUTOFF);
+      }
 
       // Time-window tables: only 3 fresh remain each.
       for (const t of TIME_WINDOW_TABLES) {
@@ -589,11 +732,6 @@ describe("purgeStaleData (cron entry)", () => {
       // worldSnapshot: same singleton semantics as marketState.
       expect(tables.worldSnapshot).toHaveLength(1);
       expect(tables.worldSnapshot![0]!._id).toBe("worldSnapshot:2");
-
-      // Return value: totals are sane.
-      expect(out.totalDeleted).toBeGreaterThan(0);
-      expect(out.cutoff).toBe(CUTOFF);
-      expect(out.results).toHaveLength(TIME_WINDOW_TABLES.length + 4);
     } finally {
       nowSpy.mockRestore();
     }
@@ -634,7 +772,8 @@ describe("purgeStaleData (cron entry)", () => {
         ],
       });
 
-      await (purgeStaleData as any)._handler({ db });
+      const { scheduler } = createSchedulerMock(db);
+      await (purgeStaleData as any)._handler({ db, scheduler });
 
       // All time-window tables: empty (no fresh, no preservation guarantee).
       expect(tables.chainEvents).toHaveLength(0);
