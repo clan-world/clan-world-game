@@ -6,18 +6,19 @@
  *  1. **Time-window** (`purgeTimeWindowTable`): keep last `RETENTION_HOURS`
  *     of rows; delete everything older. Used for append-only history
  *     (chainEvents, agentLogs, whispers, orchEvents, humanSteeringMessages,
- *     pricePoint).
+ *     pricePoint, tickHistory, memoryEvents, goldTxReceipts, inftTransfers).
  *
  *  2. **Preserve-latest-per-group** (`purgeGroupedPreserveLatest`): keep
  *     last `RETENTION_HOURS` of rows AND always preserve the newest row
  *     for each group key, even if it's older than the cutoff. This is the
- *     resume-from-pause guarantee — clanView/banditView/marketState rows
+ *     resume-from-pause guarantee — clanView/banditView/marketState/
+ *     worldSnapshot rows
  *     are the only source of truth for "what's the current world state?"
  *     after a long pause, so we must never delete the last row for a clan
- *     / bandit / market.
+ *     / bandit / market / world snapshot.
  *
  * Cron registration lives in `crons.ts`. Public entry is
- * `purgeStaleData` (internalMutation) — run daily at 04:00 UTC.
+ * `purgeStaleData` (internalMutation) — run hourly.
  *
  * Filtering uses Convex's implicit `by_creation_time` index via
  * `q.field("_creationTime")`. No schema changes required.
@@ -35,15 +36,15 @@ import {
 
 type MutationCtx = GenericMutationCtx<DataModel>;
 
-type GroupedTable = "clanView" | "banditView" | "marketState";
+type GroupedTable = "clanView" | "banditView" | "marketState" | "worldSnapshot";
 type PurgeTable = TimeWindowTable | GroupedTable;
 
 interface PurgeResult {
   table: PurgeTable;
   deleted: number;
-  /** True if we hit `PURGE_BATCH_SIZE` of stale rows AND deleted them all
+  /** True if we hit `PURGE_BATCH_SIZE` of stale rows and deleted at least one
    *  — i.e. there are likely MORE stale rows that didn't fit in this
-   *  mutation's quota. The next nightly run mops them up. */
+   *  mutation's quota. The next hourly run mops them up. */
   truncated: boolean;
 }
 
@@ -109,7 +110,7 @@ export async function purgeGroupedPreserveLatest<T extends GroupedTable>(
   // a union — `q.lt("_creationTime", number)` then fails the union-narrowing
   // check (even though `_creationTime` is a `number` on every table). Cast
   // through `any` here; the runtime is fine, and the outer signature still
-  // restricts `T` to the three preserve-latest tables.
+  // restricts `T` to the preserve-latest tables.
   const stale = await (ctx.db.query(table) as any)
     .withIndex("by_creation_time", (q: any) => q.lt("_creationTime", cutoff))
     .take(PURGE_BATCH_SIZE);
@@ -140,28 +141,26 @@ export async function purgeGroupedPreserveLatest<T extends GroupedTable>(
   }
 
   let deleted = 0;
-  await Promise.all(
-    stale.map(async (row: any) => {
-      const groupKey = groupKeyOf(row);
-      const latest = await latestFor(groupKey);
-      // Preserve if this row IS the latest for its group, or no newer row
-      // exists for the group. Otherwise it's safe to delete.
-      if (!latest || latest._id === row._id) return;
-      if (latest._creationTime <= row._creationTime) return;
-      await ctx.db.delete(row._id);
-      deleted += 1;
-    }),
-  );
+  for (const row of stale) {
+    const groupKey = groupKeyOf(row);
+    const latest = await latestFor(groupKey);
+    // Preserve if this row IS the latest for its group, or no newer row
+    // exists for the group. Otherwise it's safe to delete.
+    if (!latest || latest._id === row._id) continue;
+    if (latest._creationTime <= row._creationTime) continue;
+    await ctx.db.delete(row._id);
+    deleted += 1;
+  }
 
   return {
     table,
     deleted,
-    truncated: stale.length === PURGE_BATCH_SIZE,
+    truncated: deleted > 0 && stale.length === PURGE_BATCH_SIZE,
   };
 }
 
 /**
- * Daily purge entry point. Walks every retention-managed table, emits
+ * Hourly purge entry point. Walks every retention-managed table, emits
  * per-table summary logs, and warns when any per-table purge truncates
  * (signal that retention isn't keeping up — see #337 acceptance criteria).
  */
@@ -206,9 +205,18 @@ export const purgeStaleData = internalMutation({
         groupKeyOf: () => null,
       }),
     );
+    results.push(
+      await purgeGroupedPreserveLatest(ctx, {
+        table: "worldSnapshot",
+        cutoff,
+        indexName: null,
+        indexField: null,
+        groupKeyOf: () => null,
+      }),
+    );
 
     // Observability: one log line per table + a summary. `truncated=true`
-    // is the "retention not keeping up" signal — it means the daily purge
+    // is the "retention not keeping up" signal — it means the hourly purge
     // couldn't drain the stale set in one mutation. Dashboard alerts can
     // grep for "truncated=true".
     for (const r of results) {
@@ -219,7 +227,7 @@ export const purgeStaleData = internalMutation({
       if (r.truncated) {
         console.warn(
           `[retention] table ${r.table} purge truncated at batch size ` +
-            `${PURGE_BATCH_SIZE}; backlog will be drained on next nightly run`,
+            `${PURGE_BATCH_SIZE}; backlog will be drained on next hourly run`,
         );
       }
     }

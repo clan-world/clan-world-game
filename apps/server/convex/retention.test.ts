@@ -20,7 +20,7 @@ import {
   purgeStaleData,
   purgeTimeWindowTable,
 } from "./retention";
-import { RETENTION_HOURS } from "./retention.config";
+import { RETENTION_HOURS, TIME_WINDOW_TABLES } from "./retention.config";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Mock Convex DB
@@ -422,6 +422,48 @@ describe("purgeGroupedPreserveLatest", () => {
       "marketState:2",
     ]);
   });
+
+  it("worldSnapshot (singleton): preserves only the most-recent row when all are old", async () => {
+    const seed: Row[] = [
+      { _id: "worldSnapshot:0", _creationTime: old(30), tick: 10 },
+      { _id: "worldSnapshot:1", _creationTime: old(20), tick: 11 },
+      { _id: "worldSnapshot:2", _creationTime: old(10), tick: 12 },
+    ];
+    const { db, tables } = createDb({ worldSnapshot: seed });
+
+    await purgeGroupedPreserveLatest({ db } as any, {
+      table: "worldSnapshot",
+      cutoff: CUTOFF,
+      indexName: null,
+      indexField: null,
+      groupKeyOf: () => null,
+    });
+
+    expect(tables.worldSnapshot).toHaveLength(1);
+    expect(tables.worldSnapshot![0]!._id).toBe("worldSnapshot:2");
+  });
+
+  it("does not report truncated when a full stale batch only contains preserved latest rows", async () => {
+    const { PURGE_BATCH_SIZE } = await import("./retention.config");
+    const seed = Array.from({ length: PURGE_BATCH_SIZE }, (_, i) => ({
+      _id: `clanView:${i}`,
+      _creationTime: old(10 + i / 100),
+      clanId: i,
+    }));
+    const { db, tables } = createDb({ clanView: seed });
+
+    const result = await purgeGroupedPreserveLatest({ db } as any, {
+      table: "clanView",
+      cutoff: CUTOFF,
+      indexName: "by_clanId",
+      indexField: "clanId",
+      groupKeyOf: (row) => row.clanId,
+    });
+
+    expect(result.deleted).toBe(0);
+    expect(result.truncated).toBe(false);
+    expect(tables.clanView).toHaveLength(PURGE_BATCH_SIZE);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -458,6 +500,22 @@ describe("purgeStaleData (cron entry)", () => {
           ...rows("pricePoint", [old(10), old(8), old(6), old(4), old(2)]),
           ...rows("pricePoint", [fresh(1), fresh(2), fresh(3)]),
         ],
+        tickHistory: [
+          ...rows("tickHistory", [old(10), old(8), old(6), old(4), old(2)]),
+          ...rows("tickHistory", [fresh(1), fresh(2), fresh(3)]),
+        ],
+        memoryEvents: [
+          ...rows("memoryEvents", [old(10), old(8), old(6), old(4), old(2)]),
+          ...rows("memoryEvents", [fresh(1), fresh(2), fresh(3)]),
+        ],
+        goldTxReceipts: [
+          ...rows("goldTxReceipts", [old(10), old(8), old(6), old(4), old(2)]),
+          ...rows("goldTxReceipts", [fresh(1), fresh(2), fresh(3)]),
+        ],
+        inftTransfers: [
+          ...rows("inftTransfers", [old(10), old(8), old(6), old(4), old(2)]),
+          ...rows("inftTransfers", [fresh(1), fresh(2), fresh(3)]),
+        ],
 
         // clanView: 2 clans, each with 3 old + 2 fresh.
         clanView: [
@@ -488,6 +546,13 @@ describe("purgeStaleData (cron entry)", () => {
           { _id: "marketState:1", _creationTime: old(10) },
           { _id: "marketState:2", _creationTime: fresh(5) },
         ],
+
+        // worldSnapshot: 2 old, 1 fresh.
+        worldSnapshot: [
+          { _id: "worldSnapshot:0", _creationTime: old(20), tick: 1 },
+          { _id: "worldSnapshot:1", _creationTime: old(10), tick: 2 },
+          { _id: "worldSnapshot:2", _creationTime: fresh(5), tick: 3 },
+        ],
       };
 
       const { db, tables } = createDb(timeWindowSeed);
@@ -495,14 +560,7 @@ describe("purgeStaleData (cron entry)", () => {
       const out = await (purgeStaleData as any)._handler({ db });
 
       // Time-window tables: only 3 fresh remain each.
-      for (const t of [
-        "chainEvents",
-        "agentLogs",
-        "whispers",
-        "orchEvents",
-        "humanSteeringMessages",
-        "pricePoint",
-      ]) {
+      for (const t of TIME_WINDOW_TABLES) {
         expect(tables[t]).toHaveLength(3);
         expect(tables[t]!.every((r) => r._creationTime >= CUTOFF)).toBe(true);
       }
@@ -528,16 +586,20 @@ describe("purgeStaleData (cron entry)", () => {
       expect(tables.marketState).toHaveLength(1);
       expect(tables.marketState![0]!._id).toBe("marketState:2");
 
+      // worldSnapshot: same singleton semantics as marketState.
+      expect(tables.worldSnapshot).toHaveLength(1);
+      expect(tables.worldSnapshot![0]!._id).toBe("worldSnapshot:2");
+
       // Return value: totals are sane.
       expect(out.totalDeleted).toBeGreaterThan(0);
       expect(out.cutoff).toBe(CUTOFF);
-      expect(out.results).toHaveLength(9);
+      expect(out.results).toHaveLength(TIME_WINDOW_TABLES.length + 4);
     } finally {
       nowSpy.mockRestore();
     }
   });
 
-  it("preserves resume-from-pause: never deletes the last row for any clan, bandit, or market", async () => {
+  it("preserves resume-from-pause: never deletes the last row for any clan, bandit, market, or snapshot", async () => {
     // Long-pause scenario: every row is old (older than 36h).
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(NOW);
     try {
@@ -548,6 +610,10 @@ describe("purgeStaleData (cron entry)", () => {
         orchEvents: rows("orchEvents", [old(50)]),
         humanSteeringMessages: rows("humanSteeringMessages", [old(50)]),
         pricePoint: rows("pricePoint", [old(50)]),
+        tickHistory: rows("tickHistory", [old(50)]),
+        memoryEvents: rows("memoryEvents", [old(50)]),
+        goldTxReceipts: rows("goldTxReceipts", [old(50)]),
+        inftTransfers: rows("inftTransfers", [old(50)]),
 
         clanView: [
           { _id: "clanView:0", _creationTime: old(50), clanId: 1 },
@@ -562,6 +628,10 @@ describe("purgeStaleData (cron entry)", () => {
           { _id: "marketState:0", _creationTime: old(60) },
           { _id: "marketState:1", _creationTime: old(50) },
         ],
+        worldSnapshot: [
+          { _id: "worldSnapshot:0", _creationTime: old(60), tick: 1 },
+          { _id: "worldSnapshot:1", _creationTime: old(50), tick: 2 },
+        ],
       });
 
       await (purgeStaleData as any)._handler({ db });
@@ -573,6 +643,10 @@ describe("purgeStaleData (cron entry)", () => {
       expect(tables.orchEvents).toHaveLength(0);
       expect(tables.humanSteeringMessages).toHaveLength(0);
       expect(tables.pricePoint).toHaveLength(0);
+      expect(tables.tickHistory).toHaveLength(0);
+      expect(tables.memoryEvents).toHaveLength(0);
+      expect(tables.goldTxReceipts).toHaveLength(0);
+      expect(tables.inftTransfers).toHaveLength(0);
 
       // clanView: clan 1 keeps its latest (clanView:1); clan 2 keeps its
       // only row (clanView:2). Total 2 rows survive.
@@ -589,6 +663,10 @@ describe("purgeStaleData (cron entry)", () => {
       // marketState: latest singleton (marketState:1) survives.
       expect(tables.marketState).toHaveLength(1);
       expect(tables.marketState![0]!._id).toBe("marketState:1");
+
+      // worldSnapshot: latest singleton (worldSnapshot:1) survives.
+      expect(tables.worldSnapshot).toHaveLength(1);
+      expect(tables.worldSnapshot![0]!._id).toBe("worldSnapshot:1");
     } finally {
       nowSpy.mockRestore();
     }
