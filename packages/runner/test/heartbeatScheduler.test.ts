@@ -6,7 +6,10 @@ import {
 } from '../src/heartbeatScheduler';
 import { HeartbeatRateLimitedError, type IHeartbeatCaller } from '@clan-world/agents/seams';
 import { makeSettleLatch } from '../src/settleLatch';
-import { makeConvexSnapshotSettleLatch } from '../src/convexSnapshotSettleLatch';
+import {
+  makeConvexSnapshotSettleLatch,
+  makeHeartbeatLoopSettleLatch,
+} from '../src/convexSnapshotSettleLatch';
 import { HeartbeatTimeoutError } from '../src/runnerCastHeartbeat';
 import type { WorldSnapshot } from '@clan-world/shared';
 
@@ -152,6 +155,74 @@ describe('heartbeatScheduler', () => {
     await vi.advanceTimersByTimeAsync(failureCycleMs);
 
     expect(callHeartbeat).toHaveBeenCalledTimes((HEARTBEAT_RETRY_BACKOFF_MS.length + 1) * 2);
+    expect(alert).toHaveBeenCalledTimes(1);
+
+    abort.abort();
+  });
+
+  it('does not suppress different heartbeat failure classes inside the dedup window', async () => {
+    vi.setSystemTime(0);
+    const callHeartbeat = vi.fn()
+      .mockRejectedValueOnce(new Error('rpc down'))
+      .mockRejectedValueOnce(new Error('rpc down'))
+      .mockRejectedValueOnce(new Error('rpc down'))
+      .mockRejectedValueOnce(new Error('rpc down'))
+      .mockRejectedValueOnce(new Error('rpc down'))
+      .mockRejectedValueOnce(new Error('execution reverted: paused'))
+      .mockRejectedValueOnce(new Error('execution reverted: paused'))
+      .mockRejectedValueOnce(new Error('execution reverted: paused'))
+      .mockRejectedValueOnce(new Error('execution reverted: paused'))
+      .mockRejectedValueOnce(new Error('execution reverted: paused'));
+    const readNextHeartbeatAtTs = vi.fn()
+      .mockResolvedValueOnce(0)
+      .mockResolvedValue(120);
+    const alert = vi.fn().mockResolvedValue({ ok: true });
+    const caller = makeHeartbeatCaller({ callHeartbeat, readNextHeartbeatAtTs });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      alert,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const failureCycleMs =
+      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+    await vi.advanceTimersByTimeAsync(failureCycleMs);
+    await vi.advanceTimersByTimeAsync(120_000 - failureCycleMs);
+    await vi.advanceTimersByTimeAsync(failureCycleMs);
+
+    expect(alert).toHaveBeenCalledTimes(2);
+    expect(alert.mock.calls[0]?.[0]).toContain('rpc down');
+    expect(alert.mock.calls[1]?.[0]).toContain('execution reverted: paused');
+
+    abort.abort();
+  });
+
+  it('suppresses same-class heartbeat failure alerts inside the dedup window', async () => {
+    vi.setSystemTime(0);
+    const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
+    const readNextHeartbeatAtTs = vi.fn()
+      .mockResolvedValueOnce(0)
+      .mockResolvedValue(120);
+    const alert = vi.fn().mockResolvedValue({ ok: true });
+    const caller = makeHeartbeatCaller({ callHeartbeat, readNextHeartbeatAtTs });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      alert,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const failureCycleMs =
+      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+    await vi.advanceTimersByTimeAsync(failureCycleMs);
+    await vi.advanceTimersByTimeAsync(120_000 - failureCycleMs);
+    await vi.advanceTimersByTimeAsync(failureCycleMs);
+
     expect(alert).toHaveBeenCalledTimes(1);
 
     abort.abort();
@@ -331,6 +402,40 @@ describe('heartbeatScheduler', () => {
 
     snapshotTick = 1;
     await vi.advanceTimersByTimeAsync(2_000);
+    expect(callHeartbeat).toHaveBeenCalledTimes(2);
+
+    abort.abort();
+  });
+
+  it('uses no settle latch for stub Convex so standalone heartbeat does not deadlock', async () => {
+    const callHeartbeat = vi.fn().mockResolvedValue({ txHash: '0x1' });
+    const readNextHeartbeatAtTs = vi.fn().mockResolvedValue(0);
+    const caller = makeHeartbeatCaller({ callHeartbeat, readNextHeartbeatAtTs });
+    const abort = new AbortController();
+    const warn = vi.fn();
+    const settleLatch = makeHeartbeatLoopSettleLatch({
+      convex: {
+        isStub: true,
+        async getSnapshot() { return makeSnapshot(0); },
+      },
+      signal: abort.signal,
+      log: { warn },
+    });
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 0,
+      settleLatch,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_002);
+
+    expect(settleLatch).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      '[heartbeatLoopMain] stub Convex detected — running without settle latch',
+    );
     expect(callHeartbeat).toHaveBeenCalledTimes(2);
 
     abort.abort();

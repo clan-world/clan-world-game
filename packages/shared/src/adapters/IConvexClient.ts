@@ -20,6 +20,7 @@ declare module 'convex/browser' {
 }
 
 export interface IConvexClient {
+  readonly isStub?: boolean;
   getSnapshot(): Promise<WorldSnapshot>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
   postLog(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
@@ -70,6 +71,8 @@ export type RunnerStatusUpdate = {
 const DEFAULT_TICK_DURATION_MS = Number(HEARTBEAT_INTERVAL_SECONDS) * 1000;
 
 class StubConvexClient implements IConvexClient {
+  readonly isStub = true;
+
   async getSnapshot(): Promise<WorldSnapshot> {
     return {
       tick: 0,
@@ -108,6 +111,8 @@ const seedBulletinRef = convexApiRefs.bulletins.seedBulletin;
 const updateRunnerStatusRef = convexApiRefs.runnerStatus.updateRunnerStatus;
 
 class RealConvexClient implements IConvexClient {
+  readonly isStub = false;
+
   private readonly http: ConvexHttpClient;
   private readonly url: string;
 

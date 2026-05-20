@@ -42,6 +42,19 @@ export function makeConvexSnapshotSettleLatch(args: {
   };
 }
 
+export function makeHeartbeatLoopSettleLatch(args: {
+  convex: Pick<IConvexClient, 'getSnapshot' | 'isStub'>;
+  signal: AbortSignal;
+  log?: Pick<Console, 'warn'>;
+  pollMs?: number;
+}): SettleLatch | undefined {
+  if (args.convex.isStub) {
+    args.log?.warn('[heartbeatLoopMain] stub Convex detected — running without settle latch');
+    return undefined;
+  }
+  return makeConvexSnapshotSettleLatch(args);
+}
+
 async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0) return;
   await new Promise<void>(resolve => {

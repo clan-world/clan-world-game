@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getRunnerStatus } from "./runnerStatus";
+import { getRunnerStatus, updateRunnerStatus } from "./runnerStatus";
 
 function createDb(tables: Record<string, any[]> = {}) {
   return {
@@ -37,6 +37,22 @@ function createDb(tables: Record<string, any[]> = {}) {
       };
       return builder;
     },
+    async patch(id: string, patch: Record<string, unknown>) {
+      for (const rows of Object.values(tables)) {
+        const row = rows.find((candidate) => candidate._id === id);
+        if (row) {
+          Object.assign(row, patch);
+          return;
+        }
+      }
+      throw new Error(`row not found: ${id}`);
+    },
+    async insert(table: string, row: Record<string, unknown>) {
+      const id = `${table}:${(tables[table] ?? []).length + 1}`;
+      tables[table] ??= [];
+      tables[table].push({ _id: id, ...row });
+      return id;
+    },
   };
 }
 
@@ -65,5 +81,44 @@ describe("getRunnerStatus", () => {
     await expect(
       (getRunnerStatus as any)._handler({ db }, { secret: "", runnerId: "runner-a" }),
     ).rejects.toThrow("invalid indexer secret");
+  });
+});
+
+describe("updateRunnerStatus", () => {
+  const originalSecret = process.env.INDEXER_SECRET;
+
+  afterEach(() => {
+    if (originalSecret === undefined) {
+      delete process.env.INDEXER_SECRET;
+    } else {
+      process.env.INDEXER_SECRET = originalSecret;
+    }
+  });
+
+  it("clears lastFailureMessage when a success update sends an empty string", async () => {
+    process.env.INDEXER_SECRET = "test-secret";
+    const tables = {
+      runnerStatus: [{
+        _id: "runnerStatus:1",
+        _creationTime: 1,
+        runnerId: "runner-a",
+        lastFireResult: "error",
+        lastFailureMessage: "rpc down",
+      }],
+    };
+    const db = createDb(tables);
+
+    await (updateRunnerStatus as any)._handler({ db }, {
+      secret: "test-secret",
+      runnerId: "runner-a",
+      lastFireResult: "success",
+      lastFailureMessage: "",
+    });
+
+    expect(tables.runnerStatus[0]).toMatchObject({
+      runnerId: "runner-a",
+      lastFireResult: "success",
+      lastFailureMessage: "",
+    });
   });
 });

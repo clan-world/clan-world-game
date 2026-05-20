@@ -24,6 +24,10 @@ export interface RunnerHeartbeatConfig {
   contractAddress: `0x${string}`;
   /** Wait time for heartbeat receipt confirmation. */
   receiptTimeoutMs?: number;
+  /** Convex deployment base URL for best-effort heartbeat webhook pings. */
+  convexWebhookUrl?: string;
+  /** Shared webhook auth secret. */
+  webhookSharedSecret?: string;
 }
 
 /**
@@ -49,6 +53,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
     privateKey: pk,
     rpcUrl: env['RPC_URL_PRIMARY'] || env['RPC_URL_FALLBACK'],
     contractAddress: contractAddress as `0x${string}`,
+    convexWebhookUrl: env['CONVEX_WEBHOOK_URL'],
+    webhookSharedSecret: env['WEBHOOK_SHARED_SECRET'],
   };
 }
 
@@ -67,6 +73,8 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   private readonly account: Account;
   private readonly contractAddress: `0x${string}`;
   private readonly receiptTimeoutMs: number;
+  private readonly convexWebhookUrl?: string;
+  private readonly webhookSharedSecret?: string;
 
   constructor(cfg: RunnerHeartbeatConfig) {
     const pk = normalizePk(cfg.privateKey);
@@ -80,6 +88,8 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     });
     this.contractAddress = cfg.contractAddress;
     this.receiptTimeoutMs = cfg.receiptTimeoutMs ?? 15_000;
+    this.convexWebhookUrl = cfg.convexWebhookUrl;
+    this.webhookSharedSecret = cfg.webhookSharedSecret;
   }
 
   async callHeartbeat(): Promise<{ txHash: string }> {
@@ -107,6 +117,10 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         }
         throw new Error(`heartbeat tx ${hash} reverted on-chain`);
       }
+      await this.postHeartbeatWebhook({
+        txHash: hash,
+        blockNumber: receipt.blockNumber,
+      });
       return { txHash: hash };
     } catch (err) {
       // Already a rate-limit error — rethrow immediately; no second RPC read.
@@ -146,6 +160,42 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     });
     // viem decodes the named tuple into an object with the same field names.
     return Number((state as { nextHeartbeatAtTs: bigint }).nextHeartbeatAtTs);
+  }
+
+  private async postHeartbeatWebhook(args: {
+    txHash: `0x${string}`;
+    blockNumber?: bigint | number | null;
+  }): Promise<void> {
+    if (!this.convexWebhookUrl) return;
+    const webhookUrl = new URL('/api/heartbeat-webhook', this.convexWebhookUrl);
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(this.webhookSharedSecret
+            ? { Authorization: `Bearer ${this.webhookSharedSecret}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          chain: baseSepolia.name,
+          engineAddress: this.contractAddress,
+          txHash: args.txHash,
+          blockNumber: args.blockNumber === undefined || args.blockNumber === null
+            ? undefined
+            : Number(args.blockNumber),
+          firedAtTs: Math.floor(Date.now() / 1000),
+          source: 'ts-runner',
+        }),
+      });
+      if (!response.ok) {
+        console.warn(
+          `[RunnerCastHeartbeat] heartbeat webhook POST failed: ${response.status} ${response.statusText}`,
+        );
+      }
+    } catch (err) {
+      console.warn('[RunnerCastHeartbeat] heartbeat webhook POST failed:', err);
+    }
   }
 }
 

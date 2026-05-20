@@ -89,7 +89,7 @@ async function runHeartbeatScheduler(
   let heartbeatIntervalSeconds: number | undefined;
   let lastHeartbeatForTick = -1;
   let consecutiveReadFailures = 0;
-  let lastAlertAtMs: number | undefined;
+  const lastAlertAtMs = new Map<string, number>();
 
   try {
     heartbeatIntervalSeconds = await deps.heartbeatCaller.readHeartbeatIntervalSeconds();
@@ -148,7 +148,7 @@ async function runHeartbeatScheduler(
     });
     if (result.success) {
       if (deps.settleLatch) lastHeartbeatForTick = settledSnapshot;
-      if (!result.rateLimited) lastAlertAtMs = undefined;
+      if (!result.rateLimited) lastAlertAtMs.clear();
       const nextAfterSuccess = await deps.heartbeatCaller
         .readNextHeartbeatAtTs()
         .catch(() => undefined);
@@ -163,11 +163,16 @@ async function runHeartbeatScheduler(
 
     if (result.aborted || result.lastFireResult === 'rate-limited') continue;
     const currentMs = nowMs();
-    if (lastAlertAtMs !== undefined && currentMs - lastAlertAtMs < ALERT_DEDUP_WINDOW_MS) {
+    const alertClass = result.lastFireResult;
+    const lastAlertForClassAtMs = lastAlertAtMs.get(alertClass);
+    if (
+      lastAlertForClassAtMs !== undefined &&
+      currentMs - lastAlertForClassAtMs < ALERT_DEDUP_WINDOW_MS
+    ) {
       deps.log.warn(`suppressing duplicate heartbeat alert: ${result.message}`);
       continue;
     }
-    lastAlertAtMs = currentMs;
+    lastAlertAtMs.set(alertClass, currentMs);
     const alertMessage =
       `ClanWorld heartbeat failed after retries: ${result.message}`;
     const alertResult = await alert(alertMessage);
@@ -209,7 +214,7 @@ async function attemptHeartbeatWithBackoff(
         runnerId: deps.runnerId,
         lastFireAt: nowMs(),
         lastFireResult: 'success',
-        lastFailureMessage: undefined,
+        lastFailureMessage: '',
         heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
         nextHeartbeatAtTs: deps.nextHeartbeatAtTs,
       });
@@ -240,7 +245,7 @@ async function attemptHeartbeatWithBackoff(
             runnerId: deps.runnerId,
             lastFireAt: nowMs(),
             lastFireResult: 'success',
-            lastFailureMessage: undefined,
+            lastFailureMessage: '',
             heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
             nextHeartbeatAtTs: nextAfterTimeout,
           });

@@ -51,9 +51,15 @@ export const updateRunnerStatus = mutation({
       runnerId: args.runnerId,
       ...(args.lastFireAt !== undefined ? { lastFireAt: args.lastFireAt } : {}),
       lastFireResult: args.lastFireResult,
-      lastFailureMessage: args.lastFailureMessage,
-      heartbeatIntervalSeconds: args.heartbeatIntervalSeconds,
-      nextHeartbeatAtTs: args.nextHeartbeatAtTs,
+      ...(args.lastFailureMessage !== undefined
+        ? { lastFailureMessage: args.lastFailureMessage }
+        : {}),
+      ...(args.heartbeatIntervalSeconds !== undefined
+        ? { heartbeatIntervalSeconds: args.heartbeatIntervalSeconds }
+        : {}),
+      ...(args.nextHeartbeatAtTs !== undefined
+        ? { nextHeartbeatAtTs: args.nextHeartbeatAtTs }
+        : {}),
       updatedAt: Date.now(),
     };
 
