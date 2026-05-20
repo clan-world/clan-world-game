@@ -23,10 +23,13 @@ export const getRunnerStatus = query({
       return await ctx.db
         .query("runnerStatus")
         .withIndex("by_runnerId", (q) => q.eq("runnerId", runnerId))
-      .order("desc")
+        .order("desc")
         .first();
     }
-    return await ctx.db.query("runnerStatus").order("desc").collect();
+    // Cap unbounded fan-out at 50 rows — defensive against regression that
+    // re-introduces per-insert appends (today updateRunnerStatus patches in
+    // place so we see ~4 rows, one per Elder). opus 4.7 R3 L3.
+    return await ctx.db.query("runnerStatus").order("desc").take(50);
   },
 });
 

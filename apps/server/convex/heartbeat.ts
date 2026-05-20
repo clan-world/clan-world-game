@@ -269,9 +269,12 @@ export const advanceTick = internalMutation({
 
     const newTick = baseTick + 1;
     const newEpochStartedAt = Math.floor(Date.now() / 1000);
-    // Monotonic guard covers both writes — prevents stale insert if a concurrent
-    // indexer commit advanced tickClock past newTick between our read and commit.
-    // Convex OCC serializes mutations, but this guard makes the intent explicit.
+    // Monotonic guard around both writes. Note: given `baseTick = clockRow.tick`
+    // when clockRow exists, `newTick > clockRow.tick` is tautologically true
+    // and the guard is dead code with the current calculation. Kept for intent
+    // and for the case where `!clockRow` (cold start). A future refactor that
+    // computes baseTick differently (e.g. from snap.tick when clockRow is
+    // stale-but-present) should re-evaluate. opus 4.7 R3 M1 + follow-up.
     if (!clockRow || newTick > clockRow.tick) {
       // Synthetic tick advance for fake-heartbeat / demo mode. Spread the
       // previous snapshot to preserve REGIONS + CLANS + SEASON state
