@@ -397,6 +397,116 @@ describe("ingestEvents allowlist", () => {
 });
 
 describe("legacy snapshot backfill", () => {
+  it("skips append-only view writes when only audit fields change", async () => {
+    const { db, tables } = createDb();
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(1_000_000);
+
+    const market = {
+      currentTick: 12,
+      currentTickQueue: [],
+      nextTickQueue: [],
+      wood: {
+        resourceToken: "0x0000000000000000000000000000000000000001",
+        resourceReserve: "100",
+        goldReserve: "200",
+        spotPriceGoldPerResource: "2",
+      },
+      wheat: {
+        resourceToken: "0x0000000000000000000000000000000000000002",
+        resourceReserve: "300",
+        goldReserve: "600",
+        spotPriceGoldPerResource: "2",
+      },
+      fish: {
+        resourceToken: "0x0000000000000000000000000000000000000003",
+        resourceReserve: "400",
+        goldReserve: "800",
+        spotPriceGoldPerResource: "2",
+      },
+      iron: {
+        resourceToken: "0x0000000000000000000000000000000000000004",
+        resourceReserve: "500",
+        goldReserve: "1000",
+        spotPriceGoldPerResource: "2",
+      },
+    };
+    const bandit = {
+      exists: true,
+      banditId: 1,
+      currentRegion: 2,
+      state: 3,
+      attackPower: 4,
+      tier: 1,
+      attackAttemptsMade: 0,
+      maxAttemptsRemaining: 2,
+      stateEnteredTick: 10,
+      nextActionTick: 13,
+      carryWood: "1",
+      carryIron: "2",
+      carryWheat: "3",
+      carryFish: "4",
+      projectedTargetClanId: 2,
+      projectedTargetLootValue: "99",
+    };
+    const clan = {
+      clan: {
+        clan: {
+          clanId: 2,
+          owner: "0x0000000000000000000000000000000000000000",
+          goldBalance: "250",
+          blueprintBalance: "5",
+          vaultWood: "1000000000000000000",
+          vaultIron: "2000000000000000000",
+          vaultWheat: "3000000000000000000",
+          vaultFish: "4000000000000000000",
+        },
+        derivedAtTick: 12,
+      },
+    };
+
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 99,
+          world: { currentTick: 12 },
+          market,
+          bandit,
+          clans: [clan],
+        },
+      },
+    );
+
+    // Second refresh: chain clock advances (tick 12 → 13) but on-chain content
+    // is unchanged. Same blockNumber (99) keeps clanView's HEAD-logic delta
+    // strip list happy — `lastUpdatedBlock` isn't stripped by clanView yet
+    // (that refinement lives in PR #338). After PR #338 lands we can also
+    // exercise the blockNumber-advance case. Bumping `market.currentTick` to 13
+    // exercises the MARKET_STATE_NON_CONTENT_FIELDS strip of `currentTick` /
+    // `lastUpdatedTick` — those advance every tick even when the AMM pools
+    // are static.
+    now.mockReturnValue(1_015_000);
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 99,
+          world: { currentTick: 13 },
+          market: { ...market, currentTick: 13 },
+          bandit,
+          clans: [clan],
+        },
+      },
+    );
+
+    expect(tables.marketState).toHaveLength(1);
+    expect(tables.banditView).toHaveLength(1);
+    expect(tables.clanView).toHaveLength(1);
+
+    now.mockRestore();
+  });
+
   it("commitSnapshot writes non-empty legacy clans from clanView rows", async () => {
     const { db, tables } = createDb();
 
