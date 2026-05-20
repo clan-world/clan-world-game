@@ -61,7 +61,7 @@ export interface IConvexClient {
 export type RunnerStatusUpdate = {
   runnerId: string;
   lastFireAt?: number;
-  lastFireResult: 'success' | 'revert' | 'timeout' | 'error';
+  lastFireResult: 'success' | 'revert' | 'timeout' | 'error' | 'rate-limited' | 'boot-error';
   lastFailureMessage?: string;
   heartbeatIntervalSeconds?: number;
   nextHeartbeatAtTs?: number;

@@ -177,6 +177,8 @@ export default defineSchema({
       v.literal("revert"),
       v.literal("timeout"),
       v.literal("error"),
+      v.literal("rate-limited"),
+      v.literal("boot-error"),
     ),
     lastFailureMessage: v.optional(v.string()),
     heartbeatIntervalSeconds: v.optional(v.number()),

@@ -7,6 +7,8 @@ const resultValidator = v.union(
   v.literal("revert"),
   v.literal("timeout"),
   v.literal("error"),
+  v.literal("rate-limited"),
+  v.literal("boot-error"),
 );
 
 export const getRunnerStatus = query({

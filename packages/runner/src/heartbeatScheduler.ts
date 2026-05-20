@@ -36,6 +36,7 @@ export const HEARTBEAT_JITTER_MS = 500;
 export const HEARTBEAT_RETRY_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000] as const;
 const SETTLE_LATCH_RECHECK_MS = 1_000;
 const HOT_LOOP_GUARD_MS = 1_000;
+const ALERT_DEDUP_WINDOW_MS = 5 * 60 * 1_000;
 
 /**
  * Cycle A — heartbeat driver (independent of Elder activity).
@@ -69,7 +70,7 @@ export function computeHeartbeatDelayMs(
 }
 
 export function classifyHeartbeatError(err: unknown): HeartbeatFireResult {
-  if (err instanceof HeartbeatRateLimitedError) return 'revert';
+  if (err instanceof HeartbeatRateLimitedError) return 'rate-limited';
   if (err instanceof Error) {
     if (err.name === 'HeartbeatTimeoutError' || err.name.includes('Timeout')) return 'timeout';
     if (err.name.includes('Revert') || /revert|rate[- ]limited/i.test(err.message)) return 'revert';
@@ -87,6 +88,8 @@ async function runHeartbeatScheduler(
   const alert = deps.alert ?? sendTelegramAlert;
   let heartbeatIntervalSeconds: number | undefined;
   let lastHeartbeatForTick = -1;
+  let consecutiveReadFailures = 0;
+  let lastAlertAtMs: number | undefined;
 
   try {
     heartbeatIntervalSeconds = await deps.heartbeatCaller.readHeartbeatIntervalSeconds();
@@ -95,7 +98,7 @@ async function runHeartbeatScheduler(
     deps.log.error('failed to read heartbeatIntervalSeconds at boot:', err);
     await postRunnerStatus(deps, {
       runnerId,
-      lastFireResult: 'error',
+      lastFireResult: 'boot-error',
       lastFailureMessage: `boot interval read failed: ${messageFrom(err)}`,
     });
   }
@@ -104,6 +107,7 @@ async function runHeartbeatScheduler(
     let nextHeartbeatAtTs: number;
     try {
       nextHeartbeatAtTs = await deps.heartbeatCaller.readNextHeartbeatAtTs();
+      consecutiveReadFailures = 0;
     } catch (err) {
       deps.log.error('failed to read nextHeartbeatAtTs:', err);
       await postRunnerStatus(deps, {
@@ -112,7 +116,11 @@ async function runHeartbeatScheduler(
         lastFailureMessage: `nextHeartbeatAtTs read failed: ${messageFrom(err)}`,
         heartbeatIntervalSeconds,
       });
-      await sleepWithSignal(HEARTBEAT_RETRY_BACKOFF_MS[0], deps.signal);
+      const backoffMs = HEARTBEAT_RETRY_BACKOFF_MS[
+        Math.min(consecutiveReadFailures, HEARTBEAT_RETRY_BACKOFF_MS.length - 1)
+      ] ?? HEARTBEAT_RETRY_BACKOFF_MS[0];
+      consecutiveReadFailures++;
+      await sleepWithSignal(backoffMs, deps.signal);
       continue;
     }
 
@@ -140,6 +148,7 @@ async function runHeartbeatScheduler(
     });
     if (result.success) {
       if (deps.settleLatch) lastHeartbeatForTick = settledSnapshot;
+      if (!result.rateLimited) lastAlertAtMs = undefined;
       const nextAfterSuccess = await deps.heartbeatCaller
         .readNextHeartbeatAtTs()
         .catch(() => undefined);
@@ -152,6 +161,13 @@ async function runHeartbeatScheduler(
       continue;
     }
 
+    if (result.aborted || result.lastFireResult === 'rate-limited') continue;
+    const currentMs = nowMs();
+    if (lastAlertAtMs !== undefined && currentMs - lastAlertAtMs < ALERT_DEDUP_WINDOW_MS) {
+      deps.log.warn(`suppressing duplicate heartbeat alert: ${result.message}`);
+      continue;
+    }
+    lastAlertAtMs = currentMs;
     const alertMessage =
       `ClanWorld heartbeat failed after retries: ${result.message}`;
     const alertResult = await alert(alertMessage);
@@ -177,7 +193,12 @@ async function attemptHeartbeatWithBackoff(
     nextHeartbeatAtTs?: number;
     settledSnapshot: number;
   },
-): Promise<{ success: true } | { success: false; message: string }> {
+): Promise<
+  | { success: true; rateLimited?: false }
+  | { success: true; rateLimited: true }
+  | { success: false; aborted: true; message: string; lastFireResult?: HeartbeatFireResult }
+  | { success: false; aborted: false; message: string; lastFireResult: HeartbeatFireResult }
+> {
   for (let attempt = 0; attempt <= HEARTBEAT_RETRY_BACKOFF_MS.length; attempt++) {
     try {
       const { txHash } = await deps.heartbeatCaller.callHeartbeat();
@@ -192,6 +213,38 @@ async function attemptHeartbeatWithBackoff(
       });
       return { success: true };
     } catch (err) {
+      if (err instanceof HeartbeatRateLimitedError) {
+        const lastFailureMessage = messageFrom(err);
+        deps.log.warn(`heartbeat rate-limited: ${lastFailureMessage}`);
+        await postRunnerStatus(deps, {
+          runnerId: deps.runnerId,
+          lastFireResult: 'rate-limited',
+          lastFailureMessage,
+          heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
+          nextHeartbeatAtTs: deps.nextHeartbeatAtTs,
+        });
+        return { success: true, rateLimited: true };
+      }
+      if (deps.signal.aborted) return { success: false, aborted: true, message: 'aborted' };
+      if (isHeartbeatTimeoutError(err) && deps.nextHeartbeatAtTs !== undefined) {
+        const nextAfterTimeout = await deps.heartbeatCaller
+          .readNextHeartbeatAtTs()
+          .catch(() => undefined);
+        if (nextAfterTimeout !== undefined && nextAfterTimeout > deps.nextHeartbeatAtTs) {
+          deps.log.info(
+            `heartbeat receipt timed out, but nextHeartbeatAtTs advanced from ${deps.nextHeartbeatAtTs} to ${nextAfterTimeout}`,
+          );
+          await postRunnerStatus(deps, {
+            runnerId: deps.runnerId,
+            lastFireAt: Date.now(),
+            lastFireResult: 'success',
+            lastFailureMessage: undefined,
+            heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
+            nextHeartbeatAtTs: nextAfterTimeout,
+          });
+          return { success: true };
+        }
+      }
       const lastFireResult = classifyHeartbeatError(err);
       const lastFailureMessage = messageFrom(err);
       deps.log.warn(`heartbeat attempt ${attempt + 1} failed (${lastFireResult}): ${lastFailureMessage}`);
@@ -204,14 +257,14 @@ async function attemptHeartbeatWithBackoff(
       });
 
       if (attempt === HEARTBEAT_RETRY_BACKOFF_MS.length) {
-        return { success: false, message: lastFailureMessage };
+        return { success: false, aborted: false, message: lastFailureMessage, lastFireResult };
       }
       const backoffMs = HEARTBEAT_RETRY_BACKOFF_MS[attempt] ?? HEARTBEAT_RETRY_BACKOFF_MS[0];
       await sleepWithSignal(backoffMs, deps.signal);
-      if (deps.signal.aborted) return { success: false, message: 'aborted' };
+      if (deps.signal.aborted) return { success: false, aborted: true, message: 'aborted' };
     }
   }
-  return { success: false, message: 'retry loop exhausted' };
+  return { success: false, aborted: false, message: 'retry loop exhausted', lastFireResult: 'error' };
 }
 
 async function postRunnerStatus(
@@ -228,6 +281,10 @@ async function postRunnerStatus(
 
 function messageFrom(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isHeartbeatTimeoutError(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'HeartbeatTimeoutError' || err.name.includes('Timeout'));
 }
 
 async function sleepWithSignal(ms: number, signal: AbortSignal): Promise<void> {
