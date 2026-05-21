@@ -53,6 +53,17 @@ export RPC_URL_PRIMARY="$SELECTED_RPC_URL"
 
 log "network=${CHAIN_NETWORK} expectedChainId=${EXPECTED_CHAIN_ID} contract=${CLAN_WORLD_CONTRACT_ADDRESS}"
 
+RPC_RETRY_MAX=30
+RPC_RETRY=0
+until cast chain-id --rpc-url "$RPC_URL_PRIMARY" >/dev/null 2>&1; do
+  RPC_RETRY=$((RPC_RETRY + 1))
+  if [ "$RPC_RETRY" -ge "$RPC_RETRY_MAX" ]; then
+    fail "RPC at $RPC_URL_PRIMARY did not respond after ${RPC_RETRY_MAX} attempts"
+  fi
+  log "RPC not ready (attempt ${RPC_RETRY}/${RPC_RETRY_MAX}); retrying in 2s"
+  sleep 2
+done
+
 OBSERVED_CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL_PRIMARY")" || fail "cast chain-id failed"
 [ "$OBSERVED_CHAIN_ID" = "$EXPECTED_CHAIN_ID" ] || fail "chain id mismatch: expected ${EXPECTED_CHAIN_ID}, got ${OBSERVED_CHAIN_ID}"
 

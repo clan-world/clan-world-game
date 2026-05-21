@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeHeartbeatDelayMs,
@@ -11,11 +13,13 @@ class TestHeartbeatTimeoutError extends Error {
   override name = 'HeartbeatTimeoutError';
 }
 
-const HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
+let heartbeatSuccessDir = '';
+let heartbeatSuccessFile = '';
 
 function cleanupHeartbeatSuccessFile(): void {
-  rmSync(HEARTBEAT_SUCCESS_FILE, { force: true });
-  rmSync(`${HEARTBEAT_SUCCESS_FILE}.${process.pid}.tmp`, { force: true });
+  if (!heartbeatSuccessFile) return;
+  rmSync(heartbeatSuccessFile, { force: true });
+  rmSync(`${heartbeatSuccessFile}.${process.pid}.tmp`, { force: true });
 }
 
 function makeHeartbeatCaller(overrides: Partial<IHeartbeatCaller> = {}): IHeartbeatCaller {
@@ -28,11 +32,18 @@ function makeHeartbeatCaller(overrides: Partial<IHeartbeatCaller> = {}): IHeartb
 }
 
 beforeEach(() => {
+  heartbeatSuccessDir = mkdtempSync(join(tmpdir(), 'hb-test-'));
+  heartbeatSuccessFile = join(heartbeatSuccessDir, 'last-heartbeat-success');
+  vi.stubEnv('HEARTBEAT_SUCCESS_FILE_OVERRIDE', heartbeatSuccessFile);
   cleanupHeartbeatSuccessFile();
   vi.useFakeTimers();
 });
 afterEach(() => {
   cleanupHeartbeatSuccessFile();
+  if (heartbeatSuccessDir) rmSync(heartbeatSuccessDir, { recursive: true, force: true });
+  heartbeatSuccessDir = '';
+  heartbeatSuccessFile = '';
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
@@ -365,8 +376,8 @@ describe('heartbeatScheduler', () => {
     expect(postRunnerStatus).toHaveBeenCalledWith(
       expect.objectContaining({ lastFireResult: 'success', nextHeartbeatAtTs: 160 }),
     );
-    expect(existsSync(HEARTBEAT_SUCCESS_FILE)).toBe(true);
-    expect(readFileSync(HEARTBEAT_SUCCESS_FILE, 'utf8')).toBe('100');
+    expect(existsSync(heartbeatSuccessFile)).toBe(true);
+    expect(readFileSync(heartbeatSuccessFile, 'utf8')).toBe('100');
 
     abort.abort();
   });

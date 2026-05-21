@@ -16,7 +16,7 @@ import {
   type IHeartbeatCaller,
 } from '@clan-world/agents/seams';
 
-const HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
+const DEFAULT_HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
 
 export interface RunnerHeartbeatConfig {
   /** Hex-encoded 64-char private key, optionally 0x-prefixed. */
@@ -258,7 +258,10 @@ function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   return url.toString().replace(/\/$/, '');
 }
 
-export function writeHeartbeatSuccessFile(successFile = HEARTBEAT_SUCCESS_FILE): void {
+export function writeHeartbeatSuccessFile(
+  successFile =
+    process.env['HEARTBEAT_SUCCESS_FILE_OVERRIDE'] ?? DEFAULT_HEARTBEAT_SUCCESS_FILE,
+): void {
   try {
     const tmpFile = `${successFile}.${process.pid}.tmp`;
     writeFileSync(tmpFile, String(Math.floor(Date.now() / 1000)));

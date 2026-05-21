@@ -36,14 +36,19 @@ import {
   writeHeartbeatSuccessFile,
 } from '../src/runnerCastHeartbeat';
 
-const HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
+let heartbeatSuccessDir = '';
+let heartbeatSuccessFile = '';
 
 function cleanupHeartbeatSuccessFile(): void {
-  rmSync(HEARTBEAT_SUCCESS_FILE, { force: true });
-  rmSync(`${HEARTBEAT_SUCCESS_FILE}.${process.pid}.tmp`, { force: true });
+  if (!heartbeatSuccessFile) return;
+  rmSync(heartbeatSuccessFile, { force: true });
+  rmSync(`${heartbeatSuccessFile}.${process.pid}.tmp`, { force: true });
 }
 
 beforeEach(() => {
+  heartbeatSuccessDir = mkdtempSync(join(tmpdir(), 'hb-test-'));
+  heartbeatSuccessFile = join(heartbeatSuccessDir, 'last-heartbeat-success');
+  vi.stubEnv('HEARTBEAT_SUCCESS_FILE_OVERRIDE', heartbeatSuccessFile);
   cleanupHeartbeatSuccessFile();
   viemMocks.readContract.mockReset();
   viemMocks.waitForTransactionReceipt.mockReset();
@@ -52,6 +57,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanupHeartbeatSuccessFile();
+  if (heartbeatSuccessDir) rmSync(heartbeatSuccessDir, { recursive: true, force: true });
+  heartbeatSuccessDir = '';
+  heartbeatSuccessFile = '';
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -181,8 +190,8 @@ describe('RunnerCastHeartbeat', () => {
 
     await expect(heartbeat.callHeartbeat()).resolves.toEqual({ txHash: hash });
 
-    expect(existsSync(HEARTBEAT_SUCCESS_FILE)).toBe(true);
-    expect(readFileSync(HEARTBEAT_SUCCESS_FILE, 'utf8')).toBe('123');
+    expect(existsSync(heartbeatSuccessFile)).toBe(true);
+    expect(readFileSync(heartbeatSuccessFile, 'utf8')).toBe('123');
   });
 
   it('swallows EACCES when heartbeat success file cannot be written', () => {
