@@ -1,9 +1,11 @@
 # Dockerize Elder Infra — v1 Implementation Plan
 
-**Status:** ready for execution (overnight)
+**Status:** reviving via hybrid PR walkthrough (per Liam directive 2026-05-21)
 **Author:** orchestrator, synthesizing rounds 2-4 design + Convex research synthesis (all in `~/claudes-world/tmp/dockerize-elder-infra-*-2026-05-16.md` and `convex-research-synthesis-2026-05-16.md`)
-**Date:** 2026-05-16
+**Date:** 2026-05-16 (alignment review 2026-05-21)
 **Target merge:** `dev` (via stacked `dev-phase-1-dockerize` integration branch)
+
+> **⚠ Alignment review 2026-05-21:** This plan was written before v2.10 → v2.13.0 shipped. The heartbeat caller, Convex schema location, webhook payload, and command-bus FSM have ALL drifted from what this plan assumes. **Before reviving any sub-issue PR, read [`dockerize-v1-revision-notes.md`](./dockerize-v1-revision-notes.md) § "Alignment review notes — 2026-05-21"** for the consolidated cross-reviewer findings + per-PR rebase strategy + open questions Liam needs to decide.
 
 ---
 
