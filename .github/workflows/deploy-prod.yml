@@ -50,19 +50,18 @@ jobs:
           # Stamp the build with the release tag for the VersionBadge overlay.
           # Surfaces stale-build regressions during UAT (issue #312).
           VITE_APP_VERSION: ${{ github.ref_name }}
-        # Vite's envDir resolves to the monorepo root (vite.config.ts:108), not
-        # apps/web. `vercel pull` writes apps/web/.vercel/.env.production.local
-        # which Vercel's build pipeline sources, but Vite doesn't re-read it
-        # because envDir points elsewhere. Source the file explicitly here so
-        # VITE_-prefixed vars land in process.env before `vercel build` invokes
-        # vite. Without this, %VITE_CONVEX_URL% substitution in index.html
-        # collapses to empty and the runtime renders the "Backend not
-        # configured" fallback.
-        run: |
-          set -a
-          source .vercel/.env.production.local
-          set +a
-          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          # Public client-side config. Inlined here because Vercel's per-project
+          # env-var storage was silently dropping the values during
+          # `vercel env add` (CLI bug observed 2026-05-21 with vercel@54.0.0:
+          # `Saving … Added` succeeds but pulled file shows empty strings).
+          # These are all public (browser-visible) values — Convex URL +
+          # diamond address + demo-mode flag — so workflow-yaml is acceptable
+          # storage. If/when the CLI bug is fixed, migrate back to Vercel
+          # project env vars + `vercel pull`.
+          VITE_CONVEX_URL: https://valuable-kudu-985.convex.cloud
+          VITE_CLAN_WORLD_CONTRACT_ADDRESS: '0x098fa5c2dc8372cde5c99db47365fa84b69f7af1'
+          VITE_CLANWORLD_DEMO_MODE: 'false'
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy (production)
         working-directory: apps/web
         env:
