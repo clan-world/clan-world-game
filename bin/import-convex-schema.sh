@@ -78,6 +78,7 @@ else
   echo "Exporting hosted Convex data to $export_zip"
   unset CONVEX_SELF_HOSTED_URL CONVEX_SELF_HOSTED_ADMIN_KEY
   convex_cli export --path "$export_zip" --include-file-storage
+  chmod 0600 "$export_zip"
 fi
 
 if [[ "${CONFIRM_REPLACE_ALL:-}" != "1" && "${FRESH_SELF_HOSTED:-}" != "1" ]]; then
