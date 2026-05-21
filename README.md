@@ -228,8 +228,13 @@ profiles are supported:
 
 | Profile | RPC | `agents/` layout | Use case |
 |---|---|---|---|
-| `dev`   | anvil-fork (forked Base Sepolia, container-internal) | bind-mounted from host for fast iteration | local hacking |
-| `prod`  | real Base Sepolia RPC                                | image-baked at build time (immutable)      | VPS deploy   |
+| `dev`   | anvil-fork (forked Base Sepolia, container-internal) | bind-mounted from host (planned for #349/#350) | local hacking |
+| `prod`  | real Base Sepolia RPC                                | image-baked at build time (planned for #345)   | VPS deploy   |
+
+> **Scaffold note:** this PR (#344) declares the service topology only — the
+> dev/prod `agents/` layout differences land in #345 (Dockerfile), #349
+> (elder-N service template), and #350 (shared layout). Don't expect bind
+> mounts or baked images yet.
 
 The full plan, including phase-by-phase dependencies and locked decisions, is
 [`docs/plans/dockerize-elder-infra-v1.md`](./docs/plans/dockerize-elder-infra-v1.md).
@@ -237,10 +242,14 @@ The full plan, including phase-by-phase dependencies and locked decisions, is
 **Quick start (config validation — does NOT bring up containers):**
 
 ```bash
-cp .env.template .env       # then fill in the Docker / Compose section
+cp .env.template .env.local   # then fill in the Docker / Compose section
 docker compose --profile dev  config   # validates dev topology
 docker compose --profile prod config   # validates prod topology
 ```
+
+> `.env.local` is the canonical local-overrides file across the monorepo
+> (`tsx --env-file=.env.local`, runbooks, etc.). `.env` is gitignored too
+> but `.env.local` matches existing conventions.
 
 Caddy is intentionally NOT a compose service — the host caddy stays
 authoritative and reverse-proxies `app.${CLAN_WORLD_DOMAIN}` to

@@ -50,29 +50,36 @@ secrets:
   # Plan revision (Finding 10): admin key lives in a file mounted as a Docker
   # secret, NOT an env var (env vars leak through `docker inspect`).
   # `make bootstrap-convex-admin-key` (Phase 1.12) materializes these files.
+  # File paths are overridable via .env *_FILE vars — defaults preserve the
+  # canonical bootstrap layout so operators don't have to set anything to get
+  # the standard `make bootstrap-*` workflow.
   convex-admin-key:
-    file: ./agents/secrets/convex-admin.key
+    file: ${CONVEX_SELF_HOSTED_ADMIN_KEY_FILE:-./agents/secrets/convex-admin.key}
   # Webhook HMAC shared secret for heartbeat → Convex webhook (Finding 30 fix).
   webhook-shared:
-    file: ./agents/secrets/webhook-shared.key
+    file: ${WEBHOOK_SHARED_SECRET_FILE:-./agents/secrets/webhook-shared.key}
   # Per-Elder bus secrets (Finding 22 fix — per-elder, not shared).
   bus-elder-1:
-    file: ./agents/secrets/bus-elder-1.key
+    file: ${BUS_ELDER_SECRET_FILE_1:-./agents/secrets/bus-elder-1.key}
   bus-elder-2:
-    file: ./agents/secrets/bus-elder-2.key
+    file: ${BUS_ELDER_SECRET_FILE_2:-./agents/secrets/bus-elder-2.key}
   bus-elder-3:
-    file: ./agents/secrets/bus-elder-3.key
+    file: ${BUS_ELDER_SECRET_FILE_3:-./agents/secrets/bus-elder-3.key}
   bus-elder-4:
-    file: ./agents/secrets/bus-elder-4.key
+    file: ${BUS_ELDER_SECRET_FILE_4:-./agents/secrets/bus-elder-4.key}
   # Operator secret for enqueueing commands into the Convex bus.
   bus-operator:
-    file: ./agents/secrets/bus-operator.key
+    file: ${BUS_OPERATOR_SECRET_FILE:-./agents/secrets/bus-operator.key}
 
 # Shared building blocks (YAML anchors, NOT compose services).
 # Profiles let us reuse the same elder service block in both dev and prod with
 # only the agents-mount strategy and image tag differing.
 x-elder-common: &elder-common
-  image: clanworld/agents:dev
+  # ELDER_IMAGE_TAG defaults to `dev` for local iteration; prod profile MUST
+  # override to a SHA-pinned tag (e.g. `prod-<commit>`). #345 ships the
+  # Dockerfile + build script. Profile-specific overrides applied via
+  # docker-compose.{dev,prod}.yml overlays — coming in #349.
+  image: clanworld/agents:${ELDER_IMAGE_TAG:-dev}
   restart: unless-stopped
   networks: [clan-world-internal]
   cap_add:
