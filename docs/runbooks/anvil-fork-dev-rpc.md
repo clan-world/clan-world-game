@@ -63,7 +63,7 @@ Settings live in `.env.local` (or whatever env file your stack picks up). The re
 ```bash
 # Required — what we read once to seed the fork. Alchemy/Infura/QuickNode all
 # work; public sepolia.base.org is too aggressively rate-limited for fork-seeding.
-BASE_SEPOLIA_RPC_FOR_FORK_SEED=https://base-sepolia.g.alchemy.com/v2/<YOUR_KEY>
+RPC_URL_PRIMARY=https://base-sepolia.g.alchemy.com/v2/<YOUR_KEY>
 
 # 0 = fork from latest block at first up. Otherwise pin a specific block so
 # dev iteration is deterministic across team members + restarts.
@@ -74,7 +74,7 @@ To pin a specific block (recommended once your dev flow is reproducible):
 
 ```bash
 # Read latest block once
-cast block-number --rpc-url "$BASE_SEPOLIA_RPC_FOR_FORK_SEED"
+cast block-number --rpc-url "$RPC_URL_PRIMARY"
 # Edit .env.local: FORK_BLOCK_NUMBER=<that number>
 # Then reset the fork — see section 4.
 ```
@@ -110,7 +110,7 @@ What that does (`agents/Makefile`):
 
 1. `docker compose --profile dev stop anvil-fork`
 2. `docker volume rm clan-world_anvil_data`
-3. `docker compose --profile dev up -d anvil-fork` — re-forks from `BASE_SEPOLIA_RPC_FOR_FORK_SEED` at `FORK_BLOCK_NUMBER`
+3. `docker compose --profile dev up -d anvil-fork` — re-forks from `RPC_URL_PRIMARY` at `FORK_BLOCK_NUMBER`
 
 The Makefile target fails loud if `PROFILE` is unset or `PROFILE=prod` — the named volume `clan-world_anvil_data` should not exist in prod, but the guard is there as a safety net.
 
@@ -128,20 +128,20 @@ When NOT to reset:
 
 ### `unhealthy` status on `docker compose ps`
 
-Most common cause: `BASE_SEPOLIA_RPC_FOR_FORK_SEED` is unset, malformed, or rate-limited. Check:
+Most common cause: `RPC_URL_PRIMARY` is unset, malformed, or rate-limited. Check:
 
 ```bash
 docker compose --profile dev logs anvil-fork | tail -50
 ```
 
-Look for "fork URL" or "401 Unauthorized" or "429 Too Many Requests". Fix `BASE_SEPOLIA_RPC_FOR_FORK_SEED` in `.env.local` (e.g. swap to an Alchemy key with quota left), then `make -C agents reset-anvil PROFILE=dev`.
+Look for "fork URL" or "401 Unauthorized" or "429 Too Many Requests". Fix `RPC_URL_PRIMARY` in `.env.local` (e.g. swap to an Alchemy key with quota left), then `make -C agents reset-anvil PROFILE=dev`.
 
 ### "fork block not available" / "header not found"
 
 `FORK_BLOCK_NUMBER` is older than the seed-RPC's retention window. Most non-archive Base Sepolia RPCs only retain the last ~256 blocks. Either:
 
 - Set `FORK_BLOCK_NUMBER=0` (use latest), or
-- Pick a more recent block from `cast block-number --rpc-url "$BASE_SEPOLIA_RPC_FOR_FORK_SEED"`, or
+- Pick a more recent block from `cast block-number --rpc-url "$RPC_URL_PRIMARY"`, or
 - Swap to an archive RPC (Alchemy growth tier, QuickNode, etc).
 
 Then `make -C agents reset-anvil PROFILE=dev`.
@@ -164,4 +164,4 @@ The healthcheck uses `cast chain-id --rpc-url http://localhost:8545` with a 5s t
 - `docs/runbooks/soft-game-reset.md` — mid-season recovery flow; on dev profile, anvil-fork is the RPC the recovery txs hit.
 - `agents/Makefile` — `reset-anvil`, `up PROFILE=dev`, `down`, `status`, `link-mounts`.
 - `docker-compose.yml` — `anvil-fork:` service definition.
-- `.env.template` — `BASE_SEPOLIA_RPC_FOR_FORK_SEED`, `FORK_BLOCK_NUMBER`, `DEV_RPC_URL`.
+- `.env.template` — `RPC_URL_PRIMARY`, `FORK_BLOCK_NUMBER`, `DEV_RPC_URL`.
