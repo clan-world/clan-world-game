@@ -47,14 +47,6 @@ volumes:
   elder-4-workspace: {}
 
 secrets:
-  # Plan revision (Finding 10): admin key lives in a file mounted as a Docker
-  # secret, NOT an env var (env vars leak through `docker inspect`).
-  # `make bootstrap-convex-admin-key` (Phase 1.12) materializes these files.
-  # File paths are overridable via .env *_FILE vars — defaults preserve the
-  # canonical bootstrap layout so operators don't have to set anything to get
-  # the standard `make bootstrap-*` workflow.
-  convex-admin-key:
-    file: ${CONVEX_SELF_HOSTED_ADMIN_KEY_FILE:-./agents/secrets/convex-admin.key}
   # Webhook HMAC shared secret for heartbeat → Convex webhook (Finding 30 fix).
   webhook-shared:
     file: ${WEBHOOK_SHARED_SECRET_FILE:-./agents/secrets/webhook-shared.key}
@@ -92,44 +84,81 @@ services:
   # ---------------------------------------------------------------------------
   # Self-hosted Convex backend + dashboard.
   #
-  # Phase 1.1 scaffolds the service definitions only. Image pinning, admin-key
-  # bootstrap, and `npx convex deploy --self-hosted` land in #347.
+  # The backend persists its SQLite database and generated instance secret in
+  # convex_data. `make bootstrap-convex-admin-key` reads a derived admin key
+  # from the running backend; the backend does not consume an admin-key secret.
   # ---------------------------------------------------------------------------
   convex-backend:
     image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
     environment:
-      CONVEX_INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
-      # Backend reads admin key from a file path, not an env var.
-      CONVEX_ADMIN_KEY_FILE: /run/secrets/convex-admin-key
-    secrets:
-      - convex-admin-key
+      INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://convex-backend:3210}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://convex-backend:3211}
+      DISABLE_BEACON: ${DISABLE_BEACON:-true}
+      DISABLE_METRICS_ENDPOINT: ${DISABLE_METRICS_ENDPOINT:-true}
+      DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-true}
+      RUST_LOG: ${RUST_LOG:-info}
     volumes:
-      - convex_data:/data
+      - convex_data:/convex/data
     networks: [clan-world-internal]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3210/health"]
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
       timeout: 3s
       retries: 3
-      start_period: 30s
+      start_period: 10s
+    restart: unless-stopped
     profiles: [dev, prod]
 
   convex-dashboard:
     image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
     environment:
-      NEXT_PUBLIC_DEPLOYMENT_URL: http://convex-backend:3210
+      # In dev, operators open the dashboard through localhost. In prod this
+      # should be overridden to a routed internal/admin URL or left unexposed.
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_DASHBOARD_DEPLOYMENT_URL:-http://convex-backend:3210}
     networks: [clan-world-internal]
     depends_on:
       convex-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6791/"]
+      test: ["CMD", "curl", "-f", "http://localhost:6791/"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 30s
     restart: unless-stopped
     profiles: [dev, prod]
+
+  # Dev-only loopback access for host-run CLI/dashboard. Compose cannot make
+  # a single service's `ports:` conditional on profile, so these tiny proxies
+  # keep prod's canonical services Docker-internal.
+  convex-backend-dev-port:
+    image: alpine/socat:1.7.4.4
+    command: ["TCP-LISTEN:3210,fork,reuseaddr", "TCP:convex-backend:3210"]
+    ports:
+      - "127.0.0.1:${CONVEX_BACKEND_HOST_PORT:-3210}:3210"
+    networks: [clan-world-internal]
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [dev]
+
+  convex-dashboard-dev-port:
+    image: alpine/socat:1.7.4.4
+    command: ["TCP-LISTEN:6791,fork,reuseaddr", "TCP:convex-dashboard:6791"]
+    ports:
+      - "127.0.0.1:${CONVEX_DASHBOARD_HOST_PORT:-6791}:6791"
+    networks: [clan-world-internal]
+    depends_on:
+      convex-dashboard:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [dev]
 
   # ---------------------------------------------------------------------------
   # anvil-fork — dev profile ONLY. Forks Base Sepolia at FORK_BLOCK_NUMBER and
@@ -180,6 +209,7 @@ services:
       # anyway, but the compose-level error is faster + clearer).
       PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
+      CONVEX_WEBHOOK_URL: http://convex-backend:3211
       CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
       WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
     secrets:
