@@ -1,6 +1,5 @@
 import { HeartbeatRateLimitedError, type IHeartbeatCaller } from '@clan-world/agents/seams';
 import type { IConvexClient, RunnerStatusUpdate } from '@clan-world/shared/adapters';
-import type { SettleLatch } from './settleLatch';
 import { sendTelegramAlert } from './telegramAlert';
 
 export type HeartbeatFireResult = RunnerStatusUpdate['lastFireResult'];
@@ -15,13 +14,6 @@ export interface HeartbeatSchedulerDeps {
     warn: (...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
   };
-  /**
-   * Shared latch — Cycle A only fires heartbeat after Cycle B settles a new tick.
-   * This can intentionally delay a heartbeat past nextHeartbeatAtTs + jitter
-   * while Elders are still in their settle window; liveness beats interrupting
-   * the order-submission phase.
-   */
-  settleLatch?: SettleLatch;
   /** Convex status sink. Missing/failed writes are logged but non-fatal. */
   convex?: Pick<IConvexClient, 'postRunnerStatus'>;
   /** Stable id for the runnerStatus row. */
@@ -34,7 +26,6 @@ export interface HeartbeatSchedulerDeps {
 
 export const HEARTBEAT_JITTER_MS = 500;
 export const HEARTBEAT_RETRY_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000] as const;
-const SETTLE_LATCH_RECHECK_MS = 1_000;
 const HOT_LOOP_GUARD_MS = 1_000;
 const ALERT_DEDUP_WINDOW_MS = 5 * 60 * 1_000;
 
@@ -87,7 +78,6 @@ async function runHeartbeatScheduler(
   const nowMs = deps.nowMs ?? (() => Date.now());
   const alert = deps.alert ?? sendTelegramAlert;
   let heartbeatIntervalSeconds: number | undefined;
-  let lastHeartbeatForTick = -1;
   let consecutiveReadFailures = 0;
   const lastAlertAtMs = new Map<string, number>();
 
@@ -130,29 +120,13 @@ async function runHeartbeatScheduler(
     );
     if (deps.signal.aborted) break;
 
-    const settledSnapshot = deps.settleLatch ? deps.settleLatch.lastSettledTick() : -1;
-    if (deps.settleLatch && lastHeartbeatForTick >= 0 && settledSnapshot <= lastHeartbeatForTick) {
-      deps.log.info(
-        `waiting for Cycle B to settle (last settled: ${settledSnapshot}, last heartbeat for: ${lastHeartbeatForTick})`,
-      );
-      await sleepWithSignal(SETTLE_LATCH_RECHECK_MS, deps.signal);
-      continue;
-    }
-
     const result = await attemptHeartbeatWithBackoff({
       ...deps,
       runnerId,
       heartbeatIntervalSeconds,
       nextHeartbeatAtTs,
-      settledSnapshot,
     });
     if (result.success && !result.rateLimited) {
-      // First-fire (lastHeartbeatForTick === -1) is allowed to bypass the latch to avoid
-      // boot-deadlock when Convex is unreachable. Subsequent iterations only require
-      // settledSnapshot > Math.max(0, prev). This trades strict "wait for prior tick to
-      // settle in Convex" for liveness -- acceptable for hackathon scope, but should
-      // be hardened with an "expected next tick" watermark for production. See #511.
-      if (deps.settleLatch) lastHeartbeatForTick = Math.max(0, settledSnapshot);
       lastAlertAtMs.clear();
     }
     if (result.success) {
@@ -196,7 +170,6 @@ async function attemptHeartbeatWithBackoff(
     runnerId: string;
     heartbeatIntervalSeconds?: number;
     nextHeartbeatAtTs?: number;
-    settledSnapshot: number;
   },
 ): Promise<
   | { success: true; rateLimited?: false }
