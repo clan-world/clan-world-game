@@ -45,10 +45,15 @@ has_hosted_selector() {
 load_env
 check_cli_version
 
-mkdir -p agents/backups
+install -d -m 0700 agents/backups
+target_url="${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:${CONVEX_BACKEND_HOST_PORT:-3210}}"
 if [[ -n "${HOSTED_CONVEX_EXPORT_ZIP:-}" ]]; then
   if [[ ! -f "$HOSTED_CONVEX_EXPORT_ZIP" ]]; then
     echo "ERROR: HOSTED_CONVEX_EXPORT_ZIP points to a missing file: $HOSTED_CONVEX_EXPORT_ZIP" >&2
+    exit 1
+  fi
+  if [[ "${CONFIRM_EXPORT_HAS_FILE_STORAGE:-}" != "1" ]]; then
+    echo "ERROR: external HOSTED_CONVEX_EXPORT_ZIP requires CONFIRM_EXPORT_HAS_FILE_STORAGE=1 because this script cannot verify file storage contents." >&2
     exit 1
   fi
   export_zip="$HOSTED_CONVEX_EXPORT_ZIP"
@@ -72,14 +77,19 @@ if [[ -f "$export_zip" ]]; then
 else
   echo "Exporting hosted Convex data to $export_zip"
   unset CONVEX_SELF_HOSTED_URL CONVEX_SELF_HOSTED_ADMIN_KEY
-  convex_cli export --path "$export_zip"
+  convex_cli export --path "$export_zip" --include-file-storage
 fi
 
 if [[ "${CONFIRM_REPLACE_ALL:-}" != "1" && "${FRESH_SELF_HOSTED:-}" != "1" ]]; then
   echo "ERROR: destructive import refused. Set CONFIRM_REPLACE_ALL=1 or FRESH_SELF_HOSTED=1 to replace all self-hosted Convex data." >&2
   exit 1
 fi
+if [[ "${FRESH_SELF_HOSTED:-}" == "1" && "${CONFIRM_TARGET_URL:-}" != "$target_url" ]]; then
+  echo "ERROR: FRESH_SELF_HOSTED=1 requires CONFIRM_TARGET_URL=$target_url to confirm the target deployment." >&2
+  exit 1
+fi
 
+export CONVEX_SELF_HOSTED_URL="$target_url"
 export_self_hosted_env
 echo "WARNING: destructive import will replace all data in self-hosted Convex."
 echo "Importing $export_zip into self-hosted Convex at $CONVEX_SELF_HOSTED_URL"

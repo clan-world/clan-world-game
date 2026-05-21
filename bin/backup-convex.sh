@@ -39,7 +39,8 @@ if [[ -z "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]]; then
 fi
 unset CONVEX_DEPLOYMENT CONVEX_DEPLOY_KEY
 
-mkdir -p agents/backups
+install -d -m 0700 agents/backups
 backup_path="agents/backups/convex-$(date -u +%Y%m%dT%H%M%SZ).zip"
 convex_cli export --path "$backup_path" --include-file-storage
+chmod 0600 "$backup_path"
 echo "Wrote $backup_path"

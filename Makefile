@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 PROFILE ?= dev
 CONVEX_SELF_HOSTED_ADMIN_KEY_FILE ?= agents/secrets/convex-admin.key
 
-.PHONY: deploy-convex bootstrap-convex-admin-key import-convex-schema backup-convex reset-anvil
+.PHONY: deploy-convex bootstrap-convex-admin-key import-convex-schema backup-convex check-stack-health reset-anvil
 
 deploy-convex:
 	bash bin/deploy-convex.sh
@@ -13,6 +13,9 @@ import-convex-schema:
 
 backup-convex:
 	bash bin/backup-convex.sh
+
+check-stack-health:
+	bash bin/check-stack-health.sh
 
 bootstrap-convex-admin-key:
 	@mkdir -p "$(dir $(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE))"
@@ -28,12 +31,20 @@ bootstrap-convex-admin-key:
 	  if [[ "$$i" == "30" ]]; then echo "ERROR: convex-backend did not become healthy" >&2; exit 1; fi; \
 	  sleep 1; \
 	done
-	@tmp="$$(mktemp)"; \
-	docker compose --profile "$(PROFILE)" exec -T convex-backend ./generate_admin_key.sh > "$$tmp"; \
-	install -m 600 "$$tmp" "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)"; \
-	rm -f "$$tmp"; \
-	sha256sum "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)" > "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE).sha256"; \
-	echo "Wrote $(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)"; \
+	@if [[ "$(PROFILE)" == "dev" ]]; then \
+	  docker compose --profile "$(PROFILE)" up -d convex-backend-dev-port; \
+	fi
+	@set -euo pipefail; \
+	tmp="$$(mktemp)"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	docker compose --profile "$(PROFILE)" exec -T convex-backend ./generate_admin_key.sh > "$$tmp" && \
+	if [[ ! -s "$$tmp" ]]; then \
+	  echo "ERROR: Refused to write $(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE): generated admin key was empty" >&2; \
+	  exit 1; \
+	fi && \
+	install -m 600 "$$tmp" "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)" && \
+	sha256sum "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)" > "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE).sha256" && \
+	echo "Wrote $(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)" && \
 	echo "Fingerprint: $$(awk '{print $$1}' "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE).sha256")"
 
 reset-anvil:

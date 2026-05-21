@@ -6,7 +6,8 @@ schema in `packages/sdk/convex/schema.ts`.
 
 ## First Bootstrap
 
-1. Start the backend and generate a CLI/dashboard admin key:
+1. Start the backend, start the dev backend loopback proxy, and generate a
+   CLI/dashboard admin key:
 
    ```bash
    make bootstrap-convex-admin-key PROFILE=dev
@@ -27,7 +28,7 @@ schema in `packages/sdk/convex/schema.ts`.
 `make deploy-convex` runs:
 
 ```bash
-pnpm --filter @clan-world/sdk codegen
+pnpm --filter @clan-world/sdk convex:codegen
 pnpm --filter @clan-world/server convex:codegen
 pnpm typecheck
 pnpm --filter @clan-world/server convex:deploy
@@ -65,7 +66,8 @@ Create a pre-migration or pre-reset backup:
 make backup-convex
 ```
 
-Backups are written to `agents/backups/convex-<timestamp>.zip`.
+Backups are written to `agents/backups/convex-<timestamp>.zip`. The directory
+is created `0700` and backup zips are chmodded `0600`.
 
 Restore/import into a fresh self-hosted backend:
 
@@ -73,8 +75,12 @@ This is a destructive import. It uses `--replace-all` and is intended only for
 a fresh backend or an explicitly confirmed restore.
 
 ```bash
-FRESH_SELF_HOSTED=1 make import-convex-schema
+FRESH_SELF_HOSTED=1 CONFIRM_TARGET_URL=http://127.0.0.1:3210 make import-convex-schema
 ```
+
+If supplying a prebuilt hosted export with `HOSTED_CONVEX_EXPORT_ZIP`, also set
+`CONFIRM_EXPORT_HAS_FILE_STORAGE=1`; the script cannot inspect external zips
+to prove they include Convex file storage.
 
 ## Do Not Remove `convex_data` Casually
 
@@ -92,7 +98,7 @@ data. Always run `make backup-convex` before any operation that might remove
 ## Health Checks
 
 ```bash
-bash bin/check-stack-health.sh
+make check-stack-health
 ```
 
 Expected dev endpoints:

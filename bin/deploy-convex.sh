@@ -29,6 +29,26 @@ require_self_hosted_env() {
   unset CONVEX_DEPLOYMENT CONVEX_DEPLOY_KEY
 }
 
+is_local_origin() {
+  local value="$1"
+  [[ "$value" == http://localhost* || "$value" == https://localhost* || \
+    "$value" == http://127.0.0.1* || "$value" == https://127.0.0.1* || \
+    "$value" == http://convex-backend* || "$value" == https://convex-backend* ]]
+}
+
+require_prod_origins() {
+  [[ "${CHAIN_NETWORK:-dev}" == "prod" ]] || return 0
+
+  local name value
+  for name in CONVEX_CLOUD_ORIGIN CONVEX_SITE_ORIGIN CONVEX_DASHBOARD_DEPLOYMENT_URL; do
+    value="${!name:-}"
+    if [[ -z "$value" ]] || is_local_origin "$value"; then
+      echo "ERROR: $name must be set to a browser-routable prod URL when CHAIN_NETWORK=prod; got '${value:-<unset>}'" >&2
+      exit 1
+    fi
+  done
+}
+
 check_cli_version() {
   local expected="${CONVEX_CLI_PINNED_VERSION:?CONVEX_CLI_PINNED_VERSION is required}"
   local actual
@@ -40,10 +60,11 @@ check_cli_version() {
 }
 
 load_env
+require_prod_origins
 require_self_hosted_env
 check_cli_version
 
-pnpm --filter @clan-world/sdk codegen
+pnpm --filter @clan-world/sdk convex:codegen
 pnpm --filter @clan-world/server convex:codegen
 pnpm typecheck
 pnpm --filter @clan-world/server convex:deploy

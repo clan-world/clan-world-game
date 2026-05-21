@@ -94,8 +94,8 @@ services:
     stop_signal: SIGINT
     environment:
       INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
-      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://convex-backend:3210}
-      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://convex-backend:3211}
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:?CONVEX_CLOUD_ORIGIN required; set browser-reachable API origin explicitly}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:?CONVEX_SITE_ORIGIN required; set HTTP actions origin explicitly}
       DISABLE_BEACON: ${DISABLE_BEACON:-true}
       DISABLE_METRICS_ENDPOINT: ${DISABLE_METRICS_ENDPOINT:-true}
       DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-true}
@@ -119,12 +119,13 @@ services:
     environment:
       # In dev, operators open the dashboard through localhost. In prod this
       # should be overridden to a routed internal/admin URL or left unexposed.
-      NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_DASHBOARD_DEPLOYMENT_URL:-http://convex-backend:3210}
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_DASHBOARD_DEPLOYMENT_URL:?CONVEX_DASHBOARD_DEPLOYMENT_URL required; set browser-reachable dashboard deployment URL explicitly}
     networks: [clan-world-internal]
     depends_on:
       convex-backend:
         condition: service_healthy
     healthcheck:
+      # Verified 2026-05-21: ghcr.io/get-convex/convex-dashboard:latest includes /usr/bin/curl.
       test: ["CMD", "curl", "-f", "http://localhost:6791/"]
       interval: 10s
       timeout: 3s
