@@ -18,7 +18,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "codegen": "npx -y convex@${CONVEX_CLI_PINNED_VERSION:-1.39.1} codegen --typecheck disable",
+    "codegen": "convex codegen --typecheck disable",
+    "convex:codegen": "npx -y convex@${CONVEX_CLI_PINNED_VERSION:-1.39.1} codegen --typecheck disable",
     "deploy": "echo 'SDK is not a Convex deployment target' && exit 1",
     "convex:deploy": "echo 'SDK is not a Convex deployment target' && exit 1",
     "typecheck": "tsc --noEmit",
