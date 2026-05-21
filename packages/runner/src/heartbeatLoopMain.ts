@@ -1,6 +1,5 @@
 import { createConvexClient } from '@clan-world/shared/adapters';
 import { startHeartbeatScheduler } from './heartbeatScheduler';
-import { makeHeartbeatLoopSettleLatch } from './convexSnapshotSettleLatch';
 import { configFromEnv, RunnerCastHeartbeat } from './runnerCastHeartbeat';
 
 async function main(): Promise<void> {
@@ -17,17 +16,11 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => onSignal('SIGINT'));
 
   const convex = createConvexClient();
-  const settleLatch = makeHeartbeatLoopSettleLatch({
-    convex,
-    signal: abort.signal,
-    log: console,
-  });
 
   startHeartbeatScheduler({
     heartbeatCaller: new RunnerCastHeartbeat(configFromEnv()),
     convex,
     signal: abort.signal,
-    settleLatch,
     runnerId: process.env['RUNNER_ID'] ?? 'clanworld-heartbeat-loop',
   });
 
