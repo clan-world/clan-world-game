@@ -92,10 +92,25 @@ export const humanSteeringMessageFields = {
 };
 
 export default defineSchema({
+  // Single-row table patched every tick — holds tick counter + epoch +
+  // season fields for the cheap getTickClock query. See issue #333.
+  tickClock: defineTable({
+    tick: v.number(),
+    blockNumber: v.optional(v.number()),
+    tickEpochStartedAt: v.number(),
+    tickEpochDurationMs: v.number(),
+    heartbeatIntervalSeconds: v.optional(v.number()),
+    currentSeasonNumber: v.optional(v.number()),
+    seasonStartTick: v.number(),
+    seasonEndTick: v.number(),
+    winterActive: v.boolean(),
+    winterStartsAtTick: v.optional(v.number()),
+  }),
   worldSnapshot: defineTable({
     tick: v.number(),
     tickEpochStartedAt: v.number(),
     tickEpochDurationMs: v.number(),
+    heartbeatIntervalSeconds: v.optional(v.number()),
     // Season + winter timers (Phase 4.4)
     currentSeasonNumber: v.optional(v.number()),
     seasonStartTick: v.optional(v.number()),
@@ -154,6 +169,22 @@ export default defineSchema({
       )
     ),
   }).index("by_tick", ["tick"]),
+  runnerStatus: defineTable({
+    runnerId: v.string(),
+    lastFireAt: v.optional(v.number()),
+    lastFireResult: v.union(
+      v.literal("success"),
+      v.literal("revert"),
+      v.literal("timeout"),
+      v.literal("error"),
+      v.literal("rate-limited"),
+      v.literal("boot-error"),
+    ),
+    lastFailureMessage: v.optional(v.string()),
+    heartbeatIntervalSeconds: v.optional(v.number()),
+    nextHeartbeatAtTs: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_runnerId", ["runnerId"]),
   chainEvents: defineTable({
     txHash: v.string(),
     logIndex: v.number(),
@@ -172,6 +203,7 @@ export default defineSchema({
     .index("by_tx_log", ["txHash", "logIndex"])
     .index("by_block", ["blockNumber"])
     .index("by_event_block", ["eventName", "blockNumber"])
+    .index("by_event_tick", ["eventName", "tick"])
     .index("by_tick", ["tick"])
     .index("by_clan_tick", ["clanId", "tick"]),
   tickHistory: defineTable({
@@ -187,6 +219,25 @@ export default defineSchema({
     lastBlock: v.number(),
     lastTxHash: v.optional(v.string()),
     lastSeenAt: v.number(),
+    // DEPRECATED: superseded by the singleton `pollerHealth` table below.
+    // Kept as `v.optional` so existing rows survive Convex schema validation
+    // during rollout; `pollerWatchdog` no longer reads this field.
+    pollerLastInvokedAt: v.optional(v.number()),
+  }),
+  // Singleton "cron is alive" heartbeat for `real-indexer-log-poller`.
+  // Decoupled from `eventCheckpoint` so cold-start no longer needs to insert
+  // a synthetic checkpoint row (which polluted the ingest path and made the
+  // watchdog structurally unable to detect a stuck cold-start: a synthetic
+  // row would set `pollerLastInvokedAt` then never advance `lastBlock`,
+  // causing the watchdog to report `stale: false` indefinitely).
+  // pollLogs writes to this on every invocation; pollerWatchdog reads it.
+  pollerHealth: defineTable({
+    pollerLastInvokedAt: v.number(),
+    // Last time pollLogs reached its successful tail (post-ingestEvents).
+    // Distinguishes "cron firing but always crashes" (lastInvokedAt fresh,
+    // lastSuccessAt stale) from "cron not firing" (both stale). Watchdog
+    // alerts on either staleness. Optional so existing rows survive rollout.
+    pollerLastSuccessAt: v.optional(v.number()),
   }),
   clanView: defineTable({
     clanId: v.number(),

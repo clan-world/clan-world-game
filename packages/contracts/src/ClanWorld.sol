@@ -42,6 +42,8 @@ import {RNG} from "./lib/RNG.sol";
 import {MinimalERC20} from "./MinimalERC20.sol";
 import {StubPool} from "./StubPool.sol";
 import {ReentrancyGuard} from "./util/ReentrancyGuard.sol";
+import {LibStorage} from "./diamond/lib/LibStorage.sol";
+import {LibWorldClock} from "./diamond/lib/LibWorldClock.sol";
 
 /// @dev Production storage excludes derived winter fields; _worldStateView() synthesizes the public ABI shape.
 struct StoredWorldState {
@@ -5164,6 +5166,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     function getWorldState() external view override returns (WorldState memory) {
         return _worldStateView();
+    }
+
+    function heartbeatIntervalSeconds() external view override returns (uint64) {
+        return LibWorldClock.heartbeatIntervalSeconds(LibStorage.appStorage());
     }
 
     function getTreasuryState() external view override returns (TreasuryState memory) {

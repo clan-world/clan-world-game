@@ -52,6 +52,8 @@ const GET_MARKET_STATE = "getMarketState" satisfies LensFunctionName;
 const GET_ACTIVE_BANDIT_VIEW =
   "getActiveBanditView" satisfies LensFunctionName;
 const GET_CLAN_IDS = "getClanIds" satisfies ClanWorldFunctionName;
+const GET_HEARTBEAT_INTERVAL_SECONDS =
+  "heartbeatIntervalSeconds" satisfies ClanWorldFunctionName;
 const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies LensFunctionName;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
@@ -64,6 +66,41 @@ const LEGACY_REGIONS = [
   { id: "deep-sea", name: "Deep Sea", ownerClanId: null },
 ];
 const indexerApi = internal.indexer;
+
+/**
+ * Key-order-stable JSON serializer for Convex-safe values.
+ * Accepts: string, number, boolean, null, plain object, array.
+ *
+ * Undefined-key semantics: matches JSON.stringify — keys with undefined values
+ * are DROPPED from objects; undefined array elements become null. This makes
+ * `stableJson({ a: 1, b: undefined })` equal to `stableJson({ a: 1 })`, which
+ * means callers can use the spread-with-undefined-override pattern to strip
+ * fields from a Convex doc before comparison:
+ *
+ *   const previousComparable = { ...prev, _id: undefined, _creationTime: undefined };
+ *   if (stableJson(previousComparable) === stableJson(nextView)) // ...
+ *
+ * Without this drop-undefined behavior, the spread pattern leaves stripped keys
+ * present-but-undefined, making the two strings always differ (super-swarm r3
+ * H1, fix-round 5).
+ *
+ * Do NOT pass: Date, BigInt, Symbol — these are not valid in Convex
+ * documents and will serialize incorrectly (Date→{}, BigInt→throws).
+ */
+export function stableJson(val: unknown): string {
+  if (val === undefined) return "undefined";  // sentinel; callers shouldn't pass undefined at top-level
+  if (val === null || typeof val !== "object") return JSON.stringify(val);
+  if (Array.isArray(val)) {
+    // JSON.stringify converts array `undefined` elements to `null`.
+    return `[${val.map(v => v === undefined ? "null" : stableJson(v)).join(",")}]`;
+  }
+  const obj = val as Record<string, unknown>;
+  return `{${Object.keys(obj)
+    .sort()
+    .filter(k => obj[k] !== undefined)
+    .map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+    .join(",")}}`;
+}
 
 type ParsedIndexerEvent = {
   eventName: IClanWorldAbiEventName;
@@ -79,6 +116,7 @@ type ParsedIndexerEvent = {
 type SnapshotPayload = {
   blockNumber?: number;
   txHash?: string;
+  heartbeatIntervalSeconds?: number;
   world: Record<string, unknown>;
   market?: Record<string, unknown>;
   bandit?: Record<string, unknown>;
@@ -96,6 +134,51 @@ type LegacyClanView = Partial<Doc<"clanView">> &
 
 const isPresent = <T>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined;
+
+// Non-content fields stripped before delta-comparison in commitSnapshot's
+// banditView / marketState writes (see #334). Convex auto-fields (_id,
+// _creationTime) plus per-insert audit/timestamp fields that advance every
+// heartbeat even when on-chain state is identical. marketState additionally
+// carries tick cursors (currentTick / lastUpdatedTick) that advance every
+// tick — these must be stripped too or the no-op guard never fires.
+const BANDIT_VIEW_NON_CONTENT_FIELDS = [
+  "_id",
+  "_creationTime",
+  "refreshedAt",
+  "lastUpdatedBlock",
+] as const;
+const MARKET_STATE_NON_CONTENT_FIELDS = [
+  "_id",
+  "_creationTime",
+  "refreshedAt",
+  "lastUpdatedBlock",
+  "currentTick",
+  "lastUpdatedTick",
+] as const;
+
+const stripNonContentFields = (
+  row: object | null | undefined,
+  fieldsToStrip: readonly string[],
+): Record<string, unknown> | undefined => {
+  if (!row) return undefined;
+  const skip = new Set(fieldsToStrip);
+  return Object.fromEntries(
+    Object.entries(row).filter(([key]) => !skip.has(key)),
+  );
+};
+
+// Content equality via `stableJson` (key-order-independent). Matches the
+// `clanView` / `worldSnapshot` delta pattern in `commitSnapshot`. Using
+// `stableJson` here instead of raw `JSON.stringify` defends against future
+// callers that build the comparable object via spread / dynamic keys with
+// different insertion orders — opus 4.6 super-swarm M-1 hardening.
+const isContentEqualIgnoring = (
+  previous: object | null | undefined,
+  next: object,
+  fieldsToStrip: readonly string[],
+) =>
+  stableJson(stripNonContentFields(previous, fieldsToStrip)) ===
+  stableJson(stripNonContentFields(next, fieldsToStrip));
 
 export function bigintSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
@@ -133,6 +216,19 @@ const asNumber = (value: unknown, fallback = 0): number => {
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "string" && value !== "") return Number(value);
   return fallback;
+};
+
+const DEFAULT_HEARTBEAT_INTERVAL_SECONDS = Number(HEARTBEAT_INTERVAL_SECONDS);
+
+const resolveHeartbeatIntervalSeconds = (
+  incoming: unknown,
+  previous: unknown,
+): number => {
+  const next = asNumber(incoming, 0);
+  if (next > 0) return next;
+  const prior = asNumber(previous, 0);
+  if (prior > 0) return prior;
+  return DEFAULT_HEARTBEAT_INTERVAL_SECONDS;
 };
 
 const asString = (value: unknown, fallback = "0"): string =>
@@ -269,6 +365,95 @@ export function planPollLogRange(
   };
 }
 
+/**
+ * Gating predicate for event-driven snapshot refresh.
+ *
+ * pollLogs only schedules a refresh when BOTH:
+ *   1. inserted > 0 — there is actually new state worth surfacing, AND
+ *   2. toBlock >= safeLatest — we are AT chain tip, not chunking through
+ *      historical backfill. During backfill `toBlock` is a 9-block sub-range
+ *      well behind the chain head; each chunk-with-inserts would otherwise
+ *      queue a refresh against a stale block number — wasteful + an
+ *      RPC-rate-limit risk. The 60s fallback cron covers periodic refreshes
+ *      during backfill, so the visible-state lag during catch-up is bounded.
+ *
+ * Exported as a pure helper so the gating contract is testable independent
+ * of the surrounding action handler.
+ */
+export function shouldScheduleEventDrivenRefresh(args: {
+  inserted: number;
+  toBlock: bigint;
+  safeLatest: bigint;
+}): boolean {
+  return args.inserted > 0 && args.toBlock >= args.safeLatest;
+}
+
+function stableClansman(row: unknown): unknown {
+  // Null/non-object guard — fixture rows or malformed lens reads can hand us
+  // `null`/`undefined`/primitives, and the legacy projection below would crash
+  // on `r.clansman` access. Return the same shape with all-undefined fields so
+  // downstream stableJson hashing is deterministic. Per PR #402 gemini CRIT.
+  if (row === null || row === undefined || typeof row !== "object") {
+    return {
+      clansman: {
+        clansman: {
+          clansmanId: undefined,
+          clanId: undefined,
+          state: undefined,
+          currentRegion: undefined,
+          carryWood: undefined,
+          carryIron: undefined,
+          carryWheat: undefined,
+          carryFish: undefined,
+        },
+        effectiveRegion: undefined,
+      },
+      activeMission: undefined,
+    };
+  }
+  const r = row as Record<string, unknown>;
+  const derived = (r.clansman ?? r) as Record<string, unknown>;
+  const cs = (derived.clansman ?? derived) as Record<string, unknown>;
+  const mission = (r.activeMission ?? derived.activeMission) as Record<string, unknown> | undefined;
+  return {
+    clansman: {
+      clansman: {
+        clansmanId: cs.clansmanId,
+        clanId: cs.clanId,
+        state: cs.state,
+        currentRegion: cs.currentRegion,
+        carryWood: cs.carryWood,
+        carryIron: cs.carryIron,
+        carryWheat: cs.carryWheat,
+        carryFish: cs.carryFish,
+        // NOTE: intentionally omitting cooldownEndsAtTs, lastMissionNonce — monotonic per-tick,
+        // not read by WorldMap, would defeat worldSnapshot delta-check
+      },
+      effectiveRegion: derived.effectiveRegion,
+    },
+    // Build activeMission with only defined fields. Convex documents reject
+    // arbitrary `undefined` property values; without this filter, an
+    // activeMission fixture that omits e.g. `startTick` would materialize
+    // `{ startTick: undefined, ... }` via the legacy projection and break
+    // serialization on the worldSnapshot insert path. Per pr338-r4 super-
+    // swarm codex HIGH.
+    activeMission: mission
+      ? Object.fromEntries(
+          Object.entries({
+            active: mission.active,
+            action: mission.action,
+            startRegion: mission.startRegion,
+            targetRegion: mission.targetRegion,
+            startTick: mission.startTick,
+            arrivalTick: mission.arrivalTick,
+            actionStartTick: mission.actionStartTick,
+            settlesAtTick: mission.settlesAtTick,
+          }).filter(([, value]) => value !== undefined),
+        )
+      : undefined,
+  };
+}
+
 export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
   clanViews
     .filter((view) => view.clanId > 0)
@@ -289,7 +474,7 @@ export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
       monumentLevel: asNumber(view.monumentLevel),
       livingClansmen: asNumber(view.livingClansmen),
       owner: asString(view.owner, ""),
-      clansmen: view.clansmen ?? [],
+      clansmen: (view.clansmen ?? []).map(stableClansman),
     }));
 
 // M-5: tighten internal-mutation arg shape. We can't enumerate every event
@@ -412,7 +597,7 @@ export const ingestEvents = internalMutation({
     }
 
     if (args.advanceCheckpoint === true) {
-      const checkpoint = await ctx.db.query("eventCheckpoint").first();
+      const checkpoint = await ctx.db.query("eventCheckpoint").order("desc").first();
       const nextCheckpoint = {
         lastBlock: args.blockNumber,
         lastTxHash: args.txHash,
@@ -438,6 +623,7 @@ export const ingestEvents = internalMutation({
 const snapshotValidator = v.object({
   blockNumber: v.optional(v.number()),
   txHash: v.optional(v.string()),
+  heartbeatIntervalSeconds: v.optional(v.number()),
   // TODO(post-demo): tighten world/market/bandit/clans inner record shapes
   // once contract structs stabilize (M-5 audit).
   world: v.any(),
@@ -467,11 +653,20 @@ export const commitSnapshot = internalMutation({
       .query("worldSnapshot")
       .order("desc")
       .first();
-    const previousTick = asNumber(previousWorldSnapshot?.tick, -1);
-    const previousBlock = asNumber(previousWorldSnapshot?.lastUpdatedBlock, -1);
+    const heartbeatIntervalSeconds = resolveHeartbeatIntervalSeconds(
+      snapshot.heartbeatIntervalSeconds,
+      previousWorldSnapshot?.heartbeatIntervalSeconds,
+    );
+    // Fetch tickClock first — it's the always-advancing monotonic cursor.
+    // worldSnapshot can freeze between content-change ticks (delta-check), so
+    // previousWorldSnapshot.tick is not a reliable stale-gate cursor anymore.
+    // tickClock is a single-row table, so .first() (no ordering) is sufficient.
+    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
+    const previousTick = asNumber(tickClockRow?.tick ?? previousWorldSnapshot?.tick, -1);
+    const previousBlock = asNumber(tickClockRow?.blockNumber ?? previousWorldSnapshot?.lastUpdatedBlock, -1);
     const incomingBlock = snapshot.blockNumber ?? -1;
     if (
-      previousWorldSnapshot &&
+      (tickClockRow || previousWorldSnapshot) &&
       (tick < previousTick ||
         (tick === previousTick && incomingBlock <= previousBlock))
     ) {
@@ -481,10 +676,44 @@ export const commitSnapshot = internalMutation({
         skipped: "stale-snapshot",
       };
     }
+    // Detect worldPaused transition for the epoch-start refresh below. We
+    // recompute the canonical `worldPaused` again at the worldSnapshot
+    // construction site (~line 800) — kept in sync intentionally.
+    // Per PR #402 Copilot: a same-tick `worldPaused: true → false` transition
+    // must reset `tickEpochStartedAt`, otherwise the day/night animation
+    // resumes from a stale epoch and overshoots the cycle. We trigger an
+    // epoch refresh on ANY worldPaused-state change (true↔false) within the
+    // same tick.
+    const incomingWorldPaused = asBool(world.worldPaused);
+    const previousWorldPaused = previousWorldSnapshot?.worldPaused;
+    const worldPausedChanged =
+      previousWorldPaused !== undefined &&
+      previousWorldPaused !== incomingWorldPaused;
+    // Write tickClock on every tick — cheap single-row table (~50 bytes).
+    const tickClockData = {
+      tick,
+      blockNumber: snapshot.blockNumber,
+      tickEpochStartedAt:
+        tickClockRow?.tick === tick && !worldPausedChanged
+          ? tickClockRow.tickEpochStartedAt
+          : Math.floor(now / 1000),
+      tickEpochDurationMs: heartbeatIntervalSeconds * 1000,
+      heartbeatIntervalSeconds,
+      currentSeasonNumber: asNumber(world.currentSeasonNumber),
+      seasonStartTick: asNumber(world.seasonStartTick),
+      seasonEndTick: asNumber(world.seasonEndTick),
+      winterActive: asBool(world.winterActive),
+      winterStartsAtTick: (() => { const wsat = asNumber(world.winterStartsAtTick); return wsat > 0 ? wsat : undefined; })(),
+    };
+    if (tickClockRow) {
+      await ctx.db.patch(tickClockRow._id, tickClockData);
+    } else {
+      await ctx.db.insert("tickClock", tickClockData);
+    }
 
     if (snapshot.market) {
       const market = snapshot.market;
-      await ctx.db.insert("marketState", {
+      const nextMarketState = {
         pools: MARKET_POOL_KEYS.map((resourceType) => {
           const pool = objectAt(market, resourceType);
           return {
@@ -506,12 +735,25 @@ export const commitSnapshot = internalMutation({
         lastUpdatedTick: tick,
         lastUpdatedBlock: snapshot.blockNumber,
         refreshedAt: now,
-      });
+      };
+      const previousMarketState = await ctx.db
+        .query("marketState")
+        .order("desc")
+        .first();
+      if (
+        !isContentEqualIgnoring(
+          previousMarketState,
+          nextMarketState,
+          MARKET_STATE_NON_CONTENT_FIELDS,
+        )
+      ) {
+        await ctx.db.insert("marketState", nextMarketState);
+      }
     }
 
     if (snapshot.bandit) {
       const bandit = snapshot.bandit;
-      await ctx.db.insert("banditView", {
+      const nextBanditView = {
         exists: asBool(bandit.exists),
         id: asNumber(bandit.banditId),
         region: asNumber(bandit.currentRegion),
@@ -530,7 +772,20 @@ export const commitSnapshot = internalMutation({
         projectedTargetLootValue: asString(bandit.projectedTargetLootValue),
         refreshedAt: now,
         lastUpdatedBlock: snapshot.blockNumber,
-      });
+      };
+      const previousBanditView = await ctx.db
+        .query("banditView")
+        .order("desc")
+        .first();
+      if (
+        !isContentEqualIgnoring(
+          previousBanditView,
+          nextBanditView,
+          BANDIT_VIEW_NON_CONTENT_FIELDS,
+        )
+      ) {
+        await ctx.db.insert("banditView", nextBanditView);
+      }
     }
 
     for (const view of snapshot.clans) {
@@ -584,11 +839,13 @@ export const commitSnapshot = internalMutation({
             _id: undefined,
             _creationTime: undefined,
             refreshedAt: undefined,
+            derivedAtTick: undefined,
+            lastUpdatedBlock: undefined,
           }
         : undefined;
       if (
-        JSON.stringify(previousComparable) !==
-        JSON.stringify({ ...nextView, refreshedAt: undefined })
+        stableJson(previousComparable) !==
+        stableJson({ ...nextView, refreshedAt: undefined, derivedAtTick: undefined, lastUpdatedBlock: undefined })
       ) {
         await ctx.db.insert("clanView", nextView);
       }
@@ -608,14 +865,11 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
-    const worldPaused = asBool(world.worldPaused);
-    const sameTickAsPrevious = previousWorldSnapshot?.tick === tick;
-    const wasPausedNowUnpaused =
-      previousWorldSnapshot?.worldPaused === true && !worldPaused;
-    const tickEpochStartedAt =
-      previousWorldSnapshot && sameTickAsPrevious && !wasPausedNowUnpaused
-        ? previousWorldSnapshot.tickEpochStartedAt
-        : Math.floor(now / 1000);
+    // tickEpochStartedAt now sourced from tickClockData (issue #333) — see below.
+    // worldPaused / pausedAtTs computation retained from dev for chain-pause semantics.
+    // `worldPaused` was already computed as `incomingWorldPaused` upstream for
+    // the tickClock epoch-refresh decision; re-alias here for readability.
+    const worldPaused = incomingWorldPaused;
     const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
     const pausedAtTs =
       Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)
@@ -623,8 +877,9 @@ export const commitSnapshot = internalMutation({
         : undefined;
     const worldSnapshot = {
       tick,
-      tickEpochStartedAt,
-      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      tickEpochStartedAt: tickClockData.tickEpochStartedAt,
+      tickEpochDurationMs: tickClockData.tickEpochDurationMs,
+      heartbeatIntervalSeconds,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
@@ -662,10 +917,54 @@ export const commitSnapshot = internalMutation({
         };
       }),
     };
-    if (previousWorldSnapshot) {
-      await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
-    } else {
-      await ctx.db.insert("worldSnapshot", worldSnapshot);
+    // Delta-check: only patch worldSnapshot when data actually changes.
+    // Strip audit/timestamp + per-tick-monotonic fields before comparing so a
+    // no-data tick is a no-op.
+    //
+    // IMPORTANT (PR #402 codex P1): `tick` itself is INCLUDED in the comparison.
+    // Some web readers (apps/web/src/hooks/useCurrentWorldTick.ts, WorldMap
+    // bandit-resolution effect, VaultTab sync label) still source the live tick
+    // from `getSnapshot().tick`. If we stripped `tick`, the worldSnapshot row
+    // would freeze its tick value between content-change ticks and those
+    // readers would report a stale clock. Including `tick` here means every
+    // tick advance triggers a patch — which is the correct semantics for those
+    // downstream consumers. Migrating all web readers to `getTickClock` is
+    // tracked as a follow-up.
+    const previousComparableSnapshot = previousWorldSnapshot
+      ? (() => {
+          const {
+            _id, _creationTime, lastUpdatedAt, lastUpdatedBlock, txHash,
+            tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+            ...rest
+          } =
+            previousWorldSnapshot as typeof previousWorldSnapshot & {
+              _id: unknown;
+              _creationTime: unknown;
+            };
+          void _id; void _creationTime; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+          void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
+          return rest;
+        })()
+      : undefined;
+    const nextComparableSnapshot = (() => {
+      const {
+        lastUpdatedAt, lastUpdatedBlock, txHash,
+        tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+        ...rest
+      } = worldSnapshot;
+      void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+      void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
+      return rest;
+    })();
+    if (
+      stableJson(previousComparableSnapshot) !==
+      stableJson(nextComparableSnapshot)
+    ) {
+      if (previousWorldSnapshot) {
+        await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
+      } else {
+        await ctx.db.insert("worldSnapshot", worldSnapshot);
+      }
     }
 
     return { tick, clans: snapshot.clans.length };
@@ -704,16 +1003,35 @@ export const refreshSnapshot = internalAction({
       blockNumber: pinnedBlockNumber,
     });
 
-    const [worldRaw, market, bandit] = await Promise.all([
-      client.readContract(readArgs(GET_WORLD_SNAPSHOT)).catch(() => undefined),
-      client.readContract(readArgs(GET_MARKET_STATE)).catch(() => undefined),
-      client
-        .readContract(readLensArgs(GET_WORLD_SNAPSHOT))
-        .catch(() => undefined),
-      client.readContract(readLensArgs(GET_MARKET_STATE)).catch(() => undefined),
-      client
-        .readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW))
-        .catch(() => undefined),
+    // Wrap each chain read with a labeled error capture so RPC failures
+    // surface as console.warn rather than silent .filter(Boolean) drops.
+    // Without this an Alchemy 429 / network blip drops state from a tick
+    // without any operator-visible signal. silent-failure-hunter R6 C-1.
+    const readWithLabel = async <T>(
+      label: string,
+      fn: () => Promise<T>,
+    ): Promise<T | undefined> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.warn(`[indexer] chain read ${label} failed:`, String(err));
+        return undefined;
+      }
+    };
+
+    const [worldRaw, market, bandit, heartbeatIntervalSecondsRaw] = await Promise.all([
+      readWithLabel("getWorldSnapshot", () =>
+        client.readContract(readLensArgs(GET_WORLD_SNAPSHOT)),
+      ),
+      readWithLabel("getMarketState", () =>
+        client.readContract(readLensArgs(GET_MARKET_STATE)),
+      ),
+      readWithLabel("getActiveBanditView", () =>
+        client.readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW)),
+      ),
+      readWithLabel("heartbeatIntervalSeconds", () =>
+        client.readContract(readWorldArgs(GET_HEARTBEAT_INTERVAL_SECONDS)),
+      ),
     ]);
 
     const world = worldRaw as Record<string, unknown> | undefined;
@@ -724,9 +1042,9 @@ export const refreshSnapshot = internalAction({
       return { tick: 0, clans: 0 };
     }
 
-    const clanIdsRaw = await client
-      .readContract(readWorldArgs(GET_CLAN_IDS))
-      .catch(() => undefined);
+    const clanIdsRaw = await readWithLabel("getClanIds", () =>
+      client.readContract(readWorldArgs(GET_CLAN_IDS)),
+    );
     const clanIds =
       Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
         ? clanIdsRaw.map((id) => asNumber(id)).filter((id) => id > 0)
@@ -734,19 +1052,32 @@ export const refreshSnapshot = internalAction({
 
     const clans = await Promise.all(
       clanIds.map(async (clanId) => {
-        return client
-          .readContract({
-            ...readLensArgs(GET_CLAN_FULL_VIEW),
-            args: [clanId],
-          })
-          .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
-          .catch(() => undefined);
+        return readWithLabel(`getClanFullView(${clanId})`, () =>
+          client
+            .readContract({
+              ...readLensArgs(GET_CLAN_FULL_VIEW),
+              args: [clanId],
+            })
+            .then((view: unknown) => bigintSafe(view) as Record<string, unknown>),
+        );
       }),
     );
+    // Aggregate count of failed clan reads so a degraded chain
+    // (Alchemy outage, partial RPC failure) is visible even if individual
+    // per-call lines scroll past. Threshold = ALL clans failed → also warn.
+    const failedClanCount = clans.filter((c) => c === undefined).length;
+    if (failedClanCount > 0) {
+      console.warn(
+        `[indexer] refreshSnapshot: ${failedClanCount}/${clanIds.length} clan reads failed — snapshot will commit with degraded clan set`,
+      );
+    }
 
     return await ctx.runMutation(indexerApi.commitSnapshot, {
       snapshot: {
         blockNumber,
+        heartbeatIntervalSeconds: heartbeatIntervalSecondsRaw === undefined
+          ? undefined
+          : asNumber(heartbeatIntervalSecondsRaw, DEFAULT_HEARTBEAT_INTERVAL_SECONDS),
         world: bigintSafe(world),
         market: bigintSafe(market),
         bandit: bigintSafe(bandit),
@@ -763,11 +1094,17 @@ export const pollLogs = internalAction({
       return { inserted: 0, skipped: true, resetLocked: true };
     }
 
+    // Heartbeat: stamp the "cron is alive" signal BEFORE any early-return so
+    // a quiet chain (shouldPoll === false) doesn't masquerade as a dead cron.
+    // The `pollerWatchdog` cron reads this and alerts if it goes stale.
+    await ctx.runMutation(indexerApi.markPollerInvoked, {});
+
     const client = createClient();
     const address = engineAddress();
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
       lastBlock: number;
       lastTxHash?: string;
+      lastSeenAt?: number;
     } | null;
     const latest = await client.getBlockNumber();
     const { fromBlock, toBlock, safeLatest, shouldPoll } = planPollLogRange(
@@ -775,6 +1112,9 @@ export const pollLogs = internalAction({
       latest,
     );
     if (!shouldPoll) {
+      // Quiet chain is a successful poll outcome — stamp lastSuccessAt so the
+      // watchdog doesn't trip on a chain that's just idle.
+      await ctx.runMutation(indexerApi.markPollerSuccess, {});
       return {
         inserted: 0,
         fromBlock: Number(fromBlock),
@@ -784,20 +1124,200 @@ export const pollLogs = internalAction({
 
     const logs = await client.getLogs({ address, fromBlock, toBlock });
     const events = decodeClanWorldLogs(logs);
-    return await ctx.runMutation(indexerApi.ingestEvents, {
+    const result = await ctx.runMutation(indexerApi.ingestEvents, {
       events,
       blockNumber: Number(toBlock),
       txHash:
         events[events.length - 1]?.transactionHash ?? checkpoint?.lastTxHash,
       advanceCheckpoint: true,
     });
+    // Stamp the success channel only after ingestEvents commits. The watchdog
+    // checks BOTH lastInvokedAt (cron is firing) AND lastSuccessAt (poll is
+    // actually completing) — codex 5.4/5.5 super-swarm finding.
+    await ctx.runMutation(indexerApi.markPollerSuccess, {});
+    // Only schedule event-driven refresh when we're at chain tip. During
+    // historical backfill `toBlock` is a chunked sub-range (9 blocks/tick),
+    // each chunk-with-inserts would otherwise queue a refresh against stale
+    // block numbers — wasteful + RPC-rate-limit risk. The 60s fallback cron
+    // covers periodic refreshes during backfill. See
+    // `shouldScheduleEventDrivenRefresh` for the gating contract.
+    if (
+      shouldScheduleEventDrivenRefresh({
+        inserted: (result as { inserted: number }).inserted,
+        toBlock,
+        safeLatest,
+      })
+    ) {
+      await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {
+        blockNumber: Number(toBlock),
+      });
+    }
+    return result;
   },
 });
 
 export const readCheckpoint = internalQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("eventCheckpoint").first();
+    return await ctx.db.query("eventCheckpoint").order("desc").first();
+  },
+});
+
+/**
+ * Stamp `pollerLastInvokedAt = Date.now()` on the singleton `pollerHealth`
+ * row. Called at the top of `pollLogs` (BEFORE shouldPoll early-return) so
+ * the field is a true "cron is alive" heartbeat — independent of whether
+ * there are new blocks to ingest. `pollerWatchdog` reads this to detect a
+ * dead `real-indexer-log-poller` cron.
+ *
+ * On first invocation the row doesn't exist yet — insert it. We deliberately
+ * do NOT touch `eventCheckpoint` here: a previous version of this mutation
+ * inserted a synthetic checkpoint row at cold-start, which polluted the
+ * ingest table and (worse) made the watchdog structurally unable to detect
+ * a stuck cold-start. Keeping the two concerns in separate tables means
+ * `pollerHealth` reflects ONLY cron liveness while `eventCheckpoint` reflects
+ * ONLY ingest progress.
+ */
+export const markPollerInvoked = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const health = await ctx.db.query("pollerHealth").order("desc").first();
+    if (health) {
+      await ctx.db.patch(health._id, { pollerLastInvokedAt: now });
+    } else {
+      await ctx.db.insert("pollerHealth", { pollerLastInvokedAt: now });
+    }
+  },
+});
+
+/**
+ * Stamp `pollerLastSuccessAt` after pollLogs reaches its successful tail
+ * (post-ingestEvents). Paired with `markPollerInvoked` (called at the top of
+ * pollLogs) so the watchdog can distinguish "cron firing but always crashing"
+ * (lastInvokedAt fresh, lastSuccessAt stale) from "cron not firing at all"
+ * (both stale). Without this, a poll that crashed after `markPollerInvoked`
+ * would leave the watchdog reporting `stale: false` indefinitely.
+ */
+export const markPollerSuccess = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const health = await ctx.db.query("pollerHealth").order("desc").first();
+    if (health) {
+      await ctx.db.patch(health._id, { pollerLastSuccessAt: now });
+    } else {
+      await ctx.db.insert("pollerHealth", {
+        pollerLastInvokedAt: now,
+        pollerLastSuccessAt: now,
+      });
+    }
+  },
+});
+
+export const readPollerHealth = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("pollerHealth").order("desc").first();
+  },
+});
+
+/**
+ * Liveness watchdog for the `real-indexer-log-poller` cron. Registered as
+ * its own 60s cron so it fires INDEPENDENTLY of pollLogs — making it
+ * structurally capable of detecting that pollLogs has stopped running.
+ *
+ * Behavior:
+ *   - `CLANWORLD_USE_REAL_INDEXER !== "true"`: returns `stale: false` because
+ *     the poller is intentionally disabled — no alert noise from environments
+ *     that don't run the real indexer at all.
+ *   - `pollerHealth` row missing: returns `stale: true` with reason
+ *     "poller never ran". Catches the cold-start failure mode where
+ *     `CLANWORLD_USE_REAL_INDEXER=true` is set but `pollLogs` has never
+ *     successfully completed even one invocation (e.g. import-time crash,
+ *     misconfigured RPC, missing env var).
+ *   - `pollerLastInvokedAt` > 90s old: returns `stale: true` with reason
+ *     "poller heartbeat aged out". Catches the running-but-stuck failure mode.
+ *
+ * Previous incarnations of this check lived inside pollLogs itself (couldn't
+ * detect a truly dead cron) and read from `eventCheckpoint` (returned
+ * `stale: false` against the synthetic cold-start row even when no real
+ * ingest had run since).
+ */
+export type PollerHealthRow = {
+  _creationTime: number;
+  pollerLastInvokedAt: number;
+  pollerLastSuccessAt?: number;
+};
+
+export const INVOKED_STALE_MS = 90_000;  // 1.5x the 60s safety-fallback period
+export const SUCCESS_STALE_MS = 180_000; // 3 cron periods of tolerance
+
+/**
+ * Pure decision logic for the poller watchdog. Extracted from the action
+ * handler so it can be unit-tested table-style without a Convex harness.
+ * Returns either `{ stale: false, ... }` or `{ stale: true, reason, ... }`.
+ */
+export function evaluatePollerHealth(
+  health: PollerHealthRow | null,
+  now: number,
+): {
+  stale: boolean;
+  reason?: string;
+  lastInvokedAt?: number;
+  lastSuccessAt?: number;
+  effectiveSuccessAt?: number;
+} {
+  if (!health) return { stale: true, reason: "poller never ran" };
+  if (now - health.pollerLastInvokedAt > INVOKED_STALE_MS) {
+    return {
+      stale: true,
+      reason: "poller heartbeat aged out",
+      lastInvokedAt: health.pollerLastInvokedAt,
+      lastSuccessAt: health.pollerLastSuccessAt,
+    };
+  }
+  // Cold-start blind spot fix: if pollLogs has never succeeded since the row
+  // was created (e.g. wrong RPC_URL_PRIMARY, every invocation crashes after
+  // markPollerInvoked but before markPollerSuccess), `pollerLastSuccessAt`
+  // stays undefined indefinitely. Fall back to row._creationTime so the
+  // staleness math still triggers. opus 4.7 R2 M1.
+  const effectiveSuccessAt =
+    health.pollerLastSuccessAt ?? health._creationTime;
+  if (now - effectiveSuccessAt > SUCCESS_STALE_MS) {
+    return {
+      stale: true,
+      reason: "poller success aged out",
+      lastInvokedAt: health.pollerLastInvokedAt,
+      lastSuccessAt: health.pollerLastSuccessAt,
+      effectiveSuccessAt,
+    };
+  }
+  return {
+    stale: false,
+    lastInvokedAt: health.pollerLastInvokedAt,
+    lastSuccessAt: health.pollerLastSuccessAt,
+  };
+}
+
+export const pollerWatchdog = internalAction({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    if (resetLocked()) {
+      return { skipped: true, resetLocked: true };
+    }
+    if (process.env.CLANWORLD_USE_REAL_INDEXER !== "true") {
+      return { stale: false, reason: "real indexer disabled" };
+    }
+    const health = (await ctx.runQuery(
+      indexerApi.readPollerHealth,
+      {},
+    )) as PollerHealthRow | null;
+    const result = evaluatePollerHealth(health, Date.now());
+    if (result.stale) {
+      console.error(`[indexer] watchdog: ${result.reason}`);
+    }
+    return result;
   },
 });
 
@@ -809,7 +1329,7 @@ export const readCheckpoint = internalQuery({
 export const resetCheckpoint = internalMutation({
   args: { lastBlock: v.number() },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.query("eventCheckpoint").first();
+    const existing = await ctx.db.query("eventCheckpoint").order("desc").first();
     if (existing) await ctx.db.delete(existing._id);
     await ctx.db.insert("eventCheckpoint", {
       lastBlock: args.lastBlock,

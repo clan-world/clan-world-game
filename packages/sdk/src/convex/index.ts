@@ -29,6 +29,7 @@ export type SnapshotBandit = {
 
 export type WorldSnapshot = {
   tick: number;
+  heartbeatIntervalSeconds?: number;
   tickEpoch: TickEpoch;
   regions: SnapshotRegion[];
   clans: SnapshotClan[];

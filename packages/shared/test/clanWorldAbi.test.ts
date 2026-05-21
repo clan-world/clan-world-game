@@ -14,6 +14,19 @@ const worldStateOutputs = getFunctionOutputs('getWorldState');
 const worldSnapshotOutputs = getFunctionOutputs('getWorldSnapshot');
 
 describe('ClanWorld generated ABI tuple decoding', () => {
+  it('exposes WallDamagedByBandit with the newLevel input (consumed by EventTicker)', () => {
+    // Pinning the ABI field name guards EventTicker's `args.newLevel` read against
+    // contract renames. The behavioral coverage that the ticker actually formats
+    // this field lives in apps/web/src/eventTickerFormat.test.ts.
+    const event = iClanWorldAbi.find(
+      (item) => item.type === 'event' && item.name === 'WallDamagedByBandit',
+    );
+    const inputNames = event?.inputs.map((input) => input.name) ?? [];
+
+    expect(inputNames).toContain('newLevel');
+    expect(inputNames).not.toContain('wallLevel');
+  });
+
   it('decodes a known-good getWorldState() result with the current Solidity order', () => {
     const data = encodeAbiParameters(worldStateOutputs, [
       {

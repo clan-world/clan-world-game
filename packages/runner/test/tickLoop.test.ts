@@ -29,6 +29,7 @@ function fakeConvex(tick: number): IConvexClient {
       };
     },
     async postLog() {},
+    async postRunnerStatus() {},
     async postWhisper() {},
     async postOrchEvent() {},
     async postHumanSteering() {},
@@ -63,7 +64,6 @@ function config(): RunnerConfig {
     settleWindowSec: 0,
     deliveryTimeoutMs: 100,
     ackTimeoutMs: 100,
-    heartbeatCheckIntervalMs: 100,
     stateDir: '/tmp/clanworld-runner-test',
     tmuxSessionPrefix: 'elder',
     elderToClanId: { 1: '1', 2: '2', 3: '3', 4: '4' },

@@ -1,7 +1,9 @@
-// v1.0.1: webhook accepts tx pings and logs them; chain state is read by
-// runner/Elder paths via getWorldSnapshot/getRankings. v1.1 will replace
-// this with a real event-decoder that reads logs from the heartbeat tx
-// and refreshes Convex snapshots from chain state. Tracked: GH issue #TBD
+// Heartbeat webhook entry point. When `CLANWORLD_USE_REAL_INDEXER=true`,
+// fetches the tx receipt, validates the engine address, decodes engine logs
+// via parseHeartbeatEngineEvents, ingests events, and schedules a snapshot
+// refresh. When the flag is off, accepts the ping and returns OK so legacy
+// callers don't error. Companion `advanceTick` synthetic mutation runs under
+// `CLANWORLD_USE_FAKE_HEARTBEAT=true` for demo / dev mode.
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { iClanWorldAbi } from "@clan-world/contract-types";
@@ -14,6 +16,7 @@ import {
   type Hex,
   type Log,
 } from "viem";
+import { deriveSeasonState } from "./getSnapshot";
 
 const indexerApi = internal.indexer;
 
@@ -241,32 +244,112 @@ type AdvanceTickResult =
 
 export const advanceTick = internalMutation({
   handler: async (ctx): Promise<AdvanceTickResult> => {
+    // Read tickClock first — authoritative cursor after worldSnapshot delta-check (#333).
+    // worldSnapshot can freeze at tick N while tickClock advances to N+k.
+    // tickClock is a single-row table, so .first() (no ordering) is sufficient.
+    // Singleton table; .order("desc") defends against dup-row scenarios
+    // (manual seed, demo-reset race, cold-start TOCTOU) where the read site
+    // would otherwise see the OLDEST row while writers see the NEWEST. Standardize
+    // across all 5 singleton .first() call sites per opus 4.7 R1 M1.
+    const clockRow = await ctx.db.query("tickClock").order("desc").first();
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     if (!snap) return { status: "no-op", reason: "no snapshot to refresh" };
 
+    const baseTick = clockRow?.tick ?? snap.tick;
+    const baseEpochStartedAt = clockRow?.tickEpochStartedAt ?? snap.tickEpochStartedAt;
+    const baseEpochDurationMs = clockRow?.tickEpochDurationMs ?? snap.tickEpochDurationMs;
+    const baseHeartbeatIntervalSeconds =
+      clockRow?.heartbeatIntervalSeconds ??
+      snap.heartbeatIntervalSeconds ??
+      Math.max(1, Math.floor(baseEpochDurationMs / 1000));
+
     // Staleness gate: only advance if the current epoch has elapsed.
-    // Prevents cron from double-advancing (fires 4x/epoch) and concurrent
-    // calls from inserting duplicate tick rows.
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const epochEndSeconds =
-      snap.tickEpochStartedAt + Math.floor(snap.tickEpochDurationMs / 1000);
+    const epochEndSeconds = baseEpochStartedAt + Math.floor(baseEpochDurationMs / 1000);
     if (nowSeconds < epochEndSeconds) {
       return { status: "no-op", reason: "epoch not yet elapsed" };
     }
 
-    const newTick = snap.tick + 1;
-    await ctx.db.insert("worldSnapshot", {
-      tick: newTick,
-      tickEpochStartedAt: Math.floor(Date.now() / 1000),
-      tickEpochDurationMs: snap.tickEpochDurationMs,
-      regions: snap.regions,
-      clans: snap.clans,
-    });
-    await ctx.db.insert("agentLogs", {
-      level: "info",
-      message: `heartbeat: tick ${snap.tick} → ${newTick}`,
-      timestamp: Date.now(),
-    });
+    const newTick = baseTick + 1;
+    const newEpochStartedAt = Math.floor(Date.now() / 1000);
+    // Monotonic guard around both writes. Note: given `baseTick = clockRow.tick`
+    // when clockRow exists, `newTick > clockRow.tick` is tautologically true
+    // and the guard is dead code with the current calculation. Kept for intent
+    // and for the case where `!clockRow` (cold start). A future refactor that
+    // computes baseTick differently (e.g. from snap.tick when clockRow is
+    // stale-but-present) should re-evaluate. opus 4.7 R3 M1 + follow-up.
+    if (!clockRow || newTick > clockRow.tick) {
+      // Synthetic tick advance for fake-heartbeat / demo mode. Spread the
+      // previous snapshot to preserve REGIONS + CLANS + SEASON state that
+      // R1 originally dropped — gemini super-swarm HIGH. CLEAR per-tick /
+      // per-block PROVENANCE (txHash, lastUpdatedAt, lastUpdatedBlock,
+      // currentTickSeed) so cockpit UI doesn't attribute this synthetic
+      // tick to a prior real-indexer commit. OVERRIDE nextHeartbeatAtTick
+      // to newTick+1 (chain semantic is currentTick+1).
+      // opus 4.7 R2 M2 + codex 5.3 R3 (seasonFinalized preserved).
+      //
+      // If we just crossed a season boundary in synthetic mode, recompute
+      // season fields via `deriveSeasonState(newTick)` and reset
+      // `seasonFinalized` to false (no chain `finalizeSeason()` ran).
+      // Without this, currentSeasonNumber/seasonStartTick/seasonEndTick
+      // freeze on the old season + seasonFinalized stays stale.
+      // codex 5.3 R4 MED.
+      const { _id: _prevId, _creationTime: _prevCreationTime, ...prevSnap } = snap;
+      const crossedBoundary =
+        typeof prevSnap.seasonEndTick === "number" &&
+        newTick > prevSnap.seasonEndTick;
+      const seasonOverrides = crossedBoundary
+        ? {
+            ...deriveSeasonState(newTick),
+            seasonFinalized: false,
+          }
+        : {};
+      await ctx.db.insert("worldSnapshot", {
+        ...prevSnap,
+        tick: newTick,
+        tickEpochStartedAt: newEpochStartedAt,
+        tickEpochDurationMs: baseEpochDurationMs,
+        heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
+        nextHeartbeatAtTick: newTick + 1,
+        ...seasonOverrides,
+        // Clear per-block provenance so UI consumers don't attribute this
+        // synthetic tick to a prior real-indexer commit.
+        txHash: undefined,
+        lastUpdatedAt: undefined,
+        lastUpdatedBlock: undefined,
+        currentTickSeed: undefined,
+      });
+      // agentLogs MUST stay inside the monotonic guard so audit trail does
+      // not diverge from worldSnapshot/tickClock when the guard skips.
+      // silent-failure-hunter R6 H-3.
+      await ctx.db.insert("agentLogs", {
+        level: "info",
+        message: `heartbeat: tick ${baseTick} → ${newTick}`,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Also keep tickClock in sync (same monotonic guard — reuses condition above).
+    if (!clockRow || newTick > clockRow.tick) {
+      if (clockRow) {
+        await ctx.db.patch(clockRow._id, {
+          tick: newTick,
+          tickEpochStartedAt: newEpochStartedAt,
+          tickEpochDurationMs: baseEpochDurationMs,
+          heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
+        });
+      } else {
+        await ctx.db.insert("tickClock", {
+          tick: newTick,
+          tickEpochStartedAt: newEpochStartedAt,
+          tickEpochDurationMs: baseEpochDurationMs,
+          heartbeatIntervalSeconds: baseHeartbeatIntervalSeconds,
+          seasonStartTick: 0,
+          seasonEndTick: 0,
+          winterActive: false,
+        });
+      }
+    }
 
     return { status: "ok", tick: newTick };
   },

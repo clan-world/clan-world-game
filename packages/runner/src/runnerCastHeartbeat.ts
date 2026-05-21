@@ -3,6 +3,7 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  WaitForTransactionReceiptTimeoutError,
   type Account,
   type PublicClient,
   type WalletClient,
@@ -21,6 +22,12 @@ export interface RunnerHeartbeatConfig {
   rpcUrl?: string;
   /** ClanWorld contract address. */
   contractAddress: `0x${string}`;
+  /** Wait time for heartbeat receipt confirmation. */
+  receiptTimeoutMs?: number;
+  /** Convex deployment base URL for best-effort heartbeat webhook pings. */
+  convexWebhookUrl?: string;
+  /** Shared webhook auth secret. */
+  webhookSharedSecret?: string;
 }
 
 /**
@@ -42,10 +49,31 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
       `CLAN_WORLD_CONTRACT_ADDRESS missing or invalid; expected 0x-prefixed 40-hex-char address, got ${String(contractAddress)}`,
     );
   }
+  const hasExplicitWebhookUrl = Object.prototype.hasOwnProperty.call(env, 'CONVEX_WEBHOOK_URL');
+  let convexWebhookUrl: string | undefined;
+  if (hasExplicitWebhookUrl) {
+    convexWebhookUrl = env['CONVEX_WEBHOOK_URL'] || undefined;
+    if (env['CONVEX_WEBHOOK_URL'] === '') {
+      console.info('CONVEX_WEBHOOK_URL is empty; heartbeat webhook disabled');
+    }
+  } else {
+    convexWebhookUrl = deriveConvexWebhookUrl(env['CONVEX_DEPLOY_URL']);
+    if (convexWebhookUrl) {
+      console.warn(
+        'Deriving CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL — set CONVEX_WEBHOOK_URL explicitly in env',
+      );
+    } else if (env['CONVEX_DEPLOY_URL']) {
+      console.warn(
+        'CONVEX_DEPLOY_URL is non-standard; CONVEX_WEBHOOK_URL required for webhook ingest',
+      );
+    }
+  }
   return {
     privateKey: pk,
     rpcUrl: env['RPC_URL_PRIMARY'] || env['RPC_URL_FALLBACK'],
     contractAddress: contractAddress as `0x${string}`,
+    convexWebhookUrl,
+    webhookSharedSecret: env['WEBHOOK_SHARED_SECRET'],
   };
 }
 
@@ -63,6 +91,9 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   private readonly walletClient: WalletClient;
   private readonly account: Account;
   private readonly contractAddress: `0x${string}`;
+  private readonly receiptTimeoutMs: number;
+  private readonly convexWebhookUrl?: string;
+  private readonly webhookSharedSecret?: string;
 
   constructor(cfg: RunnerHeartbeatConfig) {
     const pk = normalizePk(cfg.privateKey);
@@ -75,6 +106,9 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       transport,
     });
     this.contractAddress = cfg.contractAddress;
+    this.receiptTimeoutMs = cfg.receiptTimeoutMs ?? 15_000;
+    this.convexWebhookUrl = cfg.convexWebhookUrl;
+    this.webhookSharedSecret = cfg.webhookSharedSecret;
   }
 
   async callHeartbeat(): Promise<{ txHash: string }> {
@@ -88,25 +122,37 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         args: [],
       });
       // Wait for confirmation per the seam contract ("not fire-and-forget").
-      const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await this.publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: this.receiptTimeoutMs,
+      });
       if (receipt.status !== 'success') {
         // Mined-but-reverted. Most common cause is the rate-limit window
         // hadn't elapsed yet (when simulation succeeded but execution didn't).
         // Re-read state to upgrade to HeartbeatRateLimitedError when applicable.
-        const next = await this.readNextHeartbeatAt().catch(() => undefined);
+        const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
         if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
           throw new HeartbeatRateLimitedError(next);
         }
         throw new Error(`heartbeat tx ${hash} reverted on-chain`);
       }
+      await this.postHeartbeatWebhook({
+        txHash: hash,
+        blockNumber: receipt.blockNumber,
+      });
       return { txHash: hash };
     } catch (err) {
       // Already a rate-limit error — rethrow immediately; no second RPC read.
       if (err instanceof HeartbeatRateLimitedError) throw err;
+      if (err instanceof WaitForTransactionReceiptTimeoutError) {
+        throw new HeartbeatTimeoutError(
+          `heartbeat tx receipt timed out after ${this.receiptTimeoutMs}ms`,
+        );
+      }
       // Attempt to upgrade only simulation-level contract reverts to
       // HeartbeatRateLimitedError; pre-flight/RPC errors must surface unchanged.
       if (!(err instanceof ContractFunctionRevertedError)) throw err;
-      const next = await this.readNextHeartbeatAt().catch(() => undefined);
+      const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
       if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
         throw new HeartbeatRateLimitedError(next);
       }
@@ -114,12 +160,17 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     }
   }
 
-  async isHeartbeatDue(): Promise<boolean> {
-    const next = await this.readNextHeartbeatAt();
-    return next <= Math.floor(Date.now() / 1000);
+  async readHeartbeatIntervalSeconds(): Promise<number> {
+    const interval = await this.publicClient.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'heartbeatIntervalSeconds',
+      args: [],
+    });
+    return Number(interval);
   }
 
-  private async readNextHeartbeatAt(): Promise<number> {
+  async readNextHeartbeatAtTs(): Promise<number> {
     const state = await this.publicClient.readContract({
       address: this.contractAddress,
       abi: CLAN_WORLD_ABI,
@@ -128,6 +179,50 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     });
     // viem decodes the named tuple into an object with the same field names.
     return Number((state as { nextHeartbeatAtTs: bigint }).nextHeartbeatAtTs);
+  }
+
+  private async postHeartbeatWebhook(args: {
+    txHash: `0x${string}`;
+    blockNumber?: bigint | number | null;
+  }): Promise<void> {
+    if (!this.convexWebhookUrl) return;
+    try {
+      const webhookUrl = new URL('/api/heartbeat-webhook', this.convexWebhookUrl);
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        signal: AbortSignal.timeout(5_000),
+        headers: {
+          'content-type': 'application/json',
+          ...(this.webhookSharedSecret
+            ? { Authorization: `Bearer ${this.webhookSharedSecret}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          chain: baseSepolia.name,
+          engineAddress: this.contractAddress,
+          txHash: args.txHash,
+          blockNumber: args.blockNumber === undefined || args.blockNumber === null
+            ? undefined
+            : Number(args.blockNumber),
+          firedAtTs: Math.floor(Date.now() / 1000),
+          source: 'ts-runner',
+        }),
+      });
+      if (!response.ok) {
+        console.warn(
+          `[RunnerCastHeartbeat] heartbeat webhook POST failed: ${response.status} ${response.statusText}`,
+        );
+      }
+    } catch (err) {
+      console.warn('[RunnerCastHeartbeat] heartbeat webhook POST failed:', err);
+    }
+  }
+}
+
+export class HeartbeatTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HeartbeatTimeoutError';
   }
 }
 
@@ -140,4 +235,21 @@ function normalizePk(pk: string): `0x${string}` {
     );
   }
   return withPrefix as `0x${string}`;
+}
+
+function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
+  if (!convexDeployUrl) return undefined;
+  // Hostname-suffix check (not substring) so URLs like
+  // `https://attacker.convex.cloud.evil.com` or `https://example.com/.convex.cloud/x`
+  // don't false-positive into a rewritten webhook target. R5 super-swarm hardening.
+  let url: URL;
+  try {
+    url = new URL(convexDeployUrl);
+  } catch {
+    return undefined;
+  }
+  if (!url.hostname.endsWith('.convex.cloud')) return undefined;
+  url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
+  // Preserve protocol/port; strip trailing slash if URL had no explicit path.
+  return url.toString().replace(/\/$/, '');
 }

@@ -1,7 +1,7 @@
 import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
 import { ClansmanState } from "@clan-world/shared/generated/enums";
+import { resolveHeartbeatIntervalSecondsForSnap } from "./getSnapshot";
 
 /**
  * Per-clansman roster for ClansmanTab. Reads the latest `clanView` row, maps
@@ -137,8 +137,10 @@ export const getClanClansmen = query({
 
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     const currentTick = snap?.tick ?? Number(view.derivedAtTick) ?? 0;
-    const tickDurationMs =
-      snap?.tickEpochDurationMs ?? Number(HEARTBEAT_INTERVAL_SECONDS) * 1000;
+    const tickDurationMs = resolveHeartbeatIntervalSecondsForSnap({
+      heartbeatIntervalSeconds: snap?.heartbeatIntervalSeconds,
+      tickEpochDurationMs: snap?.tickEpochDurationMs,
+    }) * 1000;
     const tickDurationSeconds = Math.max(1, Math.floor(tickDurationMs / 1000));
 
     const rows = Array.isArray(view.clansmen) ? view.clansmen : [];

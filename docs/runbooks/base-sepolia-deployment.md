@@ -32,7 +32,7 @@ The unset/default cadence remains `60` seconds. The `1` second setting is for ma
 
 ## Convex Heartbeat Webhook
 
-Convex queries use the `.convex.cloud` URL, but HTTP actions are served from `.convex.site`. For the heartbeat loop, either set `CONVEX_WEBHOOK_URL` explicitly or let `scripts/start-heartbeat-loop.sh` derive it from `CONVEX_DEPLOY_URL`:
+Convex queries use the `.convex.cloud` URL, but HTTP actions are served from `.convex.site`. Prefer setting `CONVEX_WEBHOOK_URL` explicitly. If it is unset, the TypeScript runner derives it from `CONVEX_DEPLOY_URL` by replacing `.convex.cloud` with `.convex.site` and logs a deprecation warning:
 
 ```bash
 CONVEX_DEPLOY_URL=https://oceanic-hound-951.convex.cloud

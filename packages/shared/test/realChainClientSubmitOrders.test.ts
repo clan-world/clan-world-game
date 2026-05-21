@@ -187,4 +187,46 @@ describe('RealChainClient.submitOrders order field mapping', () => {
       }),
     );
   });
+
+  it('fails loudly when CLAN_WORLD_LENS_ADDRESS is missing', () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    delete process.env.CLAN_WORLD_LENS_ADDRESS;
+
+    try {
+      expect(() => createChainClient()).toThrowError(
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+      else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    }
+  });
+
+  it('fails loudly when CLAN_WORLD_LENS_ADDRESS is empty/whitespace', () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    process.env.CLAN_WORLD_LENS_ADDRESS = '   ';
+
+    try {
+      expect(() => createChainClient()).toThrowError(
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+      else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    }
+  });
+
+  it('fails loudly when CLAN_WORLD_LENS_ADDRESS is malformed (not 0x+40 hex)', () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    process.env.CLAN_WORLD_LENS_ADDRESS = '0x123';
+
+    try {
+      expect(() => createChainClient()).toThrowError(
+        'CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+      else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
+    }
+  });
 });

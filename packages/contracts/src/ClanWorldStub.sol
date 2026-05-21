@@ -96,6 +96,10 @@ contract ClanWorldStub is IClanWorld {
         emit TickAdvanced(closed, _world.currentTick, bytes32(0));
     }
 
+    function heartbeatIntervalSeconds() external pure override returns (uint64) {
+        return ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+    }
+
     function settleClan(uint32) external override {}
 
     function settleClansman(uint32) external override {}

@@ -37,6 +37,4 @@ export interface RunnerConfig {
   tmuxSessionPrefix: string;
   /** Map of Elder id → clan id used for tick-update context + peer routing. */
   elderToClanId: Record<ElderId, string>;
-  /** Milliseconds between isHeartbeatDue() checks in the heartbeat scheduler. */
-  heartbeatCheckIntervalMs: number;
 }

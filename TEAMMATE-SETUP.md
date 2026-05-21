@@ -53,7 +53,6 @@ cp .env.template .env.local
 | `CLANWORLD_USE_FAKE_HEARTBEAT=false` | hardcode | use real chain heartbeat |
 | `WEBHOOK_SHARED_SECRET` | from Liam | shared secret between Convex webhook caller + verifier |
 | `CLAUDE_CODE_OAUTH_TOKEN` | your own from [Claude Code account](https://claude.com/code) | for elder REPLs only — your token, not Liam's |
-| `TICK_DURATION_MS=20000` | hardcode | seconds × 1000 between elder reasoning passes |
 
 ### 2b. Server `.env.local`
 

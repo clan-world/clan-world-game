@@ -3,6 +3,9 @@
 // Nothing reads MOCK_MODE at runtime yet — it's a placeholder toggle for Wave 1.
 
 import { internalMutation } from "./_generated/server";
+import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+
+const HEARTBEAT_INTERVAL = Number(HEARTBEAT_INTERVAL_SECONDS);
 
 const MOCK_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: "clan-iron" },
@@ -27,8 +30,9 @@ export const seedMockState = internalMutation({
     // Insert mock snapshot
     await ctx.db.insert("worldSnapshot", {
       tick: 42,
-      tickEpochStartedAt: Math.floor(Date.now() / 1000) - 42 * 20,
-      tickEpochDurationMs: 20_000,
+      tickEpochStartedAt: Math.floor(Date.now() / 1000) - 42 * HEARTBEAT_INTERVAL,
+      tickEpochDurationMs: HEARTBEAT_INTERVAL * 1000,
+      heartbeatIntervalSeconds: HEARTBEAT_INTERVAL,
       regions: MOCK_REGIONS,
       clans: MOCK_CLANS,
     });

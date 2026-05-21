@@ -25,6 +25,14 @@ const RESET_TABLES = [
   "whispers",
   "orchEvents",
   "humanSteeringMessages",
+  "runnerStatus",
+  // Singletons introduced by Phase 0 (PR #512). Without these in the reset
+  // set, a demo-reset leaves `getTickClock` returning the pre-reset tick
+  // cursor and `pollerWatchdog` reading pre-reset poller liveness — both
+  // outlive the reset until the next real indexer commit overwrites them.
+  // codex 5.5 R3 MED.
+  "tickClock",
+  "pollerHealth",
 ] as const;
 
 const MAX_FLUSH_WRITES = 9000;
@@ -107,7 +115,7 @@ export const resetCheckpoint = mutation({
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
 
-    const existing = await ctx.db.query("eventCheckpoint").first();
+    const existing = await ctx.db.query("eventCheckpoint").order("desc").first();
     if (existing) {
       await ctx.db.delete(existing._id);
     }
