@@ -1,7 +1,9 @@
-// v1.0.1: webhook accepts tx pings and logs them; chain state is read by
-// runner/Elder paths via getWorldSnapshot/getRankings. v1.1 will replace
-// this with a real event-decoder that reads logs from the heartbeat tx
-// and refreshes Convex snapshots from chain state. Tracked: GH issue #TBD
+// Heartbeat webhook entry point. When `CLANWORLD_USE_REAL_INDEXER=true`,
+// fetches the tx receipt, validates the engine address, decodes engine logs
+// via parseHeartbeatEngineEvents, ingests events, and schedules a snapshot
+// refresh. When the flag is off, accepts the ping and returns OK so legacy
+// callers don't error. Companion `advanceTick` synthetic mutation runs under
+// `CLANWORLD_USE_FAKE_HEARTBEAT=true` for demo / dev mode.
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { iClanWorldAbi } from "@clan-world/contract-types";
@@ -317,12 +319,15 @@ export const advanceTick = internalMutation({
         lastUpdatedBlock: undefined,
         currentTickSeed: undefined,
       });
+      // agentLogs MUST stay inside the monotonic guard so audit trail does
+      // not diverge from worldSnapshot/tickClock when the guard skips.
+      // silent-failure-hunter R6 H-3.
+      await ctx.db.insert("agentLogs", {
+        level: "info",
+        message: `heartbeat: tick ${baseTick} → ${newTick}`,
+        timestamp: Date.now(),
+      });
     }
-    await ctx.db.insert("agentLogs", {
-      level: "info",
-      message: `heartbeat: tick ${baseTick} → ${newTick}`,
-      timestamp: Date.now(),
-    });
 
     // Also keep tickClock in sync (same monotonic guard — reuses condition above).
     if (!clockRow || newTick > clockRow.tick) {

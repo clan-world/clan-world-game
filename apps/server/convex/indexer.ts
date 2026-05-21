@@ -1003,17 +1003,35 @@ export const refreshSnapshot = internalAction({
       blockNumber: pinnedBlockNumber,
     });
 
+    // Wrap each chain read with a labeled error capture so RPC failures
+    // surface as console.warn rather than silent .filter(Boolean) drops.
+    // Without this an Alchemy 429 / network blip drops state from a tick
+    // without any operator-visible signal. silent-failure-hunter R6 C-1.
+    const readWithLabel = async <T>(
+      label: string,
+      fn: () => Promise<T>,
+    ): Promise<T | undefined> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.warn(`[indexer] chain read ${label} failed:`, String(err));
+        return undefined;
+      }
+    };
+
     const [worldRaw, market, bandit, heartbeatIntervalSecondsRaw] = await Promise.all([
-      client
-        .readContract(readLensArgs(GET_WORLD_SNAPSHOT))
-        .catch(() => undefined),
-      client.readContract(readLensArgs(GET_MARKET_STATE)).catch(() => undefined),
-      client
-        .readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW))
-        .catch(() => undefined),
-      client
-        .readContract(readWorldArgs(GET_HEARTBEAT_INTERVAL_SECONDS))
-        .catch(() => undefined),
+      readWithLabel("getWorldSnapshot", () =>
+        client.readContract(readLensArgs(GET_WORLD_SNAPSHOT)),
+      ),
+      readWithLabel("getMarketState", () =>
+        client.readContract(readLensArgs(GET_MARKET_STATE)),
+      ),
+      readWithLabel("getActiveBanditView", () =>
+        client.readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW)),
+      ),
+      readWithLabel("heartbeatIntervalSeconds", () =>
+        client.readContract(readWorldArgs(GET_HEARTBEAT_INTERVAL_SECONDS)),
+      ),
     ]);
 
     const world = worldRaw as Record<string, unknown> | undefined;
@@ -1024,9 +1042,9 @@ export const refreshSnapshot = internalAction({
       return { tick: 0, clans: 0 };
     }
 
-    const clanIdsRaw = await client
-      .readContract(readWorldArgs(GET_CLAN_IDS))
-      .catch(() => undefined);
+    const clanIdsRaw = await readWithLabel("getClanIds", () =>
+      client.readContract(readWorldArgs(GET_CLAN_IDS)),
+    );
     const clanIds =
       Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
         ? clanIdsRaw.map((id) => asNumber(id)).filter((id) => id > 0)
@@ -1034,15 +1052,25 @@ export const refreshSnapshot = internalAction({
 
     const clans = await Promise.all(
       clanIds.map(async (clanId) => {
-        return client
-          .readContract({
-            ...readLensArgs(GET_CLAN_FULL_VIEW),
-            args: [clanId],
-          })
-          .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
-          .catch(() => undefined);
+        return readWithLabel(`getClanFullView(${clanId})`, () =>
+          client
+            .readContract({
+              ...readLensArgs(GET_CLAN_FULL_VIEW),
+              args: [clanId],
+            })
+            .then((view: unknown) => bigintSafe(view) as Record<string, unknown>),
+        );
       }),
     );
+    // Aggregate count of failed clan reads so a degraded chain
+    // (Alchemy outage, partial RPC failure) is visible even if individual
+    // per-call lines scroll past. Threshold = ALL clans failed → also warn.
+    const failedClanCount = clans.filter((c) => c === undefined).length;
+    if (failedClanCount > 0) {
+      console.warn(
+        `[indexer] refreshSnapshot: ${failedClanCount}/${clanIds.length} clan reads failed — snapshot will commit with degraded clan set`,
+      );
+    }
 
     return await ctx.runMutation(indexerApi.commitSnapshot, {
       snapshot: {

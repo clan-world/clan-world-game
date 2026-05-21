@@ -1,6 +1,6 @@
 # Convex Real Indexer
 
-The v1.0.1 indexer is feature-flagged so the fake heartbeat path can stay in
+The real indexer is feature-flagged so the fake heartbeat path can stay in
 place during production soak.
 
 ## Flags
@@ -47,7 +47,7 @@ The real-indexer posture registers three Convex crons (defined in
      env vars, totally-dead cron at startup.
    - Returns `stale: true` with reason `"poller heartbeat aged out"` when
      `pollerLastInvokedAt > 90s old` — catches the running-but-stuck failure
-     mode (the original v1.0.1 concern).
+     mode (the original concern).
    - Logs an `[indexer]` error on stale; downstream alerting hooks off the
      Convex logs.
 
@@ -70,7 +70,7 @@ The real-indexer posture registers three Convex crons (defined in
 
 - The log poller only indexes up to `latest - INDEXER_CONFIRMATION_DEPTH`.
   This avoids persisting events from short reorgs. The trade-off is extra
-  intra-tick latency, about 30s on Base Sepolia in the current v1.0.1 posture.
+  intra-tick latency, about 30s on Base Sepolia in the current posture.
 - `worldSnapshot.regions` and `worldSnapshot.clans` are still parallel-written
   for the legacy frontend query. `clans` is backfilled from `clanView`; regions
   use the static 8-region spec list. v1.1+ can drop these fields after the
