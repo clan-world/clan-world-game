@@ -50,7 +50,19 @@ jobs:
           # Stamp the build with the release tag for the VersionBadge overlay.
           # Surfaces stale-build regressions during UAT (issue #312).
           VITE_APP_VERSION: ${{ github.ref_name }}
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        # Vite's envDir resolves to the monorepo root (vite.config.ts:108), not
+        # apps/web. `vercel pull` writes apps/web/.vercel/.env.production.local
+        # which Vercel's build pipeline sources, but Vite doesn't re-read it
+        # because envDir points elsewhere. Source the file explicitly here so
+        # VITE_-prefixed vars land in process.env before `vercel build` invokes
+        # vite. Without this, %VITE_CONVEX_URL% substitution in index.html
+        # collapses to empty and the runtime renders the "Backend not
+        # configured" fallback.
+        run: |
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy (production)
         working-directory: apps/web
         env:
