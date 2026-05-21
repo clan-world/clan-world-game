@@ -1,3 +1,4 @@
+import { renameSync, writeFileSync } from 'node:fs';
 import {
   ContractFunctionRevertedError,
   createPublicClient,
@@ -14,6 +15,8 @@ import {
   HeartbeatRateLimitedError,
   type IHeartbeatCaller,
 } from '@clan-world/agents/seams';
+
+const HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
 
 export interface RunnerHeartbeatConfig {
   /** Hex-encoded 64-char private key, optionally 0x-prefixed. */
@@ -140,6 +143,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         txHash: hash,
         blockNumber: receipt.blockNumber,
       });
+      writeHeartbeatSuccessFile();
       return { txHash: hash };
     } catch (err) {
       // Already a rate-limit error — rethrow immediately; no second RPC read.
@@ -252,4 +256,14 @@ function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
   // Preserve protocol/port; strip trailing slash if URL had no explicit path.
   return url.toString().replace(/\/$/, '');
+}
+
+function writeHeartbeatSuccessFile(): void {
+  try {
+    const tmpFile = `${HEARTBEAT_SUCCESS_FILE}.${process.pid}.tmp`;
+    writeFileSync(tmpFile, String(Math.floor(Date.now() / 1000)));
+    renameSync(tmpFile, HEARTBEAT_SUCCESS_FILE);
+  } catch (err) {
+    console.warn('[RunnerCastHeartbeat] heartbeat success file write failed:', err);
+  }
 }
