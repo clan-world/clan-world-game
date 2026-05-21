@@ -95,5 +95,15 @@ keys/
 **/docker-compose*.yml
 .dockerignore
 
+# Phase 1 dockerize — secrets + runtime state must NEVER bake into image layers.
+# Mirror agents/.gitignore. Defense-in-depth: prevents a future Phase 1.2
+# `COPY agents/ /opt/agents/` Dockerfile (#345) from leaking bootstrap-generated
+# bus keys / OAuth tokens into the image registry (`docker history --no-trunc`
+# would expose them otherwise).
+agents/secrets/
+agents/runtime/
+agents/.docker-mounts/
+agents/elder-*/.env
+
 # Codex local state
 .codex/

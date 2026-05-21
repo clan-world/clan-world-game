@@ -135,7 +135,7 @@ services:
     entrypoint: anvil
     command:
       - --host=0.0.0.0
-      - --fork-url=${BASE_SEPOLIA_RPC_FOR_FORK_SEED:-}
+      - --fork-url=${RPC_URL_PRIMARY:?RPC_URL_PRIMARY required for fork seed}
       - --fork-block-number=${FORK_BLOCK_NUMBER:-0}
       - --state=/data/anvil-state.json
       - --state-interval=60
@@ -168,7 +168,10 @@ services:
       # — no cross-env fallback). Entrypoint picks based on CHAIN_NETWORK and
       # aborts if the selected URL is empty.
       DEV_RPC_URL: ${DEV_RPC_URL:-}
-      PROD_RPC_URL: ${PROD_RPC_URL:-}
+      # PROD_RPC_URL reuses RPC_URL_PRIMARY per .env.template — fail-loud on
+      # missing instead of silently empty (the heartbeat entrypoint aborts
+      # anyway, but the compose-level error is faster + clearer).
+      PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
       WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
