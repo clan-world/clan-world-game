@@ -36,4 +36,7 @@ COPY . .
 RUN touch .env.local \
   && chmod +x agents/heartbeat/entrypoint.sh
 
+RUN chown -R node:node /app
+USER node
+
 ENTRYPOINT ["./agents/heartbeat/entrypoint.sh"]

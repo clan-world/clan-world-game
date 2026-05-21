@@ -170,7 +170,7 @@ services:
     build:
       context: .
       dockerfile: agents/heartbeat/Dockerfile
-    env_file: [.env]
+    init: true
     environment:
       CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
       # Profile-specific overlay sets exactly ONE of these (Finding 9 + 48 fix
@@ -181,6 +181,8 @@ services:
       # missing instead of silently empty (the heartbeat entrypoint aborts
       # anyway, but the compose-level error is faster + clearer).
       PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      RUNNER_PRIVATE_KEY: ${RUNNER_PRIVATE_KEY:?RUNNER_PRIVATE_KEY required (dedicated heartbeat wallet)}
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for runnerStatus writes}
       # createConvexClient() reads CONVEX_URL for runnerStatus writes.
       CONVEX_URL: http://convex-backend:3210
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -188,6 +190,7 @@ services:
       CONVEX_WEBHOOK_URL: ${CONVEX_WEBHOOK_URL:?CONVEX_WEBHOOK_URL required for self-hosted Convex}
       CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
       WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
+      HEARTBEAT_HEALTH_THRESHOLD_S: ${HEARTBEAT_HEALTH_THRESHOLD_S:-180}
       RUNNER_ID: heartbeat-${CHAIN_NETWORK}
     secrets:
       - webhook-shared
@@ -197,7 +200,7 @@ services:
         condition: service_healthy
     healthcheck:
       # Webhook timestamp file is touched on every successful heartbeat tick.
-      test: ["CMD-SHELL", "test -f /tmp/last-heartbeat-success && [ $$(($$(date +%s) - $$(cat /tmp/last-heartbeat-success))) -lt 120 ]"]
+      test: ["CMD-SHELL", "test -f /tmp/last-heartbeat-success && [ $$(($$(date +%s) - $$(cat /tmp/last-heartbeat-success))) -lt $$HEARTBEAT_HEALTH_THRESHOLD_S ]"]
       interval: 30s
       timeout: 5s
       retries: 2

@@ -13,8 +13,9 @@ runner package behavior: on-chain scheduling from `nextHeartbeatAtTs`,
 
 ## Required Runtime Env
 
-Compose passes `.env` into the container and the entrypoint normalizes the
-profile-specific RPC values before Node starts.
+Compose passes an explicit heartbeat-only environment allowlist into the
+container, and the entrypoint normalizes the profile-specific RPC values before
+Node starts.
 
 | Variable | Purpose |
 |---|---|
@@ -27,6 +28,7 @@ profile-specific RPC values before Node starts.
 | `CONVEX_WEBHOOK_URL` | Explicit HTTP actions base URL for `/api/heartbeat-webhook`. |
 | `INDEXER_SECRET` | Secret passed to Convex `runnerStatus.updateRunnerStatus`. |
 | `WEBHOOK_SHARED_SECRET_FILE` | Docker secret file mounted at `/run/secrets/webhook-shared`. |
+| `HEARTBEAT_HEALTH_THRESHOLD_S` | Max age for `/tmp/last-heartbeat-success`; defaults to `180`. |
 | `RUNNER_ID` | Stable row id for `runnerStatus`, e.g. `heartbeat-dev`. |
 
 The entrypoint exports the selected RPC URL as `RPC_URL_PRIMARY` because the
@@ -50,8 +52,13 @@ compose `anvil-fork` service and viem's `baseSepolia` chain config.
 
 The compose healthcheck reads `/tmp/last-heartbeat-success`. The runner writes
 the current Unix timestamp there after a confirmed heartbeat transaction and
-webhook attempt. A timestamp younger than 120 seconds means the heartbeat caller
-is making progress.
+webhook attempt. A timestamp younger than `HEARTBEAT_HEALTH_THRESHOLD_S` seconds
+means the heartbeat caller is making progress.
+
+Keep `HEARTBEAT_HEALTH_THRESHOLD_S` wider than the on-chain
+`heartbeatIntervalSeconds()` cadence plus restart/RPC slack. If the owner widens
+the on-chain interval, update this threshold with it so the container does not
+flap unhealthy between normal ticks.
 
 This file proves heartbeat tx progress. Convex ingest can still fail
 independently; webhook and `runnerStatus` failures are logged by the runner and

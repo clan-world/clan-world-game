@@ -258,11 +258,11 @@ function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   return url.toString().replace(/\/$/, '');
 }
 
-function writeHeartbeatSuccessFile(): void {
+export function writeHeartbeatSuccessFile(successFile = HEARTBEAT_SUCCESS_FILE): void {
   try {
-    const tmpFile = `${HEARTBEAT_SUCCESS_FILE}.${process.pid}.tmp`;
+    const tmpFile = `${successFile}.${process.pid}.tmp`;
     writeFileSync(tmpFile, String(Math.floor(Date.now() / 1000)));
-    renameSync(tmpFile, HEARTBEAT_SUCCESS_FILE);
+    renameSync(tmpFile, successFile);
   } catch (err) {
     console.warn('[RunnerCastHeartbeat] heartbeat success file write failed:', err);
   }

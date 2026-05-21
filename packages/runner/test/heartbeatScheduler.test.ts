@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeHeartbeatDelayMs,
@@ -10,6 +11,13 @@ class TestHeartbeatTimeoutError extends Error {
   override name = 'HeartbeatTimeoutError';
 }
 
+const HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
+
+function cleanupHeartbeatSuccessFile(): void {
+  rmSync(HEARTBEAT_SUCCESS_FILE, { force: true });
+  rmSync(`${HEARTBEAT_SUCCESS_FILE}.${process.pid}.tmp`, { force: true });
+}
+
 function makeHeartbeatCaller(overrides: Partial<IHeartbeatCaller> = {}): IHeartbeatCaller {
   return {
     async callHeartbeat() { return { txHash: '0xabc' }; },
@@ -19,8 +27,14 @@ function makeHeartbeatCaller(overrides: Partial<IHeartbeatCaller> = {}): IHeartb
   };
 }
 
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(() => {
+  cleanupHeartbeatSuccessFile();
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  cleanupHeartbeatSuccessFile();
+  vi.useRealTimers();
+});
 
 describe('heartbeatScheduler', () => {
   it('computes delay from nextHeartbeatAtTs with 500ms jitter', () => {
@@ -324,6 +338,7 @@ describe('heartbeatScheduler', () => {
   });
 
   it('re-reads nextHeartbeatAtTs after receipt timeout and treats advanced state as success', async () => {
+    vi.setSystemTime(100_000);
     const callHeartbeat = vi.fn().mockRejectedValue(new TestHeartbeatTimeoutError('receipt timed out'));
     const alert = vi.fn().mockResolvedValue({ ok: true });
     const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
@@ -350,6 +365,8 @@ describe('heartbeatScheduler', () => {
     expect(postRunnerStatus).toHaveBeenCalledWith(
       expect.objectContaining({ lastFireResult: 'success', nextHeartbeatAtTs: 160 }),
     );
+    expect(existsSync(HEARTBEAT_SUCCESS_FILE)).toBe(true);
+    expect(readFileSync(HEARTBEAT_SUCCESS_FILE, 'utf8')).toBe('100');
 
     abort.abort();
   });
