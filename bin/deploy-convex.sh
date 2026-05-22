@@ -75,6 +75,23 @@ is_local_origin() {
   esac
 }
 
+require_recognized_network() {
+  # CHAIN_NETWORK is a finite alias. Accept exactly `dev` and `prod`
+  # (case-insensitive). Reject everything else with a clear error rather than
+  # silently treating unknown values as "not prod" — that produced a real
+  # bypass: `CHAIN_NETWORK=production` (NODE_ENV convention) would skip every
+  # prod guard. Operators must use `dev` or `prod` explicitly.
+  local network="${CHAIN_NETWORK:-dev}"
+  case "${network,,}" in
+    dev|prod) return 0 ;;
+    *)
+      echo "ERROR: CHAIN_NETWORK must be 'dev' or 'prod' (case-insensitive); got '${CHAIN_NETWORK:-<unset>}'" >&2
+      echo "  Common mistake: use CHAIN_NETWORK=prod, not CHAIN_NETWORK=production" >&2
+      exit 1
+      ;;
+  esac
+}
+
 require_pinned_convex_tags() {
   # Prod must not run unpinned Convex images — `latest` resolves to a different
   # SHA over time, so reproducible deploys + on-purpose upgrades both break.
@@ -103,9 +120,11 @@ require_pinned_convex_tags() {
 }
 
 require_prod_origins() {
-  # Case-insensitive match — `Prod` / `PROD` / `production` should not skip
-  # the guard. `production` is intentionally NOT accepted to keep the network
-  # alias finite (callers should set CHAIN_NETWORK=prod, not production).
+  # Case-insensitive match — `Prod` / `PROD` skip the guard correctly.
+  # `production` is rejected at load-time (require_recognized_network) rather
+  # than treated as either a synonym OR a silent skip — too many operators
+  # type `production` (NODE_ENV convention) and would otherwise ship dev
+  # origins to prod by accident.
   local network="${CHAIN_NETWORK:-dev}"
   [[ "${network,,}" == "prod" ]] || return 0
 
@@ -130,6 +149,7 @@ check_cli_version() {
 }
 
 load_env
+require_recognized_network
 require_prod_origins
 require_pinned_convex_tags
 require_self_hosted_env
