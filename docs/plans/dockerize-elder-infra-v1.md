@@ -918,8 +918,8 @@ sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m
 #     httpHostHeader: app.clan-world.com
 sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
 sudo systemctl restart cloudflared
-curl -I https://app.clan-world.com/healthz
-curl -I https://cockpit.clan-world.com
+curl -fsS https://app.clan-world.com/healthz | grep -q '^ok$' || { echo 'ERROR: healthz did not return ok'; exit 1; }
+curl -fsS -o /dev/null https://cockpit.clan-world.com
 
 # Verify unrelated tunnels still resolve
 for tunnel in pm-dobot narrator gstack; do
