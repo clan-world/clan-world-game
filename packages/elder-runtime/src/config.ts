@@ -40,7 +40,7 @@ export function loadConfig(): ElderRuntimeConfig {
     heartbeatIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_HEARTBEAT_MS"], 30000, "ELDER_RUNTIME_HEARTBEAT_MS"),
     noncePollIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_NONCE_POLL_MS"], 2000, "ELDER_RUNTIME_NONCE_POLL_MS"),
     // Default 240_000 (4 min) is strictly less than the command-bus LEASE_MS
-    // of 5 min so the supervisor's nonce-wait expires + failCommand fires
+    // of 6 min so the supervisor's nonce-wait expires + failCommand fires
     // BEFORE the Convex sweepStaleDelivered cron requeues the command. Without
     // this margin, the sweeper re-leases the same command while the supervisor
     // is still polling → duplicate tmux paste delivered to Claude (super-swarm
