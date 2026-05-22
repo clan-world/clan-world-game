@@ -121,7 +121,7 @@ When you see the wipe warning, invoke the `final-tick-continuity` skill.
 
 ## ANCIENT_WISDOM.md — your continuity layer
 
-`/workspace/ANCIENT_WISDOM.md` is a file YOU maintain. The CC harness injects its contents at each session start via the `inject-ancient-wisdom` SessionStart hook. Use it to:
+`/workspace/ANCIENT_WISDOM.md` is a file YOU maintain. **For v1, you must Read it deliberately at session start** — the auto-injection SessionStart hook (`inject-ancient-wisdom`) ships in a follow-up issue. Use it to:
 
 - Record current game state from YOUR vantage point
 - Track current strategy + trust assessments of other Elders

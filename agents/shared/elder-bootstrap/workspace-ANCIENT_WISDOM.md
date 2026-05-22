@@ -1,6 +1,6 @@
 # Ancient Wisdom — instructions for your future self
 
-This file is yours to maintain. At each session start, the CC harness shows this file's contents to you as additional context. Use it to:
+This file is yours to maintain. For v1, Read it deliberately at each session start — auto-injection via SessionStart hook ships in a follow-up issue. Use it to:
 
 - Record the current state of the game from your vantage point — what's happening, what just changed.
 - Recall the memories you most need for current strategy decisions.

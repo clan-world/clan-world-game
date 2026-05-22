@@ -11,12 +11,27 @@
 set -euo pipefail
 
 # Apply egress firewall. Requires CAP_NET_ADMIN on the container; without it,
-# the iptables calls inside init-firewall.sh fail. We log the failure but do
-# NOT exit — a missing-cap dev container still needs to come up so the
-# operator can debug. Production compose MUST set cap_add: [NET_ADMIN].
+# the iptables calls inside init-firewall.sh fail. We FAIL CLOSED by default —
+# autonomous elders MUST run with egress restrictions. The operator can
+# explicitly opt out of the firewall (for missing-cap local debugging or for
+# dev containers without iptables modules in the kernel) by setting
+# `ALLOW_UNRESTRICTED_EGRESS=1` in the container environment.
 if [[ -x /opt/clan-world/init-firewall.sh ]]; then
   if ! sudo /opt/clan-world/init-firewall.sh; then
-    echo "[entrypoint] WARNING: init-firewall.sh failed (likely missing CAP_NET_ADMIN). Continuing — egress NOT locked down." >&2
+    if [[ "${ALLOW_UNRESTRICTED_EGRESS:-0}" = "1" ]]; then
+      echo "[entrypoint] WARNING: init-firewall.sh failed but ALLOW_UNRESTRICTED_EGRESS=1 — continuing without egress lockdown. DO NOT use in production." >&2
+    else
+      echo "[entrypoint] FATAL: init-firewall.sh failed (likely missing CAP_NET_ADMIN). Set ALLOW_UNRESTRICTED_EGRESS=1 to override for local debugging." >&2
+      exit 3
+    fi
+  fi
+else
+  # No firewall script available at all — same fail-closed posture.
+  if [[ "${ALLOW_UNRESTRICTED_EGRESS:-0}" = "1" ]]; then
+    echo "[entrypoint] WARNING: /opt/clan-world/init-firewall.sh missing but ALLOW_UNRESTRICTED_EGRESS=1 — continuing without egress lockdown." >&2
+  else
+    echo "[entrypoint] FATAL: /opt/clan-world/init-firewall.sh missing and ALLOW_UNRESTRICTED_EGRESS not set. Image misbuild?" >&2
+    exit 3
   fi
 fi
 

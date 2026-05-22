@@ -4,7 +4,7 @@ This is YOUR workspace inside the Elder container. It's mounted as a per-elder R
 
 ## What lives here
 
-- **`ANCIENT_WISDOM.md`** — your prompt-to-future-self. Auto-injected at every session start via the SessionStart hook. Maintain it actively.
+- **`ANCIENT_WISDOM.md`** — your prompt-to-future-self. For v1, Read it deliberately at session start (the auto-injection SessionStart hook ships in a follow-up issue). Maintain it actively.
 - **`CLAUDE.md`** — your clan's working notes (identity, strategy, open questions). Read on demand, not auto-injected.
 - **`orders_<tick>.json`** — generated per-tick by your `lean-tick` flow before `elder clan submit-orders`. Safe to overwrite each tick; older ones can be cleaned up.
 - **`/tmp/`** — also writable, but ephemeral. Use it for one-off scratch files. The runner does NOT mount /tmp persistently.
