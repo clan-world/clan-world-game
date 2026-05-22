@@ -79,7 +79,7 @@ jobs:
         env:
           # build.gradle.kts now refuses to fall back to a hardcoded URL —
           # promote these to actual repo secrets when prod URLs change.
-          CLAN_WORLD_MAP_URL: ${{ secrets.CLAN_WORLD_MAP_URL || 'https://app.clan-world.com' }}
+          CLAN_WORLD_MAP_URL: ${{ secrets.CLAN_WORLD_MAP_URL || 'https://app.clan-world.com/map' }}
           CLAN_WORLD_TERMINAL_BASE_URL: ${{ secrets.CLAN_WORLD_TERMINAL_BASE_URL || 'https://cockpit.clan-world.com' }}
           CLAN_WORLD_CONVEX_URL: ${{ secrets.CLAN_WORLD_CONVEX_URL || 'https://valuable-kudu-985.convex.cloud' }}
           CLAN_WORLD_VERSION_NAME: ${{ steps.release.outputs.version_name }}

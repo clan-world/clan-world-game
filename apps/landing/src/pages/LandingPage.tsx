@@ -165,7 +165,7 @@ export default function LandingPage() {
             <div className="hook-game">
               <div className="hook-game-frame">
                 <iframe
-                  src="https://app.clan-world.com/"
+                  src="https://app.clan-world.com/map"
                   title="Clan World — live world on Base Sepolia"
                   loading="lazy"
                   allow="fullscreen"
