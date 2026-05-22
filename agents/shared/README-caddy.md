@@ -19,6 +19,15 @@ bus, not through the browser terminal.
 Warning: restarting cloudflared briefly drops ALL tunnels, usually for about 5
 seconds. Choose an operator-approved time.
 
+Pre-check for duplicate ingress entries:
+
+```bash
+if sudo grep -q "hostname: *app.clan-world.com" /etc/cloudflared/config.yml; then
+  echo "ERROR: app.clan-world.com already exists in cloudflared config -- abort + update existing entry instead of adding"
+  exit 1
+fi
+```
+
 Back up the current config:
 
 ```bash
@@ -26,7 +35,9 @@ sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m
 ```
 
 Edit `/etc/cloudflared/config.yml` and insert the `app.clan-world.com` ingress
-entry BEFORE the final `http_status:404` catch-all rule:
+entry BEFORE the final `http_status:404` catch-all rule. The port in
+`config.yml` is literal: if you change `CADDY_HOST_PORT` from the `18081`
+default, update this literal port to match.
 
 ```yaml
 - hostname: app.clan-world.com
@@ -38,6 +49,12 @@ entry BEFORE the final `http_status:404` catch-all rule:
 Validate and restart:
 
 ```bash
+EXPECTED_PORT=${CADDY_HOST_PORT:-18081}
+CURRENT_CLOUDFLARED_PORT=$(sudo grep -A1 'app.clan-world.com' /etc/cloudflared/config.yml | grep -oE 'localhost:[0-9]+|127.0.0.1:[0-9]+' | grep -oE '[0-9]+' | head -1)
+if [ "$EXPECTED_PORT" != "$CURRENT_CLOUDFLARED_PORT" ]; then
+  echo "ERROR: CADDY_HOST_PORT=$EXPECTED_PORT but cloudflared routes to port $CURRENT_CLOUDFLARED_PORT"
+  exit 1
+fi
 sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
 sudo systemctl restart cloudflared
 ```
@@ -45,8 +62,8 @@ sudo systemctl restart cloudflared
 Verify the new route and one existing tunnel:
 
 ```bash
-curl -I https://app.clan-world.com/healthz
-curl -I https://cockpit.clan-world.com
+curl -fsS https://app.clan-world.com/healthz | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
+curl -fsS -o /dev/null https://cockpit.clan-world.com
 ```
 
 Rollback uses the timestamped backup from the first command:
@@ -84,10 +101,17 @@ Docker network instead of `host.docker.internal`.
 
 ```bash
 docker compose --profile dev up -d caddy
-curl -sf "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/healthz"
-curl -I "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/elder-1/"
+curl -fsS "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/healthz" | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
+curl -fsS -o /dev/null "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/elder-1/"
 ```
 
 These checks prove Caddy is reachable and can attempt an elder route. Full ttyd
 validation requires the full stack up and a follow-up Playwright or `websocat`
 smoke that verifies the WebSocket upgrade and terminal output.
+
+### Healthcheck Scope
+
+The compose `caddy` healthcheck only proves that Caddy itself responds on
+`/healthz`. It does not prove that `CLAN_WORLD_WEB_UPSTREAM` is reachable, that
+the elder services are running, or that ttyd WebSocket upgrades work. Operators
+must run the smoke commands after compose up for route-level validation.

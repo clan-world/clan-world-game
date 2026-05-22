@@ -262,6 +262,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
+    environment:
+      CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
     depends_on:
       elder-1:
         condition: service_started

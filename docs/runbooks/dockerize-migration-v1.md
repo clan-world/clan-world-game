@@ -445,6 +445,15 @@ The ClanWorld router is the compose `caddy` service. Host Caddy is not in the
 Warning: restarting cloudflared briefly drops ALL tunnels, usually for about 5
 seconds. Choose an operator-approved time.
 
+Pre-check for duplicate ingress entries:
+
+```bash
+if sudo grep -q "hostname: *app.clan-world.com" /etc/cloudflared/config.yml; then
+  echo "ERROR: app.clan-world.com already exists in cloudflared config -- abort + update existing entry instead of adding"
+  exit 1
+fi
+```
+
 Back up the current config:
 
 ```bash
@@ -453,7 +462,9 @@ sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m
 
 Edit `/etc/cloudflared/config.yml` and add one ingress entry BEFORE the final
 `http_status:404` catch-all rule. Cloudflared does not expand shell variables
-in `config.yml`; this example assumes the default `CADDY_HOST_PORT=18081`:
+in `config.yml`; this example assumes the default `CADDY_HOST_PORT=18081`.
+The port is literal: if you change `CADDY_HOST_PORT`, update the literal port in
+`/etc/cloudflared/config.yml` to match.
 
 ```yaml
 - hostname: app.clan-world.com
@@ -466,18 +477,24 @@ Validate Docker Caddy locally before restarting cloudflared:
 
 ```bash
 docker compose --profile prod up -d caddy
-curl -sf "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/healthz"
-curl -I "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/elder-1/"
+curl -fsS "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/healthz" | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
+curl -fsS -o /dev/null "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/elder-1/"
 ```
 
 Validate the cloudflared config, restart cloudflared, and verify the new route
 plus one existing tunnel:
 
 ```bash
+EXPECTED_PORT=${CADDY_HOST_PORT:-18081}
+CURRENT_CLOUDFLARED_PORT=$(sudo grep -A1 'app.clan-world.com' /etc/cloudflared/config.yml | grep -oE 'localhost:[0-9]+|127.0.0.1:[0-9]+' | grep -oE '[0-9]+' | head -1)
+if [ "$EXPECTED_PORT" != "$CURRENT_CLOUDFLARED_PORT" ]; then
+  echo "ERROR: CADDY_HOST_PORT=$EXPECTED_PORT but cloudflared routes to port $CURRENT_CLOUDFLARED_PORT"
+  exit 1
+fi
 sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
 sudo systemctl restart cloudflared
-curl -I https://app.clan-world.com/healthz
-curl -I https://cockpit.clan-world.com
+curl -fsS https://app.clan-world.com/healthz | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
+curl -fsS -o /dev/null https://cockpit.clan-world.com
 ```
 
 Then verify:
