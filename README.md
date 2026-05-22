@@ -251,9 +251,11 @@ docker compose --profile prod config   # validates prod topology
 > (`tsx --env-file=.env.local`, runbooks, etc.). `.env` is gitignored too
 > but `.env.local` matches existing conventions.
 
-Caddy is intentionally NOT a compose service — the host caddy stays
-authoritative and reverse-proxies `app.${CLAN_WORLD_DOMAIN}` to
-`127.0.0.1:${CADDY_HOST_PORT}` (see the host caddy snippet added in #348).
+ClanWorld's public app router is the compose `caddy` service. It publishes
+`127.0.0.1:${CADDY_HOST_PORT:-18081}:80`, routes `/elder-N/` to Docker-internal
+Elder ttyd services, and proxies `/` plus `/map` to `CLAN_WORLD_WEB_UPSTREAM`.
+On the VPS, cloudflared routes `app.${CLAN_WORLD_DOMAIN}` directly to that
+loopback port; host Caddy continues serving unrelated hostnames.
 
 **Bring-up + per-Elder lifecycle** is fronted by `agents/Makefile`, which
 ships in [#355](https://github.com/clan-world/clan-world-game/issues/355).

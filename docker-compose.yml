@@ -5,7 +5,7 @@
 #
 #   - #345 agents/Dockerfile (Phase 1.2)
 #   - #347 self-hosted Convex deploy (Phase 1.4)
-#   - #348 host caddy snippet + Caddyfile (Phase 1.5)
+#   - #348 dockerized Caddy routing for app.clan-world.com (Phase 1.5)
 #   - #349 elder-N service template (Phase 1.6) — these stubs will be
 #     overwritten by the generated docker-compose.elders.yml
 #   - #355 agents/Makefile (Phase 1.12)
@@ -16,9 +16,9 @@
 #   --profile dev   anvil-fork + bind-mount agents/  (local iteration)
 #   --profile prod  real Base Sepolia RPC, image-baked agents/  (VPS deploy)
 #
-# Caddy is NOT a compose service — host caddy stays authoritative (decision D
-# in the plan). The clan-world stack reverse-proxies through the host caddy via
-# CADDY_HOST_PORT.
+# Caddy is a compose service for ClanWorld-only routing. Host cloudflared sends
+# app.clan-world.com directly to the docker-published loopback CADDY_HOST_PORT;
+# host Caddy continues serving unrelated hostnames on its own port.
 #
 # Validation:
 #   docker compose --profile dev config
@@ -243,6 +243,40 @@ services:
       start_period: 60s
     # Retry transient preflight/runtime failures, then leave repeated failures visible.
     restart: on-failure:5
+    profiles: [dev, prod]
+
+  # ---------------------------------------------------------------------------
+  # Dockerized Caddy — ClanWorld-only router. The host cloudflared ingress maps
+  # app.clan-world.com -> 127.0.0.1:${CADDY_HOST_PORT:-18081}; Caddy then routes
+  # to Docker-internal services by name.
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    networks: [clan-world-internal]
+    ports:
+      - "127.0.0.1:${CADDY_HOST_PORT:-18081}:80"
+    extra_hosts:
+      # Lets local dev point CLAN_WORLD_WEB_UPSTREAM at a host-run Vite server,
+      # e.g. http://host.docker.internal:58740, on Linux Docker.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
+    depends_on:
+      elder-1:
+        condition: service_started
+      elder-2:
+        condition: service_started
+      elder-3:
+        condition: service_started
+      elder-4:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     profiles: [dev, prod]
 
   # ---------------------------------------------------------------------------

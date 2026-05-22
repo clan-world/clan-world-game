@@ -39,8 +39,10 @@ fi
 tmux new-session -d -s "${SESSION_NAME}" -c /workspace "/opt/clan-world/shared/run.sh"
 echo "[entrypoint] tmux session ${SESSION_NAME} created"
 
-# 2. Start ttyd attached to that session (background)
-ttyd --port "${TTYD_PORT}" --writable tmux attach-session -t "${SESSION_NAME}" &
+# 2. Start ttyd attached to that session (background). ttyd 1.7.7 is
+# read-only unless --writable is passed; operators send commands through the
+# Convex command bus, not through the browser terminal.
+ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
 TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 

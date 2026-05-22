@@ -7,9 +7,8 @@ running tmux, ttyd, and the `elder-runtime` supervisor in one container per
 Elder.
 
 **Strategy:** parallel coexistence. Bring up and validate the Docker stack
-before disabling legacy services. The Caddy host-routing snippet is pending in
-the parallel `feat/issue-348-caddy-snippet-v2` branch, so this runbook treats
-public cutover as a pending/manual gate rather than an available Make target.
+before disabling legacy services. Public cutover is a cloudflared-only routing
+change to the compose `caddy` service, guarded by the Step 8 health checks.
 
 **When to use:** scheduled Phase 2 migration on the ClanWorld VPS after the
 rehearsal transcript has been signed off.
@@ -436,31 +435,64 @@ Then verify `commandResults` and `elderHeartbeat` update in the dashboard.
 3. Verify the legacy runner is healthy and consuming heartbeats again before
    investigating the failed Docker health gate.
 
-## Step 8 - Pending Public Routing Gate
+## Step 8 - Docker Caddy Public Routing Gate
 
-**Goal:** route public traffic only after the Caddy snippet PR lands and has
-been reviewed.
+**Goal:** route `app.clan-world.com` to the Docker Caddy service only after the
+compose stack is healthy internally.
 
-The host Caddy snippet and install/check targets are pending in
-`feat/issue-348-caddy-snippet-v2`. Until that branch lands, do not claim public
-cutover is automated by this runbook.
+The ClanWorld router is the compose `caddy` service. Host Caddy is not in the
+`app.clan-world.com` path; it continues serving unrelated shared-host routes.
+Warning: restarting cloudflared briefly drops ALL tunnels, usually for about 5
+seconds. Choose an operator-approved time.
 
-When the Caddy PR lands, update this step with the final target names and
-public route checks. Expected checks should include:
-
-- self-hosted Convex public API URL reaches `convex-backend`,
-- web socket traffic reaches Convex HTTP actions/site,
-- `app.clan-world.com` routes to the current web app,
-- Elder ttyd routes reach `elder-1` through `elder-4` without breaking the
-  legacy cockpit URLs during coexistence.
-
-**Rollback:** once the Caddy snippet PR lands its uninstall helper, remove the
-additive host import/snippet and reload host Caddy:
+Back up the current config:
 
 ```bash
-bin/install-caddy-snippet.sh --uninstall
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m%d%H%M%S)
+```
+
+Edit `/etc/cloudflared/config.yml` and add one ingress entry BEFORE the final
+`http_status:404` catch-all rule. Cloudflared does not expand shell variables
+in `config.yml`; this example assumes the default `CADDY_HOST_PORT=18081`:
+
+```yaml
+- hostname: app.clan-world.com
+  service: http://127.0.0.1:18081
+  originRequest:
+    httpHostHeader: app.clan-world.com
+```
+
+Validate Docker Caddy locally before restarting cloudflared:
+
+```bash
+docker compose --profile prod up -d caddy
+curl -sf "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/healthz"
+curl -I "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/elder-1/"
+```
+
+Validate the cloudflared config, restart cloudflared, and verify the new route
+plus one existing tunnel:
+
+```bash
+sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
+sudo systemctl restart cloudflared
+curl -I https://app.clan-world.com/healthz
+curl -I https://cockpit.clan-world.com
+```
+
+Then verify:
+
+- `app.clan-world.com` routes to the current web app,
+- `/map` reaches the public map route,
+- `/elder-1/` through `/elder-4/` reach the Docker-internal ttyd services,
+- legacy `cockpit.clan-world.com/elder-N-tty/` still works during coexistence.
+
+**Rollback:** restore the timestamped backup from the first command and restart
+cloudflared:
+
+```bash
+sudo cp /etc/cloudflared/config.yml.bak-YYYYMMDDHHMMSS /etc/cloudflared/config.yml
+sudo systemctl restart cloudflared
 ```
 
 Keep the Docker stack running internally for diagnosis if it is healthy.
