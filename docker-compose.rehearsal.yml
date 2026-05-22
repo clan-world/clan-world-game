@@ -22,6 +22,7 @@ services:
     stop_signal: SIGINT
     environment:
       INSTANCE_NAME: clan-world-rehearsal
+      INSTANCE_SECRET: ${CONVEX_REHEARSAL_INSTANCE_SECRET:-clan-world-rehearsal-local-only-change-before-use}
       CONVEX_CLOUD_ORIGIN: http://127.0.0.1:38050
       CONVEX_SITE_ORIGIN: http://127.0.0.1:38051
       DISABLE_BEACON: ${DISABLE_BEACON:-true}

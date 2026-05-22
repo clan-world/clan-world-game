@@ -16,6 +16,7 @@
 | Convex backend image tag | |
 | Convex dashboard image tag | |
 | Convex CLI pin | 1.17.4 |
+| Rehearsal instance secret generated fresh | [ ] yes |
 | Hosted export path | |
 | SDK schema SHA256 | |
 
@@ -24,6 +25,7 @@
 **Command run:**
 
 ```bash
+export CONVEX_REHEARSAL_INSTANCE_SECRET="$(openssl rand -hex 32)"
 docker compose -f docker-compose.rehearsal.yml up -d
 docker compose -f docker-compose.rehearsal.yml ps
 ```
@@ -48,6 +50,9 @@ mkdir -p agents/secrets
 docker compose -f docker-compose.rehearsal.yml exec -T convex-backend \
   ./generate_admin_key.sh > agents/secrets/convex-admin.rehearsal.key
 chmod 0600 agents/secrets/convex-admin.rehearsal.key
+export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
+curl -fsS http://127.0.0.1:38050/api/list_tables \
+  -H "Authorization: Convex ${CONVEX_SELF_HOSTED_ADMIN_KEY}" >/tmp/rehearsal-list-tables.json
 ```
 
 **Output:**
@@ -63,10 +68,10 @@ chmod 0600 agents/secrets/convex-admin.rehearsal.key
 **Command run:**
 
 ```bash
-export CONVEX_CLI_VERSION=1.17.4
+export CONVEX_CLI_PINNED_VERSION=1.17.4
 export HOSTED_EXPORT="agents/backups/convex-hosted-rehearsal-$(date -u +%Y%m%dT%H%M%SZ).zip"
 mkdir -p agents/backups
-npx -y "convex@${CONVEX_CLI_VERSION}" export --path "$HOSTED_EXPORT" --include-file-storage
+npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" export --path "$HOSTED_EXPORT" --include-file-storage
 sha256sum packages/sdk/convex/schema.ts > /tmp/clanworld-sdk-schema.sha256
 ```
 
@@ -85,7 +90,7 @@ sha256sum packages/sdk/convex/schema.ts > /tmp/clanworld-sdk-schema.sha256
 ```bash
 export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:38050
 export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
-npx -y "convex@${CONVEX_CLI_VERSION}" deploy --yes
+npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" deploy --yes
 ```
 
 **Deploy output:**
@@ -103,7 +108,7 @@ npx -y "convex@${CONVEX_CLI_VERSION}" deploy --yes
 ```bash
 export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:38050
 export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
-npx -y "convex@${CONVEX_CLI_VERSION}" import --replace-all --yes "$HOSTED_EXPORT"
+npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" import --replace-all --yes "$HOSTED_EXPORT"
 ```
 
 **Import output:**

@@ -81,8 +81,9 @@ snippet install/check are not present in this branch.
 
 ## Required Environment
 
-Populate `.env.local` or `.env` before production cutover. The compose file is
-fail-loud for required values.
+Populate `.env` before production cutover because Docker Compose auto-loads
+that file. If you keep local overrides in `.env.local`, pass
+`--env-file .env.local` to every `docker compose` command in this runbook.
 
 | Concept | Current variable or file |
 |---|---|
@@ -91,6 +92,7 @@ fail-loud for required values.
 | Prod RPC | `RPC_URL_PRIMARY` |
 | Dev RPC | `DEV_RPC_URL=http://anvil-fork:8545` |
 | Diamond | `CLAN_WORLD_CONTRACT_ADDRESS` |
+| Lens | `CLAN_WORLD_LENS_ADDRESS` |
 | Heartbeat wallet | `RUNNER_PRIVATE_KEY` |
 | Runner/indexer write secret | `INDEXER_SECRET` |
 | Heartbeat webhook target | `CONVEX_WEBHOOK_URL` |
@@ -107,10 +109,10 @@ export CONVEX_SELF_HOSTED_URL=<self-hosted-api-url>
 export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.key)"
 
 npx -y convex@1.17.4 env set BUS_OPERATOR_SECRET "$(cat agents/secrets/bus-operator.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_1 "$(cat agents/secrets/bus-elder-1.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_2 "$(cat agents/secrets/bus-elder-2.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_3 "$(cat agents/secrets/bus-elder-3.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_4 "$(cat agents/secrets/bus-elder-4.key)"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_1 "$(cat "${BUS_ELDER_SECRET_FILE_1:-agents/secrets/bus-elder-1.key}")"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_2 "$(cat "${BUS_ELDER_SECRET_FILE_2:-agents/secrets/bus-elder-2.key}")"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_3 "$(cat "${BUS_ELDER_SECRET_FILE_3:-agents/secrets/bus-elder-3.key}")"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_4 "$(cat "${BUS_ELDER_SECRET_FILE_4:-agents/secrets/bus-elder-4.key}")"
 ```
 
 The `agentCommands`, `commandResults`, and `elderHeartbeat` tables are defined
@@ -171,6 +173,7 @@ integration branch.
 an isolated self-hosted Convex instance.
 
 ```bash
+export CONVEX_REHEARSAL_INSTANCE_SECRET="$(openssl rand -hex 32)"
 docker compose -f docker-compose.rehearsal.yml up -d
 docker compose -f docker-compose.rehearsal.yml ps
 
@@ -178,17 +181,24 @@ mkdir -p agents/secrets agents/backups
 docker compose -f docker-compose.rehearsal.yml exec -T convex-backend \
   ./generate_admin_key.sh > agents/secrets/convex-admin.rehearsal.key
 chmod 0600 agents/secrets/convex-admin.rehearsal.key
+export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
+curl -fsS http://127.0.0.1:38050/api/list_tables \
+  -H "Authorization: Convex ${CONVEX_SELF_HOSTED_ADMIN_KEY}" >/tmp/rehearsal-list-tables.json
 
-export CONVEX_CLI_VERSION=1.17.4
+export CONVEX_CLI_PINNED_VERSION=1.17.4
 export HOSTED_EXPORT="agents/backups/convex-hosted-rehearsal-$(date -u +%Y%m%dT%H%M%SZ).zip"
-npx -y "convex@${CONVEX_CLI_VERSION}" export --path "$HOSTED_EXPORT" --include-file-storage
+npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" export --path "$HOSTED_EXPORT" --include-file-storage
 sha256sum packages/sdk/convex/schema.ts > /tmp/clanworld-sdk-schema.sha256
 
 export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:38050
-export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
-npx -y "convex@${CONVEX_CLI_VERSION}" deploy --yes
-npx -y "convex@${CONVEX_CLI_VERSION}" import --replace-all --yes "$HOSTED_EXPORT"
+npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" deploy --yes
+npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" import --replace-all --yes "$HOSTED_EXPORT"
 ```
+
+`docker-compose.rehearsal.yml` wires
+`INSTANCE_SECRET=${CONVEX_REHEARSAL_INSTANCE_SECRET}` explicitly. It has a
+local-only fallback so `docker compose config` remains parseable, but signed
+rehearsals must export a fresh random value as shown above.
 
 Fill in `docs/runbooks/dockerize-migration-v1-rehearsal-transcript.md`, then
 tear the rehearsal down:
@@ -303,10 +313,10 @@ npx -y convex@1.17.4 env set CLAN_WORLD_CONTRACT_ADDRESS "$CLAN_WORLD_CONTRACT_A
 npx -y convex@1.17.4 env set CLAN_WORLD_LENS_ADDRESS "$CLAN_WORLD_LENS_ADDRESS"
 npx -y convex@1.17.4 env set WEBHOOK_SHARED_SECRET "$(cat agents/secrets/webhook-shared.key)"
 npx -y convex@1.17.4 env set BUS_OPERATOR_SECRET "$(cat agents/secrets/bus-operator.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_1 "$(cat agents/secrets/bus-elder-1.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_2 "$(cat agents/secrets/bus-elder-2.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_3 "$(cat agents/secrets/bus-elder-3.key)"
-npx -y convex@1.17.4 env set BUS_ELDER_SECRET_4 "$(cat agents/secrets/bus-elder-4.key)"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_1 "$(cat "${BUS_ELDER_SECRET_FILE_1:-agents/secrets/bus-elder-1.key}")"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_2 "$(cat "${BUS_ELDER_SECRET_FILE_2:-agents/secrets/bus-elder-2.key}")"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_3 "$(cat "${BUS_ELDER_SECRET_FILE_3:-agents/secrets/bus-elder-3.key}")"
+npx -y convex@1.17.4 env set BUS_ELDER_SECRET_4 "$(cat "${BUS_ELDER_SECRET_FILE_4:-agents/secrets/bus-elder-4.key}")"
 ```
 
 **Verify:** `npx -y convex@1.17.4 env list` shows the expected keys. Do not
@@ -334,9 +344,15 @@ fi
 
 ## Step 6 - Start Heartbeat And Elder Containers
 
-**Goal:** run the Docker heartbeat and Elder fleet while legacy remains live.
+**Goal:** mask the legacy runner first, then run the Docker heartbeat and
+Elder fleet. Mask legacy runner FIRST so only the new Docker heartbeat fires
+on-chain transactions.
 
 ```bash
+sudo systemctl stop clanworld-runner.service
+sudo systemctl disable clanworld-runner.service
+systemctl status clanworld-runner.service --no-pager || true
+
 docker compose --profile prod up -d heartbeat elder-1 elder-2 elder-3 elder-4
 docker compose --profile prod ps heartbeat elder-1 elder-2 elder-3 elder-4
 docker compose --profile prod logs --tail=100 heartbeat
@@ -367,6 +383,9 @@ Repeat for `elder-2`, `elder-3`, and `elder-4`.
 
 ```bash
 docker compose --profile prod stop heartbeat elder-1 elder-2 elder-3 elder-4
+sudo systemctl enable --now clanworld-runner.service
+sudo crontab /tmp/sudo-crontab-pre-cutover.txt
+crontab /tmp/user-crontab-pre-cutover.txt
 ```
 
 ## Step 7 - Internal Health Gate
@@ -420,8 +439,16 @@ public route checks. Expected checks should include:
 - Elder ttyd routes reach `elder-1` through `elder-4` without breaking the
   legacy cockpit URLs during coexistence.
 
-**Rollback:** remove the additive host Caddy import/snippet and reload host
-Caddy. Keep the Docker stack running internally for diagnosis if it is healthy.
+**Rollback:** once the Caddy snippet PR lands its uninstall helper, remove the
+additive host import/snippet and reload host Caddy:
+
+```bash
+bin/install-caddy-snippet.sh --uninstall
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+Keep the Docker stack running internally for diagnosis if it is healthy.
 
 ## Step 9 - Swap Web App Convex URL
 
@@ -438,12 +465,14 @@ Convex requests use the self-hosted URL.
 
 ## Step 10 - 30-Minute Coexist Observation
 
-**Goal:** observe legacy and Docker stacks together before disabling legacy.
+**Goal:** observe the Docker stack after the legacy runner has been masked.
+Legacy state and the captured rollback files remain available, but the legacy
+runner must stay stopped so it does not double-fire heartbeat transactions.
 
 Run in separate terminals:
 
 ```bash
-journalctl -u clanworld-runner.service -f
+systemctl status clanworld-runner.service --no-pager || true
 docker compose --profile prod logs -f heartbeat elder-1 elder-2 elder-3 elder-4
 ```
 
@@ -453,14 +482,16 @@ Observe for at least 30 minutes:
 - `runnerStatus` updates from the heartbeat container,
 - `elderHeartbeat` updates for each Elder,
 - no command-bus lease buildup in `agentCommands`,
-- legacy services remain available as rollback.
+- `clanworld-runner.service` remains inactive.
 
-**Rollback:** keep legacy live, stop Docker heartbeat/Elders, and investigate.
+**Rollback:** stop Docker heartbeat/Elders, re-enable the legacy runner, restore
+saved crontabs, and investigate.
 
-## Step 11 - Disable Legacy Services
+## Step 11 - Confirm Legacy Runner Disabled And Remove Legacy Cron
 
-**Goal:** stop legacy only after internal health, routing, web env cutover, and
-coexist observation are all green.
+**Goal:** keep the legacy runner disabled after the coexist observation and
+remove any legacy heartbeat cron entries. The runner was already stopped in
+Step 6 before the Docker heartbeat started.
 
 ```bash
 sudo systemctl stop clanworld-runner.service
@@ -536,8 +567,9 @@ EOF
 
 ### Compose Fails During Config Interpolation
 
-The compose file intentionally requires production values. Populate `.env` or
-`.env.local` before `docker compose --profile prod config`.
+The compose file intentionally requires production values. Populate `.env`
+before `docker compose --profile prod config`, or pass
+`--env-file .env.local` explicitly if using local override files.
 
 Common missing values: `CHAIN_NETWORK`, `RUNNER_PRIVATE_KEY`,
 `CLAN_WORLD_CONTRACT_ADDRESS`, `INDEXER_SECRET`, `CONVEX_WEBHOOK_URL`,
