@@ -303,7 +303,9 @@ bootstrap-convex-dashboard-auth:
 		echo "ERROR: username + password required" >&2; \
 		exit 1; \
 	fi; \
-	HASH=$$(openssl passwd -6 -salt "$$(openssl rand -base64 16)" "$$p"); \
+	SALT="$$(openssl rand -base64 16)"; \
+	HASH=$$(printf '%s\n' "$$p" | openssl passwd -6 -stdin -salt "$$SALT" 2>/dev/null) || { echo "ERROR: openssl passwd -6 failed (LibreSSL not supported; install GNU openssl)" >&2; exit 1; }; \
+	if [ -z "$$HASH" ]; then echo "ERROR: openssl passwd -6 returned empty hash" >&2; exit 1; fi; \
 	printf '{"username":"%s","password_sha512crypt":"%s"}\n' "$$u" "$$HASH" > "$$DEST"; \
 	chmod 0600 "$$DEST"; \
 	echo "[bootstrap] convex-dashboard-auth.json saved to $$DEST"
