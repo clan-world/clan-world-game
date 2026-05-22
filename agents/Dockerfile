@@ -85,9 +85,17 @@ ENV HOME=/home/elder
 ENV CLAUDE_CONFIG_DIR=/home/elder/.claude
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Healthcheck — tmux daemon alive AND ttyd accepting connections on 7681.
+# Healthcheck — v1 elder claude process alive. Tmux + ttyd are installed in the
+# image but NOT started by entrypoint.sh / run.sh in v1 (those are #353 Phase
+# 1.9 supervisor scope). The compose-level healthcheck on each elder-N service
+# block matches this image-level default; when #353 lands, both will tighten
+# to also verify the supervisor process + ttyd port 7681 .
+#
+# `pgrep claude` (without -f) matches by comm name only, so the healthcheck's
+# own shell command line doesn't self-match — `pgrep -f 'claude --'` would
+# false-positive because the pattern appears in /bin/sh -c "pgrep -f 'claude --'..."
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD pgrep -f tmux >/dev/null && curl -sf http://localhost:7681 >/dev/null || exit 1
+    CMD pgrep -x claude >/dev/null || exit 1
 
 # tini = PID 1; reaps zombies and forwards signals to entrypoint.sh, which
 # applies the firewall and execs run.sh from the bind-mounted shared tree.

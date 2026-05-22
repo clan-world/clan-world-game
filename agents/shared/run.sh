@@ -58,20 +58,49 @@ fi
 export HOME=/home/elder
 export CLAUDE_CONFIG_DIR=/home/elder/.claude
 
-# --- bootstrap shared symlinks --------------------------------------------
+# --- bootstrap shared CC harness state ------------------------------------
 
-# Shared CC harness state (settings.json + CLAUDE.md + skills/) is bind-mounted
-# R/O at /opt/clan-world/shared/home-claude/. We symlink it into the per-elder
-# /home/elder/.claude/ R/W volume so claude picks it up at the canonical path.
-# Symlinks are re-created on every start (idempotent) so host-side edits take
-# effect on container restart.
+# Shared CC harness state lives at /opt/clan-world/shared/home-claude/ (R/O
+# bind-mount). We bootstrap it into the per-elder /home/elder/.claude/ R/W
+# named volume in two modes:
+#
+#   - settings.json + CLAUDE.md → SYMLINK to the bind-mounted source. Edits on
+#     the host are picked up at the next container restart. Writes are denied
+#     by the R/O source filesystem (defense-in-depth on top of settings.json's
+#     own deny rules for Write(CLAUDE.md) / Edit(settings.json)).
+#
+#   - skills/ → COPY with no-clobber on first boot. Shared base skills land in
+#     /home/elder/.claude/skills/ as real files (R/W) so the agent can add
+#     per-elder runtime skills alongside the shared base, per the Phase 1.7
+#     contract documented in agents/shared/home-claude/skills/README.md
+#     ("Per-elder runtime skills authored by the agent itself live in
+#     /home/elder/.claude/skills/ (R/W)"). On subsequent boots, no-clobber
+#     preserves agent-authored skills; updated shared skills can be picked up
+#     by `make wipe-elder-N` clearing the named volume.
 SHARED_HOME=/opt/clan-world/shared/home-claude
 if [ -d "$SHARED_HOME" ]; then
   mkdir -p "$CLAUDE_CONFIG_DIR"
-  for f in settings.json CLAUDE.md skills; do
-    # ln -sfn replaces existing symlink or empty dir target atomically.
-    ln -sfn "$SHARED_HOME/$f" "$CLAUDE_CONFIG_DIR/$f"
+
+  # File-level symlinks for settings.json + CLAUDE.md. Use `ln -sfn` which is
+  # safe against an existing symlink, but `ln` cannot replace an existing real
+  # file or directory — so we explicitly `rm -f` first (file-only; will refuse
+  # to remove a directory, surfacing the misconfig if one exists).
+  for f in settings.json CLAUDE.md; do
+    target="$CLAUDE_CONFIG_DIR/$f"
+    if [ -e "$target" ] && [ ! -L "$target" ]; then
+      # Pre-existing real file (operator override?) — preserve it, log warning.
+      echo "[run.sh] WARNING: $target exists as a real file, not symlinking to shared. Operator override or stale state from earlier image version." >&2
+      continue
+    fi
+    rm -f "$target"
+    ln -s "$SHARED_HOME/$f" "$target"
   done
+
+  # Skills: copy with no-clobber so per-elder runtime additions coexist with
+  # the shared base. `cp -rn` skips existing targets, so on container restart
+  # we don't trample agent-authored skills.
+  mkdir -p "$CLAUDE_CONFIG_DIR/skills"
+  cp -rn "$SHARED_HOME/skills/." "$CLAUDE_CONFIG_DIR/skills/"
 else
   echo "[run.sh] WARNING: $SHARED_HOME not found — shared config not bind-mounted? Container will run without shared CLAUDE.md/settings.json/skills." >&2
 fi
