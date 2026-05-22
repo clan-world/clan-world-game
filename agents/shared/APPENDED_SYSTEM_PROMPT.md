@@ -16,9 +16,9 @@ You are running inside a containerized Elder runtime. Your identity, network, an
 - `/home/elder/.claude/skills/` — base skills you can invoke (`lean-tick`, `research-mindset`, plus more seeded from the shared base).
 - `/home/elder/.claude/projects/<encoded-cwd>/memory/` — your durable scratch dir. Write notes here that should survive `/clear` but don't fit `elder memory save`.
 
-## SessionStart hook — ANCIENT_WISDOM injection
+## ANCIENT_WISDOM continuity (v1 — manual Read, hook deferred)
 
-At every CC session start (including after `--continue`), a SessionStart hook reads `/workspace/ANCIENT_WISDOM.md` and injects its contents as `additionalContext`. You will see this content automatically before your first tick after startup. Use it as your continuity layer.
+`/workspace/ANCIENT_WISDOM.md` is your prompt-to-future-self continuity layer. A SessionStart hook that auto-injects it as `additionalContext` will ship in a follow-up issue. **For v1, Read /workspace/ANCIENT_WISDOM.md deliberately at the start of every session** (or after `--continue` if the resumed transcript predates your last update) — it is not yet auto-injected.
 
 When you want to update it, edit `/workspace/ANCIENT_WISDOM.md` directly (Write/Edit tool — `/workspace/**` is in your allow-list).
 

@@ -260,13 +260,16 @@ services:
   elder-1:
     <<: *elder-common
     container_name: clan-world-elder-1
+    # Per-elder OAuth token + clan identity loaded from agents/elder-1/.env
+    # (gitignored; templated by agents/elder-1/.env.template). The .env file is
+    # NOT bind-mounted into the container — only injected as env vars at start,
+    # so the elder's Bash tool cannot `cat /agent/.env`.
+    env_file:
+      - ./agents/elder-1/.env
     environment:
       ELDER_N: "1"
-      ELDER_ID: ${ELDER_1_CLAN_ID:-1}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
-      ANTHROPIC_API_KEY: ${ELDER_1_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_1_CLAUDE_CODE_OAUTH_TOKEN:-}
     secrets:
       - bus-elder-1
     volumes:
@@ -274,7 +277,10 @@ services:
       - elder-1-home:/home/elder/.claude
       - elder-1-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-1 && pgrep -f /opt/elder-runtime/main.js"]
+      # v1 self-consistent healthcheck — verifies tmux session + ttyd web port.
+      # #353 (Phase 1.9 supervisor) will tighten this to also pgrep the
+      # /opt/elder-runtime/main.js process once that ships.
+      test: ["CMD-SHELL", "pgrep -f tmux >/dev/null && curl -sf http://localhost:7681/ >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -284,20 +290,19 @@ services:
   elder-2:
     <<: *elder-common
     container_name: clan-world-elder-2
+    env_file:
+      - ./agents/elder-2/.env
     environment:
       ELDER_N: "2"
-      ELDER_ID: ${ELDER_2_CLAN_ID:-2}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
-      ANTHROPIC_API_KEY: ${ELDER_2_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_2_CLAUDE_CODE_OAUTH_TOKEN:-}
     secrets:
       - bus-elder-2
     volumes:
       - elder-2-home:/home/elder/.claude
       - elder-2-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-2 && pgrep -f /opt/elder-runtime/main.js"]
+      test: ["CMD-SHELL", "pgrep -f tmux >/dev/null && curl -sf http://localhost:7681/ >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -307,20 +312,19 @@ services:
   elder-3:
     <<: *elder-common
     container_name: clan-world-elder-3
+    env_file:
+      - ./agents/elder-3/.env
     environment:
       ELDER_N: "3"
-      ELDER_ID: ${ELDER_3_CLAN_ID:-3}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
-      ANTHROPIC_API_KEY: ${ELDER_3_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_3_CLAUDE_CODE_OAUTH_TOKEN:-}
     secrets:
       - bus-elder-3
     volumes:
       - elder-3-home:/home/elder/.claude
       - elder-3-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-3 && pgrep -f /opt/elder-runtime/main.js"]
+      test: ["CMD-SHELL", "pgrep -f tmux >/dev/null && curl -sf http://localhost:7681/ >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -330,20 +334,19 @@ services:
   elder-4:
     <<: *elder-common
     container_name: clan-world-elder-4
+    env_file:
+      - ./agents/elder-4/.env
     environment:
       ELDER_N: "4"
-      ELDER_ID: ${ELDER_4_CLAN_ID:-4}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
-      ANTHROPIC_API_KEY: ${ELDER_4_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_4_CLAUDE_CODE_OAUTH_TOKEN:-}
     secrets:
       - bus-elder-4
     volumes:
       - elder-4-home:/home/elder/.claude
       - elder-4-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-4 && pgrep -f /opt/elder-runtime/main.js"]
+      test: ["CMD-SHELL", "pgrep -f tmux >/dev/null && curl -sf http://localhost:7681/ >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
