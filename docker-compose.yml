@@ -292,7 +292,7 @@ services:
       # alive. Tmux + ttyd are installed in the image but not started in v1
       # (no supervisor). #353 (Phase 1.9 supervisor) will start tmux+ttyd and
       # tighten this to also verify the ttyd web port + supervisor process.
-      test: ["CMD-SHELL", "pgrep -f 'claude --' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -316,7 +316,7 @@ services:
       - elder-2-home:/home/elder/.claude
       - elder-2-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'claude --' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -340,7 +340,7 @@ services:
       - elder-3-home:/home/elder/.claude
       - elder-3-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'claude --' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -364,7 +364,7 @@ services:
       - elder-4-home:/home/elder/.claude
       - elder-4-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'claude --' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
