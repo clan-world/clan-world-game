@@ -419,7 +419,22 @@ npx -y convex@1.17.4 run commandBus:enqueueCommand '{
 
 Then verify `commandResults` and `elderHeartbeat` update in the dashboard.
 
-**Rollback:** stop the Docker heartbeat/Elders and keep legacy services live.
+**Rollback:**
+
+1. Stop Docker heartbeat and Elders:
+
+   ```bash
+   docker compose --profile prod stop heartbeat elder-1 elder-2 elder-3 elder-4
+   ```
+
+2. Re-enable the legacy runner, reversing Step 6's `stop` + `disable`:
+
+   ```bash
+   sudo systemctl enable --now clanworld-runner.service
+   ```
+
+3. Verify the legacy runner is healthy and consuming heartbeats again before
+   investigating the failed Docker health gate.
 
 ## Step 8 - Pending Public Routing Gate
 
