@@ -13,8 +13,8 @@ interface Props {
 /**
  * Terminal tab — live ttyd iframe pointing at this Elder's tmux mirror.
  *
- * The iframe loads `https://cockpit.clan-world.com/elder-{N}-tty/`, which is
- * served by Caddy in front of `ttyd-elder-{N}.service`. ttyd renders the
+ * The iframe loads `https://app.clan-world.com/elder-{N}/`, which is
+ * served by Caddy in front of the elder-N container's ttyd port. ttyd renders the
  * Elder's tmux session as a read-only WebSocket-fed terminal in the browser.
  *
  * If the upstream service is down, the iframe will show the browser's
@@ -26,7 +26,7 @@ interface Props {
  * breaks the WS handshake.
  */
 export function TerminalTab({ elder, testIdPrefix }: Props) {
-  const url = `https://cockpit.clan-world.com/elder-${elder.clanId}-tty/`;
+  const url = `https://app.clan-world.com/elder-${elder.clanId}/`;
   const { src, status, reconnectNow, onFrameLoad } = useTerminalFrameReconnect({
     baseUrl: url,
     clanId: elder.clanId,

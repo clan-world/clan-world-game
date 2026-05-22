@@ -21,7 +21,7 @@ const BACKOFF_MS = [2_000, 4_000, 8_000];
  * Phase B may revisit by adding a Convex query that the server polls.
  */
 export const HEARTBEAT_URL =
-  'https://cockpit.clan-world.com/elder-1-tty/';
+  'https://app.clan-world.com/elder-1/';
 
 interface Options {
   /** Override the heartbeat URL (for tests). */
@@ -38,7 +38,7 @@ interface Options {
  *       └─────────success─────┴────manual/auto retry─────────────┘
  *
  * The fetch uses `mode: 'no-cors'` because the cockpit page lives on a
- * different subdomain than ttyd — the response is opaque, but `fetch`
+ * same app-domain Caddy route as ttyd — the response is opaque, but `fetch`
  * resolving (vs rejecting) is enough signal that the host is reachable.
  *
  * On `visibilitychange` → visible, we fire an immediate heartbeat. The

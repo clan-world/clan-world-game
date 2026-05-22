@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 async function stubTerminalIframes(page: Page): Promise<void> {
-  await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) =>
+  await page.route('**/app.clan-world.com/elder-*/**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'text/html',

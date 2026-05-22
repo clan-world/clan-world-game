@@ -20,12 +20,12 @@ test.describe('cockpit shell (Phase A)', () => {
   // depends on external network. Individual tests override the route to
   // simulate connection failures.
   test.beforeEach(async ({ page }) => {
-    await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) =>
+    await page.route('**/app.clan-world.com/elder-*/**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'text/html',
         body: `<!DOCTYPE html><html><body data-stub="ttyd"><script>
-          const match = location.pathname.match(/elder-(\\d+)-tty/);
+          const match = location.pathname.match(/elder-(\\d+)/);
           parent.postMessage({
             type: 'clanworld-ttyd-status',
             clanId: Number(match?.[1] ?? 0),
@@ -106,7 +106,7 @@ test.describe('cockpit shell (Phase A)', () => {
     page,
   }) => {
     let shouldFail = true;
-    await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) => {
+    await page.route('**/app.clan-world.com/elder-*/**', (route) => {
       if (shouldFail) {
         return route.abort('failed');
       }
@@ -143,7 +143,7 @@ test.describe('cockpit shell (Phase A)', () => {
     page,
   }) => {
     let documentLoads = 0;
-    await page.route('**/cockpit.clan-world.com/elder-1-tty/**', (route) => {
+    await page.route('**/app.clan-world.com/elder-1/**', (route) => {
       if (route.request().resourceType() !== 'document') {
         return route.fulfill({ status: 200, body: '' });
       }
@@ -185,7 +185,7 @@ test.describe('cockpit shell (Phase A)', () => {
     page,
   }) => {
     let documentLoads = 0;
-    await page.route('**/cockpit.clan-world.com/elder-1-tty/**', (route) => {
+    await page.route('**/app.clan-world.com/elder-1/**', (route) => {
       if (route.request().resourceType() !== 'document') {
         return route.fulfill({ status: 200, body: '' });
       }

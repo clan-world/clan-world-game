@@ -270,6 +270,8 @@ services:
     env_file:
       - path: ./agents/elder-1/.env
         required: false
+    ports:
+      - "127.0.0.1:${ELDER_1_TTYD_PORT:-7681}:7681"
     environment:
       ELDER_N: "1"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -304,6 +306,8 @@ services:
     env_file:
       - path: ./agents/elder-2/.env
         required: false
+    ports:
+      - "127.0.0.1:${ELDER_2_TTYD_PORT:-7682}:7681"
     environment:
       ELDER_N: "2"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -328,6 +332,8 @@ services:
     env_file:
       - path: ./agents/elder-3/.env
         required: false
+    ports:
+      - "127.0.0.1:${ELDER_3_TTYD_PORT:-7683}:7681"
     environment:
       ELDER_N: "3"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -352,6 +358,8 @@ services:
     env_file:
       - path: ./agents/elder-4/.env
         required: false
+    ports:
+      - "127.0.0.1:${ELDER_4_TTYD_PORT:-7684}:7681"
     environment:
       ELDER_N: "4"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
