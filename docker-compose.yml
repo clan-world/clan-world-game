@@ -263,9 +263,13 @@ services:
     # Per-elder OAuth token + clan identity loaded from agents/elder-1/.env
     # (gitignored; templated by agents/elder-1/.env.template). The .env file is
     # NOT bind-mounted into the container — only injected as env vars at start,
-    # so the elder's Bash tool cannot `cat /agent/.env`.
+    # so the elder's Bash tool cannot `cat /agent/.env`. `required: false` keeps
+    # `docker compose config` parseable in CI before operators run
+    # `make bootstrap-elder-envs`; the elder container will fail loudly at startup
+    # if ANTHROPIC_OAUTH_TOKEN is empty (run.sh / claude CLI auth refusal).
     env_file:
-      - ./agents/elder-1/.env
+      - path: ./agents/elder-1/.env
+        required: false
     environment:
       ELDER_N: "1"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -291,7 +295,8 @@ services:
     <<: *elder-common
     container_name: clan-world-elder-2
     env_file:
-      - ./agents/elder-2/.env
+      - path: ./agents/elder-2/.env
+        required: false
     environment:
       ELDER_N: "2"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -313,7 +318,8 @@ services:
     <<: *elder-common
     container_name: clan-world-elder-3
     env_file:
-      - ./agents/elder-3/.env
+      - path: ./agents/elder-3/.env
+        required: false
     environment:
       ELDER_N: "3"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
@@ -335,7 +341,8 @@ services:
     <<: *elder-common
     container_name: clan-world-elder-4
     env_file:
-      - ./agents/elder-4/.env
+      - path: ./agents/elder-4/.env
+        required: false
     environment:
       ELDER_N: "4"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
