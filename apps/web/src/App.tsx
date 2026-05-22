@@ -69,13 +69,26 @@ export { DEMO_MODE };
 /**
  * Top-level route decision. Lightweight path-based routing avoids a router
  * dep for a single side route. Reading window.location once at render is
- * fine here — the cockpit is a standalone judge view, not a SPA tab inside
- * the main app, so we never need to navigate between them client-side.
+ * fine here — the cockpit is the default surface and the world map lives
+ * on `/map`, so we never need client-side navigation between them.
  */
-function isCockpitRoute(): boolean {
+function isMapRoute(): boolean {
   return (
     typeof window !== 'undefined' &&
-    window.location.pathname.startsWith('/cockpit')
+    (window.location.pathname === '/map' ||
+      window.location.pathname.startsWith('/map/'))
+  );
+}
+
+function isRootRoute(): boolean {
+  return typeof window !== 'undefined' && window.location.pathname === '/';
+}
+
+function isLegacyCockpitRoute(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/cockpit' ||
+      window.location.pathname.startsWith('/cockpit/'))
   );
 }
 
@@ -101,12 +114,21 @@ function parseAgentRoute(): number | null {
 }
 
 export function App() {
-  if (isCockpitRoute()) {
+  if (isLegacyCockpitRoute()) {
+    if (typeof window !== 'undefined') {
+      window.location.replace(`/${window.location.search}${window.location.hash}`);
+    }
+    return null;
+  }
+  if (isRootRoute()) {
     return (
       <CockpitErrorBoundary>
         <Cockpit />
       </CockpitErrorBoundary>
     );
+  }
+  if (isMapRoute()) {
+    return <MainApp />;
   }
   const agentId = parseAgentRoute();
   if (agentId !== null) {

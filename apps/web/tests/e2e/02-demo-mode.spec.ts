@@ -40,7 +40,7 @@ test.describe('DEMO_MODE flag — mock clans (demo mode ON)', () => {
   );
 
   test('demo mode ON: mock clan names visible in scoreboard panel', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/map');
 
     // Scoreboard pulse panel is rendered only in DEMO_MODE with scoreboardClans > 0.
     // "IG" is the Iron Guard initials rendered in the compact scoreboard.
@@ -59,7 +59,7 @@ test.describe('DEMO_MODE flag — empty world (demo mode OFF)', () => {
   );
 
   test('demo mode OFF: "no chain data yet" placeholder visible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/map');
 
     // Placeholder overlay is rendered when DEMO_MODE=false and no live snapshot clans.
     const placeholder = page.getByTestId('no-chain-data-placeholder');

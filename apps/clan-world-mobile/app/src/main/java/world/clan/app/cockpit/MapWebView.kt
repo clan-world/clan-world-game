@@ -14,12 +14,12 @@ import world.clan.app.BuildConfig
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
- * Loads the full web cockpit route configured by [BuildConfig.MAP_URL]
- * (defaults to https://app.clan-world.com). After issue #326 unified the
- * map across `/`, `/cockpit`, and the Android webview, the root route
- * mounts the same canonical `WorldMap` surface as `/cockpit`, so any URL
- * served by the production web app surfaces the full world map plus
- * shared overlays (version badge, ghost layer, HUD, event ticker).
+ * Loads the canonical world-map surface configured by [BuildConfig.MAP_URL].
+ *
+ * After issue #354 the web cockpit lives at `/`, while the raw map surface
+ * remains at `/map`. Android should point MAP_URL at that explicit map route
+ * (for example, https://app.clan-world.com/map) so the native cockpit's map
+ * region does not accidentally load the full web cockpit chrome.
  *
  * JS + DOM storage are required by the Pixi map; everything else is left
  * at WebView defaults.

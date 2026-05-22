@@ -15,25 +15,25 @@ test.describe('unified world map routes', () => {
     await stubTerminalIframes(page);
   });
 
-  test('root and cockpit expose the same version badge text', async ({ page }) => {
-    await page.goto('/');
-    const rootBadge = page.getByTestId('version-badge');
-    await expect(rootBadge).toBeVisible();
+  test('/map and root cockpit expose the same version badge text', async ({ page }) => {
+    await page.goto('/map');
+    const mapBadge = page.getByTestId('version-badge');
+    await expect(mapBadge).toBeVisible();
     await expect(page.locator('canvas')).toHaveCount(1, { timeout: 15_000 });
-    const rootVersion = (await rootBadge.textContent())?.trim();
-    expect(rootVersion).toBeTruthy();
+    const mapVersion = (await mapBadge.textContent())?.trim();
+    expect(mapVersion).toBeTruthy();
 
-    await page.goto('/cockpit');
+    await page.goto('/');
     const cockpitBadge = page.getByTestId('version-badge');
     await expect(cockpitBadge).toBeVisible();
     await expect(page.locator('canvas')).toHaveCount(1, { timeout: 15_000 });
-    await expect(cockpitBadge).toHaveText(rootVersion ?? '');
+    await expect(cockpitBadge).toHaveText(mapVersion ?? '');
   });
 
   test('desktop cockpit mounts one canonical world map', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name.includes('mobile'), 'desktop-only cockpit layout check');
 
-    await page.goto('/cockpit');
+    await page.goto('/');
 
     const mapCell = page.getByTestId('cockpit-worldmap');
     await expect(page.getByTestId('cockpit-root')).toBeVisible();
@@ -47,7 +47,7 @@ test.describe('unified world map routes', () => {
   test('mobile cockpit keeps one map canvas through collapse', async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.includes('mobile'), 'mobile-only cockpit layout check');
 
-    await page.goto('/cockpit');
+    await page.goto('/');
 
     const layout = page.getByTestId('cockpit-mobile-layout');
     const mapRegion = page.getByTestId('cockpit-mobile-worldmap-region');
@@ -62,5 +62,11 @@ test.describe('unified world map routes', () => {
     await toggle.click();
     await expect(layout).not.toHaveAttribute('data-collapsed', before ?? '');
     await expect(mapRegion.locator('canvas')).toHaveCount(1);
+  });
+
+  test('legacy /cockpit redirects to root cockpit', async ({ page }) => {
+    await page.goto('/cockpit');
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 5_000 }).toBe('/');
+    await expect(page.getByTestId('cockpit-root')).toBeVisible();
   });
 });
