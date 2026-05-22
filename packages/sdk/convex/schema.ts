@@ -416,4 +416,54 @@ export default defineSchema({
   humanSteeringMessages: defineTable(humanSteeringMessageFields)
     .index("by_target_clan", ["targetClanId", "tick"])
     .index("by_tick", ["tick"]),
+
+  agentCommands: defineTable({
+    targetAgentId: v.string(),
+    kind: v.union(
+      v.literal("user_message"),
+      v.literal("system_message"),
+      v.literal("snapshot_request"),
+      v.literal("reset"),
+      v.literal("freeze"),
+      v.literal("unfreeze"),
+    ),
+    payload: v.any(),
+    payloadVersion: v.number(),
+    source: v.string(),
+    createdAt: v.number(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("leased"),
+      v.literal("acked"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    ackedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    retryCount: v.number(),
+    broadcastSequence: v.optional(v.number()),
+  })
+    .index("by_target_status", ["targetAgentId", "status"])
+    .index("by_status_lease", ["status", "leaseExpiresAt"])
+    .index("by_broadcast_sequence", ["broadcastSequence"]),
+
+  elderHeartbeat: defineTable({
+    agentId: v.string(),
+    lastSeenAt: v.number(),
+    lastTickProcessed: v.number(),
+    currentStrategy: v.optional(v.string()),
+    health: v.union(v.literal("green"), v.literal("yellow"), v.literal("red")),
+  })
+    .index("by_agentId", ["agentId"]),
+
+  commandResults: defineTable({
+    commandId: v.id("agentCommands"),
+    agentId: v.string(),
+    resultPayload: v.any(),
+    tookMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_commandId", ["commandId"]),
 });
