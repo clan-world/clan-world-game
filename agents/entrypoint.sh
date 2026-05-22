@@ -15,24 +15,19 @@ set -euo pipefail
 # autonomous elders MUST run with egress restrictions. The operator can
 # explicitly opt out of the firewall (for missing-cap local debugging or for
 # dev containers without iptables modules in the kernel) by setting
-# `ALLOW_UNRESTRICTED_EGRESS=1` in the container environment.
-if [[ -x /opt/clan-world/init-firewall.sh ]]; then
+# `ALLOW_UNRESTRICTED_EGRESS=1` in the container environment. The override is
+# checked BEFORE invoking the firewall script — so debug operators don't get
+# the firewall applied even when iptables would have succeeded.
+if [[ "${ALLOW_UNRESTRICTED_EGRESS:-0}" = "1" ]]; then
+  echo "[entrypoint] WARNING: ALLOW_UNRESTRICTED_EGRESS=1 — skipping init-firewall.sh entirely. Container will have UNRESTRICTED egress. DO NOT use in production." >&2
+elif [[ -x /opt/clan-world/init-firewall.sh ]]; then
   if ! sudo /opt/clan-world/init-firewall.sh; then
-    if [[ "${ALLOW_UNRESTRICTED_EGRESS:-0}" = "1" ]]; then
-      echo "[entrypoint] WARNING: init-firewall.sh failed but ALLOW_UNRESTRICTED_EGRESS=1 — continuing without egress lockdown. DO NOT use in production." >&2
-    else
-      echo "[entrypoint] FATAL: init-firewall.sh failed (likely missing CAP_NET_ADMIN). Set ALLOW_UNRESTRICTED_EGRESS=1 to override for local debugging." >&2
-      exit 3
-    fi
-  fi
-else
-  # No firewall script available at all — same fail-closed posture.
-  if [[ "${ALLOW_UNRESTRICTED_EGRESS:-0}" = "1" ]]; then
-    echo "[entrypoint] WARNING: /opt/clan-world/init-firewall.sh missing but ALLOW_UNRESTRICTED_EGRESS=1 — continuing without egress lockdown." >&2
-  else
-    echo "[entrypoint] FATAL: /opt/clan-world/init-firewall.sh missing and ALLOW_UNRESTRICTED_EGRESS not set. Image misbuild?" >&2
+    echo "[entrypoint] FATAL: init-firewall.sh failed (likely missing CAP_NET_ADMIN). Set ALLOW_UNRESTRICTED_EGRESS=1 to override for local debugging." >&2
     exit 3
   fi
+else
+  echo "[entrypoint] FATAL: /opt/clan-world/init-firewall.sh missing and ALLOW_UNRESTRICTED_EGRESS not set. Image misbuild?" >&2
+  exit 3
 fi
 
 # Hand off to run.sh from the shared bind-mount. run.sh is owned by Phase 1.7
