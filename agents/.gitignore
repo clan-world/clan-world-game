@@ -5,5 +5,8 @@ runtime/
 .env
 elder-*/.env
 
-# Docker-compose symlink helper dir (created by `make link-mounts`)
-.docker-mounts/
+# Docker-compose helper-container snapshot dir (populated by `make link-mounts`).
+# The directory is checked in (via .gitkeep) so operators see it without
+# needing to run link-mounts first, but all snapshot contents are gitignored.
+.docker-mounts/*
+!.docker-mounts/.gitkeep
