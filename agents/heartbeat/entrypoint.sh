@@ -55,6 +55,17 @@ if [ -n "${WEBHOOK_SHARED_SECRET_FILE:-}" ]; then
     fail "WEBHOOK_SHARED_SECRET_FILE contains embedded newlines; secret must be a single line: $WEBHOOK_SHARED_SECRET_FILE"
   fi
   unset _secret_raw_bytes _secret_first_line_bytes
+  # head -n 1 only splits on LF, so an embedded CR would slip through the check
+  # above and corrupt the Authorization header. Reject CR explicitly via a
+  # literal-CR pattern (BusyBox ash does not support $'\r').
+  _cr="$(printf '\r')"
+  case "$WEBHOOK_SHARED_SECRET" in
+    *"$_cr"*)
+      unset _cr
+      fail "WEBHOOK_SHARED_SECRET_FILE contains an embedded carriage return; secret must be a single line without CR or LF: $WEBHOOK_SHARED_SECRET_FILE"
+      ;;
+  esac
+  unset _cr
   [ -n "$WEBHOOK_SHARED_SECRET" ] || fail "WEBHOOK_SHARED_SECRET_FILE is empty: $WEBHOOK_SHARED_SECRET_FILE"
   export WEBHOOK_SHARED_SECRET
 fi

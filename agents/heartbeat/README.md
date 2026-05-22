@@ -51,7 +51,7 @@ compose `anvil-fork` service and viem's `baseSepolia` chain config.
 ## Healthcheck
 
 The compose healthcheck reads `/tmp/last-heartbeat-success` (path configurable
-via `HEARTBEAT_SUCCESS_FILE`). The runner writes the current Unix timestamp
+via `HEARTBEAT_SUCCESS_FILE_OVERRIDE`). The runner writes the current Unix timestamp
 there after either (a) a confirmed heartbeat transaction with a successful
 webhook POST, OR (b) the receipt-timeout recovery path when on-chain
 `nextHeartbeatAtTs` is observed to have advanced (no confirmed receipt, no
