@@ -155,10 +155,20 @@ logs:
 	$(DC) logs -f $(ELDER)
 
 pause-elder-%: FORCE
-	$(DC) exec -T elder-$* sh -c 'kill -STOP $$(pgrep -f "tsx.*elder-runtime/src/main.ts")'
+	@PID=$$($(DC) exec -T elder-$* pgrep -f 'tsx.*elder-runtime/src/main.ts' 2>/dev/null | head -1); \
+	if [ -z "$$PID" ]; then \
+		echo "[pause-elder-$*] no supervisor process running - already paused or stopped"; \
+	else \
+		$(DC) exec -T elder-$* kill -STOP "$$PID" && echo "[pause-elder-$*] SIGSTOP sent to PID $$PID"; \
+	fi
 
 unpause-elder-%: FORCE
-	$(DC) exec -T elder-$* sh -c 'kill -CONT $$(pgrep -f "tsx.*elder-runtime/src/main.ts")'
+	@PID=$$($(DC) exec -T elder-$* pgrep -f 'tsx.*elder-runtime/src/main.ts' 2>/dev/null | head -1); \
+	if [ -z "$$PID" ]; then \
+		echo "[unpause-elder-$*] no supervisor process running - already unpaused or stopped"; \
+	else \
+		$(DC) exec -T elder-$* kill -CONT "$$PID" && echo "[unpause-elder-$*] SIGCONT sent to PID $$PID"; \
+	fi
 
 pause:
 	@for n in $(ELDER_NUMS); do $(MAKE) pause-elder-$$n || true; done
@@ -174,7 +184,7 @@ unpause-heartbeat:
 
 reset-%: FORCE
 	-$(DC) exec -T $* tmux kill-session -t $* 2>/dev/null || true
-	$(DC) restart $*
+	$(DC) up -d --force-recreate $*
 
 restart-%: FORCE
 	$(DC) restart $*
@@ -293,8 +303,8 @@ bootstrap-convex-dashboard-auth:
 		echo "ERROR: username + password required" >&2; \
 		exit 1; \
 	fi; \
-	HASH=$$(printf '%s' "$$p" | sha256sum | cut -d' ' -f1); \
-	printf '{"username":"%s","password_sha256":"%s"}\n' "$$u" "$$HASH" > "$$DEST"; \
+	HASH=$$(openssl passwd -6 -salt "$$(openssl rand -base64 16)" "$$p"); \
+	printf '{"username":"%s","password_sha512crypt":"%s"}\n' "$$u" "$$HASH" > "$$DEST"; \
 	chmod 0600 "$$DEST"; \
 	echo "[bootstrap] convex-dashboard-auth.json saved to $$DEST"
 
