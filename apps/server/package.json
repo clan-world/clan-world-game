@@ -18,7 +18,7 @@
     "@clan-world/contract-types": "workspace:*",
     "@clan-world/sdk": "workspace:*",
     "@clan-world/shared": "workspace:*",
-    "convex": "1.17.4",
+    "convex": "1.39.1",
     "viem": "2.48.4"
   },
   "devDependencies": {

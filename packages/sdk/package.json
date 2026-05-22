@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@clan-world/contract-types": "workspace:*",
-    "convex": "1.17.4"
+    "convex": "1.39.1"
   },
   "devDependencies": {
     "typescript": "5.9.3"
