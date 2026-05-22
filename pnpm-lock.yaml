@@ -352,9 +352,6 @@ importers:
 
   packages/elder-runtime:
     dependencies:
-      '@clan-world/shared':
-        specifier: workspace:*
-        version: link:../shared
       convex:
         specifier: 1.17.4
         version: 1.17.4(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
