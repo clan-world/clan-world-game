@@ -3,7 +3,7 @@ import { WorldMapBoundary } from './cockpit/shared/WorldMapBoundary';
 
 /**
  * Sanctioned route-level mount for the canonical world map surface.
- * Use this for /, /cockpit, and Android webview-backed cockpit routes.
+ * Use this for the explicit `/map` route and cockpit map cells.
  */
 export function WorldMapEmbed() {
   return (
