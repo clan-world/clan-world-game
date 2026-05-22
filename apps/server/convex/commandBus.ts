@@ -4,7 +4,8 @@ import { v } from "convex/values";
 const LEASE_MS = 6 * 60 * 1000; // 6 minutes
 const COMPLETION_GRACE_MS = 30 * 1000;
 const MAX_RETRIES = 3;
-const CONTROL_COMMAND_KINDS = new Set(["reset", "freeze", "unfreeze"]);
+const CONTROL_COMMAND_KINDS = ["reset", "freeze", "unfreeze"] as const;
+type ControlCommandKind = typeof CONTROL_COMMAND_KINDS[number];
 
 function checkOperatorAuth(secret: string) {
   if (!process.env.BUS_OPERATOR_SECRET || secret !== process.env.BUS_OPERATOR_SECRET) {
@@ -89,9 +90,9 @@ export const claimNext = mutation({
         q.eq("targetAgentId", args.agentId).eq("status", "queued"),
       )
       .filter(q => q.or(
-        q.eq(q.field("kind"), "reset"),
-        q.eq(q.field("kind"), "freeze"),
-        q.eq(q.field("kind"), "unfreeze"),
+        ...CONTROL_COMMAND_KINDS.map((kind: ControlCommandKind) =>
+          q.eq(q.field("kind"), kind),
+        ),
       ))
       .order("asc")
       .first();
