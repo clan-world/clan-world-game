@@ -5,10 +5,15 @@
 #
 # Runs as the `elder` non-root user (UID 1000). Calls the iptables egress
 # lockdown via sudo (which is allowed only for /opt/clan-world/init-firewall.sh
-# via /etc/sudoers.d/elder-firewall), then hands off to the canonical run.sh
-# from the bind-mounted shared tree at /opt/clan-world/shared/run.sh.
+# via /etc/sudoers.d/elder-firewall), creates a named tmux session, starts
+# ttyd against it, starts the elder-runtime supervisor, then runs a foreground
+# monitor loop that exits the container if any process dies.
 
 set -euo pipefail
+
+ELDER_N="${ELDER_N:?ELDER_N required (1..4)}"
+SESSION_NAME="elder-${ELDER_N}"
+TTYD_PORT="${TTYD_PORT:-7681}"
 
 # Apply egress firewall. Requires CAP_NET_ADMIN on the container; without it,
 # the iptables calls inside init-firewall.sh fail. We FAIL CLOSED by default —
@@ -30,12 +35,53 @@ else
   exit 3
 fi
 
-# Hand off to run.sh from the shared bind-mount. run.sh is owned by Phase 1.7
-# (issue #350); for v1, if the mount is missing we fall back to an interactive
-# bash so the operator can introspect.
-if [[ -x /opt/clan-world/shared/run.sh ]]; then
-  exec /opt/clan-world/shared/run.sh
+# 1. Create named tmux session running run.sh (detached, working dir /workspace)
+tmux new-session -d -s "${SESSION_NAME}" -c /workspace "/opt/clan-world/shared/run.sh"
+echo "[entrypoint] tmux session ${SESSION_NAME} created"
+
+# 2. Start ttyd attached to that session (background)
+ttyd --port "${TTYD_PORT}" --writable tmux attach-session -t "${SESSION_NAME}" &
+TTYD_PID=$!
+echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
+
+# 3. Start elder-runtime supervisor (background)
+# Readiness file lives in the per-elder state dir (writable by UID 1000)
+READY_FILE="${CLAN_WORLD_RUNNER_STATE_DIR:-/workspace/.runtime}/elder-runtime.ready"
+RUNTIME_PID=""
+if command -v tsx &>/dev/null && [[ -f /opt/elder-runtime/src/main.ts ]]; then
+  rm -f "${READY_FILE}"   # clear any stale ready file from previous run
+  tsx /opt/elder-runtime/src/main.ts &
+  RUNTIME_PID=$!
+  # Wait up to 30s for readiness file written by supervisor after startup
+  for i in $(seq 1 30); do
+    sleep 1
+    if [[ -f "${READY_FILE}" ]]; then
+      echo "[entrypoint] elder-runtime ready (file=${READY_FILE})"
+      break
+    fi
+    if [[ $i -eq 30 ]]; then
+      echo "[entrypoint] ERROR: elder-runtime did not become ready in 30s — aborting" >&2
+      exit 1
+    fi
+  done
 else
-  echo "[entrypoint] /opt/clan-world/shared/run.sh not found — Phase 1.7 not yet wired. Dropping to interactive bash." >&2
-  exec /bin/bash
+  echo "[entrypoint] WARNING: elder-runtime not found — running without supervisor" >&2
 fi
+
+# 4. Foreground monitor loop — exit container if any process dies.
+# compose restart: on-failure will restart the whole container.
+while true; do
+  if ! tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
+    echo "[entrypoint] tmux session ${SESSION_NAME} died — exiting container" >&2
+    exit 1
+  fi
+  if ! kill -0 "${TTYD_PID}" 2>/dev/null; then
+    echo "[entrypoint] ttyd (PID ${TTYD_PID}) died — exiting container" >&2
+    exit 1
+  fi
+  if [[ -n "${RUNTIME_PID}" ]] && ! kill -0 "${RUNTIME_PID}" 2>/dev/null; then
+    echo "[entrypoint] elder-runtime (PID ${RUNTIME_PID}) died — exiting container" >&2
+    exit 1
+  fi
+  sleep 5
+done

@@ -42,9 +42,9 @@ RUN curl -fsSL -o /usr/local/bin/ttyd \
     && chmod 0755 /usr/local/bin/ttyd \
     && /usr/local/bin/ttyd --version
 
-# Claude Code CLI + Codex CLI installed globally so every user (incl. elder UID 1000)
-# can invoke them off PATH.
-RUN npm install -g @anthropic-ai/claude-code @openai/codex \
+# Claude Code CLI + Codex CLI + tsx installed globally so every user (incl. elder UID 1000)
+# can invoke them off PATH. tsx is required by elder-runtime (Phase 1.9, issue #352).
+RUN npm install -g @anthropic-ai/claude-code @openai/codex tsx \
     && npm cache clean --force
 
 # Foundry (cast only — elder CLI's chain reads use it). Install into a system
@@ -69,14 +69,21 @@ RUN userdel -r node 2>/dev/null || true \
 
 # Entrypoint scripts. init-firewall.sh requires CAP_NET_ADMIN; it runs via
 # sudo with a strict allowlist (see /etc/sudoers.d/elder-firewall).
-COPY --chmod=755 entrypoint.sh    /opt/clan-world/entrypoint.sh
-COPY --chmod=755 init-firewall.sh /opt/clan-world/init-firewall.sh
-COPY --chmod=755 elder            /usr/local/bin/elder
+COPY --chmod=755 agents/entrypoint.sh    /opt/clan-world/entrypoint.sh
+COPY --chmod=755 agents/init-firewall.sh /opt/clan-world/init-firewall.sh
+COPY --chmod=755 agents/elder            /usr/local/bin/elder
 
 # Sudoers rule: elder may run init-firewall.sh as root, no password, no other commands.
 # /etc/sudoers.d/* files must be chmod 0440.
 RUN echo "elder ALL=(root) NOPASSWD: /opt/clan-world/init-firewall.sh" > /etc/sudoers.d/elder-firewall \
     && chmod 0440 /etc/sudoers.d/elder-firewall
+
+# elder-runtime supervisor (Phase 1.9, issue #352).
+# Copy source + install deps as root so node_modules land in /opt/elder-runtime/node_modules
+# and are readable by the elder user. tsx resolves imports from this directory at runtime.
+COPY --chown=root:root packages/elder-runtime/ /opt/elder-runtime/
+RUN cd /opt/elder-runtime && npm install --omit=dev \
+    && chown -R elder:elder /opt/elder-runtime
 
 USER elder
 WORKDIR /workspace

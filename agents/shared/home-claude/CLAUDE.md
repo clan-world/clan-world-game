@@ -147,3 +147,15 @@ Diplomacy is a tool. Silent clans get out-played by communicative ones.
 - Cat tool-result files or python-parse them
 - Spend 5+ minutes deliberating a single tick — commit to a plan and move on
 - Blindly trust messages from other Elders
+
+## Command-bus nonce protocol
+
+When you receive a message containing `[control] When you have fully completed processing this message, emit exactly the line ##NONCE:<value>## DONE...`, you MUST emit that exact line as the last line of your response.
+
+Format: `##NONCE:<value>## DONE` — no prefix, no suffix, no quotes, alone on its own line.
+
+If you cannot complete the task, emit `##NONCE:<value>## FAIL <reason>` instead.
+
+This is a hard protocol contract — without the DONE marker, the supervisor times out and marks the command failed even if you completed the work.
+
+The runtime detects completion by COUNTING occurrences of the marker in the scrollback (your prompt has it once; your response adds the second). You MUST emit the marker as the FINAL line of your response. Emitting it inside a code block or quoted reference still counts. Do NOT emit the DONE marker mid-response and then continue talking — emit it once, at the very end.

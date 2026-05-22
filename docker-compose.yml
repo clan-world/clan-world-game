@@ -288,11 +288,10 @@ services:
       - elder-1-home:/home/elder/.claude
       - elder-1-workspace:/workspace
     healthcheck:
-      # v1 self-consistent healthcheck — verifies the elder claude process is
-      # alive. Tmux + ttyd are installed in the image but not started in v1
-      # (no supervisor). #353 (Phase 1.9 supervisor) will start tmux+ttyd and
-      # tighten this to also verify the ttyd web port + supervisor process.
-      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
+      # Verifies tmux session, ttyd process, and elder-runtime supervisor (tsx) — all three
+      # required for Phase 1.9 (#352). Hardcoded elder-1 literal because compose-time
+      # ${ELDER_N} was empty at compose-config time (super-swarm R2 finding f0a55977).
+      test: ["CMD-SHELL", "tmux has-session -t elder-1 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -316,7 +315,7 @@ services:
       - elder-2-home:/home/elder/.claude
       - elder-2-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-2 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -340,7 +339,7 @@ services:
       - elder-3-home:/home/elder/.claude
       - elder-3-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-3 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -364,7 +363,7 @@ services:
       - elder-4-home:/home/elder/.claude
       - elder-4-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -x claude >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-4 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3

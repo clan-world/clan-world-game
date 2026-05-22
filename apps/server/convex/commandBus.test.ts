@@ -5,6 +5,7 @@ import {
   ackCommand,
   completeCommand,
   failCommand,
+  releaseLease,
   getQueuedFor,
   sweepStaleDelivered,
   heartbeat,
@@ -199,11 +200,11 @@ describe("claimNext", () => {
         },
       ],
     });
-    const claimedId = await (claimNext as any)._handler(
+    const claimed = await (claimNext as any)._handler(
       { db },
       { secret: "elder-1-secret", agentId: "elder-1" },
     );
-    expect(claimedId).toBe("agentCommands:0");
+    expect(claimed?._id).toBe("agentCommands:0");
     expect(tables.agentCommands![0].status).toBe("leased");
     expect(tables.agentCommands![0].leaseOwner).toBe("elder-1");
   });
@@ -231,11 +232,11 @@ describe("claimNext", () => {
         },
       ],
     });
-    const claimedId = await (claimNext as any)._handler(
+    const claimed = await (claimNext as any)._handler(
       { db },
       { secret: "elder-1-secret", agentId: "elder-1" },
     );
-    expect(claimedId).toBe("agentCommands:0");
+    expect(claimed?._id).toBe("agentCommands:0");
     expect(tables.agentCommands![0].status).toBe("leased");
   });
 });
@@ -590,5 +591,54 @@ describe("auth", () => {
         },
       ),
     ).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("releaseLease", () => {
+  it("returns leased command to queued without bumping retryCount", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() + 300_000,
+          createdAt: 1000,
+          retryCount: 1,
+        },
+      ],
+    });
+    await (releaseLease as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1", commandId: "agentCommands:0" },
+    );
+    expect(tables.agentCommands![0].status).toBe("queued");
+    expect(tables.agentCommands![0].retryCount).toBe(1); // NOT bumped
+    expect(tables.agentCommands![0].leaseOwner).toBeUndefined();
+  });
+
+  it("throws if command is not in leased/acked state (status guard)", async () => {
+    const { db } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "completed",
+          leaseOwner: "elder-1", // stale — shouldn't be set on completed, but test the guard
+          leaseExpiresAt: Date.now() + 300_000,
+          createdAt: 1000,
+          retryCount: 1,
+        },
+      ],
+    });
+    await expect(
+      (releaseLease as any)._handler(
+        { db },
+        { secret: "elder-1-secret", agentId: "elder-1", commandId: "agentCommands:0" },
+      ),
+    ).rejects.toThrow("not in releasable state");
   });
 });
