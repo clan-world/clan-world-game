@@ -107,6 +107,13 @@ export const ackCommand = mutation({
     if (!cmd || cmd.status !== "leased" || cmd.leaseOwner !== args.agentId) {
       throw new Error("Command not found or not leased by this elder");
     }
+    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt <= Date.now()) {
+      // Symmetric with completeCommand/failCommand: reject ack on an expired
+      // lease so the elder cannot transition leased→acked on work the
+      // sweeper is about to re-queue. Without this guard, complete/fail
+      // would later reject the same stale lease, stranding the work.
+      throw new Error("Lease expired — re-claim the command before acking");
+    }
     await ctx.db.patch(args.commandId, { status: "acked", ackedAt: Date.now() });
   },
 });

@@ -266,6 +266,37 @@ describe("ackCommand", () => {
     expect(tables.agentCommands![0].status).toBe("acked");
     expect(tables.agentCommands![0].ackedAt).toBeDefined();
   });
+
+  it("throws on expired lease when acking", async () => {
+    // Symmetric guard with complete/fail (added round-1 fix from swarm
+    // review PR #538): an elder cannot transition leased→acked once the
+    // lease has expired — otherwise the work later fails complete/fail
+    // and the sweeper retries the same command.
+    const { db } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() - 1000, // expired
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await expect(
+      (ackCommand as any)._handler(
+        { db },
+        {
+          secret: "elder-1-secret",
+          agentId: "elder-1",
+          commandId: "agentCommands:0",
+        },
+      ),
+    ).rejects.toThrow("Lease expired");
+  });
 });
 
 describe("completeCommand", () => {
