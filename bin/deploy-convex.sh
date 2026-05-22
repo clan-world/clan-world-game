@@ -30,14 +30,103 @@ require_self_hosted_env() {
 }
 
 is_local_origin() {
-  local value="$1"
-  [[ "$value" == http://localhost* || "$value" == https://localhost* || \
-    "$value" == http://127.0.0.1* || "$value" == https://127.0.0.1* || \
-    "$value" == http://convex-backend* || "$value" == https://convex-backend* ]]
+  # Returns 0 (true) if the URL points at a local/internal-only Convex origin
+  # that must NOT be advertised to browsers in a prod deployment.
+  #
+  # Match rules: a local host must terminate with `/`, `:port`, `?`, `#`,
+  # end-of-string, or path. Plain prefix-glob on `http://convex-backend*` would
+  # falsely accept `http://convex-backend-prod.example.com` (a legitimate prod
+  # host whose hostname starts with the local-network alias). It would also
+  # leave `http://[::1]/`, `http://0.0.0.0/`, and `http://[::]/` uncovered.
+  #
+  # Per RFC 3986, scheme and host are case-insensitive (path/query are not,
+  # but our patterns only constrain the host so a `*` tail keeps them intact).
+  # Lowercase the input before matching so `HTTP://Localhost` cannot slip past.
+  # Trailing-dot hosts (`http://localhost.`) resolve identically to the bare
+  # form, so they get their own glob entries.
+  #
+  # Normalize userinfo: `http://admin@localhost` is the same origin as
+  # `http://localhost` per RFC 3986. Strip the `[userinfo@]` between scheme
+  # and host before matching.
+  local value="${1,,}"
+  if [[ "$value" =~ ^([a-z]+://)([^/?#]*@)(.*)$ ]]; then
+    value="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"
+  fi
+  case "$value" in
+    http://localhost|http://localhost/*|http://localhost:*|http://localhost\?*|http://localhost#*|\
+    http://localhost.|http://localhost./*|http://localhost.:*|http://localhost.\?*|http://localhost.#*|\
+    https://localhost|https://localhost/*|https://localhost:*|https://localhost\?*|https://localhost#*|\
+    https://localhost.|https://localhost./*|https://localhost.:*|https://localhost.\?*|https://localhost.#*|\
+    http://127.0.0.1|http://127.0.0.1/*|http://127.0.0.1:*|http://127.0.0.1\?*|http://127.0.0.1#*|\
+    https://127.0.0.1|https://127.0.0.1/*|https://127.0.0.1:*|https://127.0.0.1\?*|https://127.0.0.1#*|\
+    http://0.0.0.0|http://0.0.0.0/*|http://0.0.0.0:*|http://0.0.0.0\?*|http://0.0.0.0#*|\
+    https://0.0.0.0|https://0.0.0.0/*|https://0.0.0.0:*|https://0.0.0.0\?*|https://0.0.0.0#*|\
+    'http://[::1]'|'http://[::1]/'*|'http://[::1]:'*|'http://[::1]?'*|'http://[::1]#'*|\
+    'https://[::1]'|'https://[::1]/'*|'https://[::1]:'*|'https://[::1]?'*|'https://[::1]#'*|\
+    'http://[::]'|'http://[::]/'*|'http://[::]:'*|'http://[::]?'*|'http://[::]#'*|\
+    'https://[::]'|'https://[::]/'*|'https://[::]:'*|'https://[::]?'*|'https://[::]#'*|\
+    http://convex-backend|http://convex-backend/*|http://convex-backend:*|http://convex-backend\?*|http://convex-backend#*|\
+    http://convex-backend.|http://convex-backend./*|http://convex-backend.:*|http://convex-backend.\?*|http://convex-backend.#*|\
+    https://convex-backend|https://convex-backend/*|https://convex-backend:*|https://convex-backend\?*|https://convex-backend#*|\
+    https://convex-backend.|https://convex-backend./*|https://convex-backend.:*|https://convex-backend.\?*|https://convex-backend.#*)
+      return 0 ;;
+    *)
+      return 1 ;;
+  esac
+}
+
+require_recognized_network() {
+  # CHAIN_NETWORK is a finite alias. Accept exactly `dev` and `prod`
+  # (case-insensitive). Reject everything else with a clear error rather than
+  # silently treating unknown values as "not prod" — that produced a real
+  # bypass: `CHAIN_NETWORK=production` (NODE_ENV convention) would skip every
+  # prod guard. Operators must use `dev` or `prod` explicitly.
+  local network="${CHAIN_NETWORK:-dev}"
+  case "${network,,}" in
+    dev|prod) return 0 ;;
+    *)
+      echo "ERROR: CHAIN_NETWORK must be 'dev' or 'prod' (case-insensitive); got '${CHAIN_NETWORK:-<unset>}'" >&2
+      echo "  Common mistake: use CHAIN_NETWORK=prod, not CHAIN_NETWORK=production" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_pinned_convex_tags() {
+  # Prod must not run unpinned Convex images — `latest` resolves to a different
+  # SHA over time, so reproducible deploys + on-purpose upgrades both break.
+  # Dev keeps `latest` as a convenience default.
+  #
+  # Reject the common mutable-tag conventions: `latest`, `main`, `master`,
+  # `edge`, `stable`, `head`, `nightly`. The check is case-insensitive so
+  # `LATEST` or `Main` are caught too. CHAIN_NETWORK is also matched
+  # case-insensitively to stay symmetric with require_prod_origins.
+  local network="${CHAIN_NETWORK:-dev}"
+  [[ "${network,,}" == "prod" ]] || return 0
+
+  local name value value_lc
+  for name in CONVEX_BACKEND_TAG CONVEX_DASHBOARD_TAG; do
+    value="${!name:-}"
+    value_lc="${value,,}"
+    case "$value_lc" in
+      ""|latest|main|master|edge|stable|head|nightly)
+        echo "ERROR: $name must be pinned to an immutable tag or digest when CHAIN_NETWORK=prod; got '${value:-<unset>}'" >&2
+        echo "  Mutable tags (latest/main/master/edge/stable/head/nightly) break reproducible deploys." >&2
+        echo "  e.g. CONVEX_BACKEND_TAG=<commit-sha-tag>  (see .env.template for current pin)" >&2
+        exit 1
+        ;;
+    esac
+  done
 }
 
 require_prod_origins() {
-  [[ "${CHAIN_NETWORK:-dev}" == "prod" ]] || return 0
+  # Case-insensitive match — `Prod` / `PROD` skip the guard correctly.
+  # `production` is rejected at load-time (require_recognized_network) rather
+  # than treated as either a synonym OR a silent skip — too many operators
+  # type `production` (NODE_ENV convention) and would otherwise ship dev
+  # origins to prod by accident.
+  local network="${CHAIN_NETWORK:-dev}"
+  [[ "${network,,}" == "prod" ]] || return 0
 
   local name value
   for name in CONVEX_CLOUD_ORIGIN CONVEX_SITE_ORIGIN CONVEX_DASHBOARD_DEPLOYMENT_URL; do
@@ -60,7 +149,9 @@ check_cli_version() {
 }
 
 load_env
+require_recognized_network
 require_prod_origins
+require_pinned_convex_tags
 require_self_hosted_env
 check_cli_version
 
