@@ -38,18 +38,30 @@ is_local_origin() {
   # `http://convex-backend-prod.example.com` (a legitimate prod host whose
   # hostname starts with the local-network alias). It would also leave
   # http://[::1]/ and http://0.0.0.0/ uncovered.
-  local value="$1"
+  #
+  # Per RFC 3986, scheme and host are case-insensitive (path is not, but our
+  # patterns only constrain the host so a `*` tail keeps the path intact).
+  # Lowercase the input before matching so `HTTP://Localhost` cannot slip past.
+  # Trailing-dot hosts (`http://localhost.`) resolve identically to the bare
+  # form, so they get their own glob entries.
+  local value="${1,,}"
   case "$value" in
     http://localhost|http://localhost/*|http://localhost:*|\
+    http://localhost.|http://localhost./*|http://localhost.:*|\
     https://localhost|https://localhost/*|https://localhost:*|\
+    https://localhost.|https://localhost./*|https://localhost.:*|\
     http://127.0.0.1|http://127.0.0.1/*|http://127.0.0.1:*|\
     https://127.0.0.1|https://127.0.0.1/*|https://127.0.0.1:*|\
     http://0.0.0.0|http://0.0.0.0/*|http://0.0.0.0:*|\
     https://0.0.0.0|https://0.0.0.0/*|https://0.0.0.0:*|\
     'http://[::1]'|'http://[::1]/'*|'http://[::1]:'*|\
     'https://[::1]'|'https://[::1]/'*|'https://[::1]:'*|\
+    'http://[::]'|'http://[::]/'*|'http://[::]:'*|\
+    'https://[::]'|'https://[::]/'*|'https://[::]:'*|\
     http://convex-backend|http://convex-backend/*|http://convex-backend:*|\
-    https://convex-backend|https://convex-backend/*|https://convex-backend:*)
+    http://convex-backend.|http://convex-backend./*|http://convex-backend.:*|\
+    https://convex-backend|https://convex-backend/*|https://convex-backend:*|\
+    https://convex-backend.|https://convex-backend./*|https://convex-backend.:*)
       return 0 ;;
     *)
       return 1 ;;
@@ -60,16 +72,24 @@ require_pinned_convex_tags() {
   # Prod must not run unpinned Convex images — `latest` resolves to a different
   # SHA over time, so reproducible deploys + on-purpose upgrades both break.
   # Dev keeps `latest` as a convenience default.
+  #
+  # Reject the common mutable-tag conventions: `latest`, `main`, `master`,
+  # `edge`, `stable`, `head`, `nightly`. The check is case-insensitive so
+  # `LATEST` or `Main` are caught too.
   [[ "${CHAIN_NETWORK:-dev}" == "prod" ]] || return 0
 
-  local name value
+  local name value value_lc
   for name in CONVEX_BACKEND_TAG CONVEX_DASHBOARD_TAG; do
     value="${!name:-}"
-    if [[ -z "$value" || "$value" == "latest" ]]; then
-      echo "ERROR: $name must be pinned to an immutable tag or digest when CHAIN_NETWORK=prod; got '${value:-<unset>}'" >&2
-      echo "  e.g. CONVEX_BACKEND_TAG=<commit-sha-tag>  (see .env.template for current pin)" >&2
-      exit 1
-    fi
+    value_lc="${value,,}"
+    case "$value_lc" in
+      ""|latest|main|master|edge|stable|head|nightly)
+        echo "ERROR: $name must be pinned to an immutable tag or digest when CHAIN_NETWORK=prod; got '${value:-<unset>}'" >&2
+        echo "  Mutable tags (latest/main/master/edge/stable/head/nightly) break reproducible deploys." >&2
+        echo "  e.g. CONVEX_BACKEND_TAG=<commit-sha-tag>  (see .env.template for current pin)" >&2
+        exit 1
+        ;;
+    esac
   done
 }
 
