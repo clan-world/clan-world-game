@@ -39,12 +39,24 @@ check_host() {
 check_exec_any_status() {
   local service="$1"
   local url="$2"
-  if docker compose --profile "$PROFILE" exec -T "$service" curl -sS -o /dev/null --connect-timeout 2 "$url" >/dev/null 2>&1; then
-    printf 'GREEN %s %s\n' "$service" "$url"
-  else
-    printf 'RED   %s %s\n' "$service" "$url"
-    failed=1
-  fi
+  local http_code
+  # -w '%{http_code}' captures status; -o /dev/null discards body; --connect-timeout bounds wait.
+  # Without explicit status parsing, plain curl returns 0 on HTTP 5xx, which would silently
+  # report GREEN for a broken backend (cloud-review Finding 6 on PR #526).
+  http_code="$(docker compose --profile "$PROFILE" exec -T "$service" curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 2 "$url" 2>/dev/null)" || http_code="000"
+  case "$http_code" in
+    2*|3*|4*)
+      printf 'GREEN %s %s (HTTP %s)\n' "$service" "$url" "$http_code"
+      ;;
+    5*)
+      printf 'RED   %s %s (HTTP %s — backend error)\n' "$service" "$url" "$http_code"
+      failed=1
+      ;;
+    *)
+      printf 'RED   %s %s (unreachable — curl status: %s)\n' "$service" "$url" "$http_code"
+      failed=1
+      ;;
+  esac
 }
 
 load_env

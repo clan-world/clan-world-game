@@ -31,8 +31,9 @@ bootstrap-convex-admin-key:
 	  if [[ "$$i" == "30" ]]; then echo "ERROR: convex-backend did not become healthy" >&2; exit 1; fi; \
 	  sleep 1; \
 	done
+	docker compose --profile "$(PROFILE)" up -d convex-dashboard
 	@if [[ "$(PROFILE)" == "dev" ]]; then \
-	  docker compose --profile "$(PROFILE)" up -d convex-backend-dev-port; \
+	  docker compose --profile "$(PROFILE)" up -d convex-backend-dev-port convex-dashboard-dev-port; \
 	fi
 	@set -euo pipefail; \
 	tmp="$$(mktemp)"; \
