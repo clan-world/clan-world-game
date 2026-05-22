@@ -177,9 +177,11 @@ services:
       # — no cross-env fallback). Entrypoint picks based on CHAIN_NETWORK and
       # aborts if the selected URL is empty.
       DEV_RPC_URL: ${DEV_RPC_URL:-}
-      # PROD_RPC_URL reuses RPC_URL_PRIMARY per .env.template — fail-loud on
-      # missing instead of silently empty (the heartbeat entrypoint aborts
-      # anyway, but the compose-level error is faster + clearer).
+      # PROD_RPC_URL reuses RPC_URL_PRIMARY per .env.template. Empty string
+      # passes through compose-parse; the heartbeat entrypoint fails loudly
+      # at container start if the selected RPC URL is empty (entrypoint.sh:30),
+      # so missing values surface at `docker compose up`, not earlier at
+      # `docker compose config`.
       PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
       RUNNER_PRIVATE_KEY: ${RUNNER_PRIVATE_KEY:?RUNNER_PRIVATE_KEY required (dedicated heartbeat wallet)}
       INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for runnerStatus writes}

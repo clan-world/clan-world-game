@@ -50,10 +50,15 @@ compose `anvil-fork` service and viem's `baseSepolia` chain config.
 
 ## Healthcheck
 
-The compose healthcheck reads `/tmp/last-heartbeat-success`. The runner writes
-the current Unix timestamp there after a confirmed heartbeat transaction and
-webhook attempt. A timestamp younger than `HEARTBEAT_HEALTH_THRESHOLD_S` seconds
-means the heartbeat caller is making progress.
+The compose healthcheck reads `/tmp/last-heartbeat-success` (path configurable
+via `HEARTBEAT_SUCCESS_FILE`). The runner writes the current Unix timestamp
+there after either (a) a confirmed heartbeat transaction with a successful
+webhook POST, OR (b) the receipt-timeout recovery path when on-chain
+`nextHeartbeatAtTs` is observed to have advanced (no confirmed receipt, no
+webhook POST). The marker indicates the scheduler is making forward progress,
+NOT that the most recent transaction was confirmed end-to-end. A timestamp
+younger than `HEARTBEAT_HEALTH_THRESHOLD_S` seconds means the heartbeat caller
+is making progress.
 
 Keep `HEARTBEAT_HEALTH_THRESHOLD_S` wider than the on-chain
 `heartbeatIntervalSeconds()` cadence plus restart/RPC slack. If the owner widens

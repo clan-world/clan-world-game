@@ -40,7 +40,21 @@ fi
 
 if [ -n "${WEBHOOK_SHARED_SECRET_FILE:-}" ]; then
   [ -f "$WEBHOOK_SHARED_SECRET_FILE" ] || fail "WEBHOOK_SHARED_SECRET_FILE does not exist: $WEBHOOK_SHARED_SECRET_FILE"
+  # Read secret. Command substitution already strips trailing newlines, but a
+  # paste-error could leave trailing spaces/tabs or embedded newlines; either
+  # would corrupt the Authorization header. Trim trailing whitespace, then
+  # reject any remaining embedded newlines outright.
   WEBHOOK_SHARED_SECRET="$(cat "$WEBHOOK_SHARED_SECRET_FILE")"
+  WEBHOOK_SHARED_SECRET="$(printf '%s' "$WEBHOOK_SHARED_SECRET" | sed 's/[[:space:]]*$//')"
+  # Detect embedded newlines: compare raw byte count to single-line byte count
+  # (command substitution would strip a newline literal in a `case` pattern).
+  _secret_raw_bytes="$(printf '%s' "$WEBHOOK_SHARED_SECRET" | wc -c | tr -d '[:space:]')"
+  _secret_first_line_bytes="$(printf '%s' "$WEBHOOK_SHARED_SECRET" | head -n 1 | wc -c | tr -d '[:space:]')"
+  if [ "$_secret_raw_bytes" != "$_secret_first_line_bytes" ]; then
+    unset _secret_raw_bytes _secret_first_line_bytes
+    fail "WEBHOOK_SHARED_SECRET_FILE contains embedded newlines; secret must be a single line: $WEBHOOK_SHARED_SECRET_FILE"
+  fi
+  unset _secret_raw_bytes _secret_first_line_bytes
   [ -n "$WEBHOOK_SHARED_SECRET" ] || fail "WEBHOOK_SHARED_SECRET_FILE is empty: $WEBHOOK_SHARED_SECRET_FILE"
   export WEBHOOK_SHARED_SECRET
 fi
