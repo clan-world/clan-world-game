@@ -64,7 +64,8 @@ Keep this export active before running `make deploy-convex` or
 
 ## Existing Make Targets
 
-These are the root targets that exist in this branch:
+These root targets exist in this branch for Convex deployment, schema import,
+backups, and broad stack checks:
 
 ```bash
 make bootstrap-convex-admin-key PROFILE=dev
@@ -75,9 +76,34 @@ make check-stack-health
 make reset-anvil
 ```
 
-Do not use older `agents/Makefile` examples for this migration. Targets such as
-`up`, `down`, `smoke-test`, bus-secret bootstrap, OAuth bootstrap, and Caddy
-snippet install/check are not present in this branch.
+The elder infrastructure operator entrypoint is also present at
+`agents/Makefile`. Use it for profile-scoped lifecycle and bootstrap work:
+
+```bash
+make -C agents setup PROFILE=dev|prod
+make -C agents up PROFILE=dev|prod
+make -C agents down
+make -C agents status PROFILE=dev|prod
+make -C agents logs ELDER=elder-2
+make -C agents smoke-test
+make -C agents build PROFILE=dev|prod
+make -C agents bootstrap-convex-admin-key PROFILE=dev|prod
+make -C agents bootstrap-bus-secrets PROFILE=dev|prod
+make -C agents bootstrap-convex-dashboard-auth
+make -C agents oauth-bootstrap
+make -C agents oauth-bootstrap-elder-1
+make -C agents pause
+make -C agents unpause
+make -C agents pause-heartbeat
+make -C agents unpause-heartbeat
+make -C agents reset-elder-3
+make -C agents restart-elder-3
+make -C agents wipe-elder-3 LEVEL=session
+make -C agents reset-anvil PROFILE=dev
+make -C agents link-mounts
+```
+
+Caddy snippet install/check remains outside `agents/Makefile` in this branch.
 
 ## Required Environment
 
