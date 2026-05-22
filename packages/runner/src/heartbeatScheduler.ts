@@ -1,5 +1,6 @@
 import { HeartbeatRateLimitedError, type IHeartbeatCaller } from '@clan-world/agents/seams';
 import type { IConvexClient, RunnerStatusUpdate } from '@clan-world/shared/adapters';
+import { writeHeartbeatSuccessFile } from './runnerCastHeartbeat';
 import { sendTelegramAlert } from './telegramAlert';
 
 export type HeartbeatFireResult = RunnerStatusUpdate['lastFireResult'];
@@ -228,6 +229,7 @@ async function attemptHeartbeatWithBackoff(
             heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
             nextHeartbeatAtTs: nextAfterTimeout,
           });
+          writeHeartbeatSuccessFile();
           return { success: true };
         }
       }

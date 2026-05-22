@@ -163,12 +163,14 @@ services:
     profiles: [dev]
 
   # ---------------------------------------------------------------------------
-  # Heartbeat — calls heartbeat() on the diamond every 60s + posts an HMAC-
-  # signed webhook to Convex. Pre-flight assertions, HMAC signing, and the
-  # single-caller guard land in #353 (Phase 1.10).
+  # Heartbeat — runs the existing @clan-world/runner heartbeat loop in a
+  # container. Pre-flight assertions land in #353 (Phase 1.10).
   # ---------------------------------------------------------------------------
   heartbeat:
-    image: clanworld/heartbeat:dev
+    build:
+      context: .
+      dockerfile: agents/heartbeat/Dockerfile
+    init: true
     environment:
       CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
       # Profile-specific overlay sets exactly ONE of these (Finding 9 + 48 fix
@@ -179,29 +181,32 @@ services:
       # missing instead of silently empty (the heartbeat entrypoint aborts
       # anyway, but the compose-level error is faster + clearer).
       PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      RUNNER_PRIVATE_KEY: ${RUNNER_PRIVATE_KEY:?RUNNER_PRIVATE_KEY required (dedicated heartbeat wallet)}
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for runnerStatus writes}
+      # createConvexClient() reads CONVEX_URL for runnerStatus writes.
+      CONVEX_URL: http://convex-backend:3210
       CONVEX_DEPLOY_URL: http://convex-backend:3210
+      # Self-hosted Convex cannot be auto-derived from CONVEX_DEPLOY_URL.
+      CONVEX_WEBHOOK_URL: ${CONVEX_WEBHOOK_URL:?CONVEX_WEBHOOK_URL required for self-hosted Convex}
       CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
       WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
+      HEARTBEAT_HEALTH_THRESHOLD_S: ${HEARTBEAT_HEALTH_THRESHOLD_S:-180}
+      RUNNER_ID: heartbeat-${CHAIN_NETWORK}
     secrets:
       - webhook-shared
-    # NOTE: host crontab mount removed per cloud-reviewer security finding.
-    # Single-caller preflight (Finding 29) now relies on docker compose
-    # `restart: on-failure:0` instead — a second instance can't be started
-    # by compose, and an external single-caller check uses Convex-side
-    # heartbeat state (last successful tick timestamp) for liveness.
     networks: [clan-world-internal]
     depends_on:
       convex-backend:
         condition: service_healthy
     healthcheck:
       # Webhook timestamp file is touched on every successful heartbeat tick.
-      test: ["CMD-SHELL", "test -f /tmp/last-heartbeat-success && [ $$(($$(date +%s) - $$(cat /tmp/last-heartbeat-success))) -lt 120 ]"]
+      test: ["CMD-SHELL", "test -f /tmp/last-heartbeat-success && [ $$(($$(date +%s) - $$(cat /tmp/last-heartbeat-success))) -lt $$HEARTBEAT_HEALTH_THRESHOLD_S ]"]
       interval: 30s
       timeout: 5s
       retries: 2
       start_period: 60s
-    # Failed preflight stays failed visibly — operator must intervene.
-    restart: on-failure:0
+    # Retry transient preflight/runtime failures, then leave repeated failures visible.
+    restart: on-failure:5
     profiles: [dev, prod]
 
   # ---------------------------------------------------------------------------
