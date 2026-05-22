@@ -101,6 +101,7 @@ keys/
 # bus keys / OAuth tokens into the image registry (`docker history --no-trunc`
 # would expose them otherwise).
 agents/secrets/
+agents/backups/
 agents/runtime/
 agents/.docker-mounts/
 agents/elder-*/.env
