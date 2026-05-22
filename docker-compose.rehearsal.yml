@@ -1,0 +1,65 @@
+# docker-compose.rehearsal.yml
+#
+# Throwaway overlay for the Phase 2 migration rehearsal.
+# Docs: docs/runbooks/dockerize-migration-v1.md
+#
+# Usage:
+#   docker compose -f docker-compose.rehearsal.yml up -d
+#   docker compose -f docker-compose.rehearsal.yml down -v
+#
+# This stack intentionally rehearses only the self-hosted Convex import path:
+#   - project name: clan-world-rehearsal
+#   - host ports: 38050 API, 38051 HTTP actions/site, 38052 dashboard
+#   - volumes: rehearsal-suffixed, wiped by down -v
+#   - no elders, heartbeat, anvil, or Caddy
+
+name: clan-world-rehearsal
+
+services:
+  convex-backend:
+    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    environment:
+      INSTANCE_NAME: clan-world-rehearsal
+      CONVEX_CLOUD_ORIGIN: http://127.0.0.1:38050
+      CONVEX_SITE_ORIGIN: http://127.0.0.1:38051
+      DISABLE_BEACON: ${DISABLE_BEACON:-true}
+      DISABLE_METRICS_ENDPOINT: ${DISABLE_METRICS_ENDPOINT:-true}
+      DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-true}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "127.0.0.1:38050:3210"
+      - "127.0.0.1:38051:3211"
+    volumes:
+      - convex_data_rehearsal:/convex/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://127.0.0.1:38050
+    ports:
+      - "127.0.0.1:38052:6791"
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6791/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  convex_data_rehearsal:
+    name: clan-world-rehearsal_convex_data
