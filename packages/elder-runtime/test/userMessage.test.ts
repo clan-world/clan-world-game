@@ -57,35 +57,42 @@ function makeTmux() {
 }
 
 describe("handleUserMessage", () => {
-  it("releases lease when frozen (no retry bump)", async () => {
-    const released: string[] = [];
-    const bus = {
-      ...makeBus().bus,
-      async releaseLease(id: string) { released.push(id); },
-    } as any;
-    const { tmux } = makeTmux();
+  it("completes (skipped, no retry bump, no tmux dispatch) when frozen", async () => {
+    // Super-swarm R+1 PR #543: switched from releaseLease (which deadlocked the
+    // FIFO queue by repeatedly re-leasing the same frozen command at head) to
+    // completeCommand({skipped, reason: "frozen"}) so the message exits the
+    // queue cleanly without bumping retryCount.
+    const { bus, acked, completed } = makeBus();
+    const { tmux, loaded, pasted } = makeTmux();
     const freeze = new FreezeGate();
     freeze.freeze();
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, config);
-    expect(released[0]).toBe("cmd:0");
+    expect(acked).toEqual(["cmd:0"]);
+    expect(completed).toHaveLength(1);
+    expect((completed[0]?.payload as any).skipped).toBe(true);
+    expect((completed[0]?.payload as any).reason).toBe("frozen");
+    // Confirm no tmux dispatch happened (no buffer load / paste while frozen)
+    expect(loaded).toHaveLength(0);
+    expect(pasted).toHaveLength(0);
   });
 
-  it("completes when Elder echoes nonce (occurrence count >= 2)", async () => {
+  it("completes when Elder echoes nonce on a whole line (line-anchored protocol)", async () => {
+    // Super-swarm R+1 PR #543: switched from substring count (>=2) to
+    // line-anchored count (>=1). Elder must emit the DONE marker on a line by
+    // itself; embedded-in-prose echoes (including the prompt-paste itself)
+    // do not count.
     const { bus, completed } = makeBus();
     const freeze = new FreezeGate();
     const { tmux, paneState } = makeTmux();
 
-    // The poll loop runs; after loadBuffer the prompt is in scrollback (1 occurrence).
-    // We need to add a second occurrence to simulate Elder's response.
-    // We hook into pasteBuffer timing by overriding capturePane to add Elder response on 2nd call.
     let pollCount = 0;
-    const origCapture = tmux.capturePane.bind(tmux);
     tmux.capturePane = async () => {
       pollCount++;
       if (pollCount >= 2) {
-        // Extract nonce from prompt and add Elder's response
+        // Elder emits the marker on its OWN line (leading newline so the
+        // regex's ^ anchor matches independently of the prompt-paste prose).
         const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
-        if (match) paneState.scrollback += `##NONCE:${match[1]}## DONE\n`;
+        if (match) paneState.scrollback += `\n##NONCE:${match[1]}## DONE\n`;
       }
       return paneState.scrollback;
     };
@@ -95,17 +102,40 @@ describe("handleUserMessage", () => {
     expect((completed[0]?.payload as any).matched).toBe(true);
   });
 
-  it("does NOT complete on first poll (prompt occurrence only = 1)", async () => {
-    // Prompt is in pane, but Elder hasn't responded yet — should NOT complete early.
-    // We verify by using a short timeout: if it false-positives, it completes immediately.
+  it("does NOT complete on prompt-only scrollback (embedded marker is not a whole line)", async () => {
+    // The prompt paste embeds the marker inside a [control] sentence, not on
+    // its own line. Line-anchored matching must return 0 matches in that case.
+    // Verified by short-timeout: if the embedded marker matched, completion
+    // would fire on the first poll instead of timing out.
     const { bus, completed, failed } = makeBus();
     const freeze = new FreezeGate();
     const { tmux } = makeTmux();
-    // paneState already has the prompt after loadBuffer — 1 occurrence.
-    // capturePane always returns the same scrollback (no Elder response added).
     const shortConfig = { ...config, nonceTimeoutMs: 150, noncePollIntervalMs: 50 };
     await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, shortConfig);
-    // Must timeout, not complete
+    expect(completed).toHaveLength(0);
+    expect(failed[0]?.reason).toContain("nonce");
+  });
+
+  it("does NOT complete on Elder quoting the marker inline (must be whole line)", async () => {
+    // Defends against prompt-injection / Elder-quotes-prompt-in-prose attack
+    // (super-swarm R+1 PR #543 finding by codex + gemini).
+    const { bus, completed, failed } = makeBus();
+    const freeze = new FreezeGate();
+    const { tmux, paneState } = makeTmux();
+    let pollCount = 0;
+    tmux.capturePane = async () => {
+      pollCount++;
+      if (pollCount >= 2) {
+        const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
+        if (match) {
+          // Elder quotes the marker INLINE (with leading prose). Must NOT count.
+          paneState.scrollback += `I will now do: ##NONCE:${match[1]}## DONE is what I will emit later.\n`;
+        }
+      }
+      return paneState.scrollback;
+    };
+    const shortConfig = { ...config, nonceTimeoutMs: 250, noncePollIntervalMs: 50 };
+    await handleUserMessage("cmd:0", { text: "hello" }, tmux, bus, freeze, shortConfig);
     expect(completed).toHaveLength(0);
     expect(failed[0]?.reason).toContain("nonce");
   });
@@ -120,22 +150,25 @@ describe("handleUserMessage", () => {
     expect(failed[0]?.reason).toContain("nonce");
   });
 
-  it("fails with FAIL marker when Elder emits FAIL exactly once (prompt seeds first occurrence)", async () => {
-    // Prompt now contains BOTH DONE and FAIL markers → Elder emitting FAIL once = count 2.
+  it("fails with FAIL marker when Elder emits FAIL on its own line", async () => {
+    // Super-swarm R+1 PR #543: line-anchored count requires the FAIL marker
+    // on a whole line. Elder must NOT prefix prose (the prefix breaks the
+    // anchor and the marker is correctly NOT counted — preventing
+    // prompt-injection false-positives).
     const { bus, failed } = makeBus();
     const freeze = new FreezeGate();
     const { tmux, paneState } = makeTmux();
 
-    let elderEmittedFail = false;
+    let elderEmitted = false;
     let pollCount = 0;
     tmux.capturePane = async () => {
       pollCount++;
-      if (!elderEmittedFail && pollCount >= 2) {
-        // Elder emits FAIL exactly once — prompt already has one occurrence
+      if (!elderEmitted && pollCount >= 2) {
         const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
         if (match) {
-          paneState.scrollback += `I cannot do that — ##NONCE:${match[1]}## FAIL out of vault funds\n`;
-          elderEmittedFail = true;
+          // Whole-line emission (with reason text after the FAIL keyword).
+          paneState.scrollback += `\n##NONCE:${match[1]}## FAIL out of vault funds\n`;
+          elderEmitted = true;
         }
       }
       return paneState.scrollback;
@@ -158,7 +191,7 @@ describe("handleUserMessage", () => {
       pollCount++;
       if (pollCount >= 2) {
         const match = paneState.scrollback.match(/##NONCE:([^#]+)##/);
-        if (match) paneState.scrollback += `##NONCE:${match[1]}## DONE\n`;
+        if (match) paneState.scrollback += `\n##NONCE:${match[1]}## DONE\n`;
       }
       return paneState.scrollback;
     };

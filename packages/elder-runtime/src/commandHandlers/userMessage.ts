@@ -14,9 +14,15 @@ export async function handleUserMessage(
 ): Promise<void> {
   const startMs = Date.now();
 
-  // Check freeze BEFORE ack — release lease back to queued (no retry bump)
+  // Check freeze BEFORE ack — complete-skipped so the message leaves the FIFO
+  // queue without bumping retryCount. releaseLease would put the command back at
+  // the head of the queue (createdAt unchanged), and the next claimNext loop
+  // would re-lease the same command, starving any unfreeze/reset queued behind
+  // it (super-swarm R+1 finding, PR #543). Operator must re-enqueue any
+  // skipped commands post-unfreeze; the result row captures the skip for audit.
   if (freeze.isFrozen()) {
-    await bus.releaseLease(commandId);
+    await bus.ackCommand(commandId);
+    await bus.completeCommand(commandId, { skipped: true, reason: "frozen" }, Date.now() - startMs);
     return;
   }
   await bus.ackCommand(commandId);
@@ -32,23 +38,35 @@ export async function handleUserMessage(
   await tmux.sendKeys("Enter");
 
   // Poll capture-pane for nonce echo.
-  // Require >= 2 occurrences: prompt paste adds one, Elder's response adds the second.
+  //
+  // PROTOCOL (super-swarm R+1, PR #543): match the marker as a WHOLE LINE,
+  // require >= 1 occurrence. The earlier substring-based protocol required >=2
+  // matches to discount the prompt-echo occurrence, but allowed
+  // Elder-quotes-prompt-inline to falsely complete early (caught by codex +
+  // gemini). Line-anchored matching makes the prompt-paste itself ineligible
+  // (it embeds the marker inside `[control] ... emit exactly the line
+  // \`##NONCE:...## DONE\` ...` prose, not as its own line), so a single
+  // anchored match from Elder's response is the unambiguous signal.
+  //
+  // capturePane(2000) avoids scrolling the response out of the buffer for
+  // verbose Claude completions before the next poll catches it.
   const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const marker = `##NONCE:${nonce}## DONE`;
   const failMarker = `##NONCE:${nonce}## FAIL`;
-  const markerRe = new RegExp(escapeRe(marker), "g");
-  const failRe = new RegExp(escapeRe(failMarker), "g");
+  const lineMarkerRe = new RegExp(`^${escapeRe(marker)}\\s*$`, "gm");
+  const lineFailRe = new RegExp(`^${escapeRe(failMarker)}(\\s+.*)?$`, "gm");
   const deadline = Date.now() + config.nonceTimeoutMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, config.noncePollIntervalMs));
-    const pane = await tmux.capturePane(200);
-    if ((pane.match(failRe) ?? []).length >= 2) {
-      const failLine = pane.split("\n").reverse().find(l => l.includes(failMarker));
+    const pane = await tmux.capturePane(2000);
+    const failMatches = pane.match(lineFailRe) ?? [];
+    if (failMatches.length >= 1) {
+      const failLine = pane.split("\n").reverse().find(l => /^##NONCE:[^#]+## FAIL/.test(l));
       const reason = failLine ? (failLine.split("FAIL")[1]?.trim() ?? "unknown") : "unknown";
       await bus.failCommand(commandId, `nonce ${nonce} FAIL: ${reason}`);
       return;
     }
-    if ((pane.match(markerRe) ?? []).length >= 2) {
+    if ((pane.match(lineMarkerRe) ?? []).length >= 1) {
       await bus.completeCommand(commandId, { nonce, matched: true }, Date.now() - startMs);
       return;
     }
