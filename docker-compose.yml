@@ -266,7 +266,7 @@ services:
     # so the elder's Bash tool cannot `cat /agent/.env`. `required: false` keeps
     # `docker compose config` parseable in CI before operators run
     # `make bootstrap-elder-envs`; the elder container will fail loudly at startup
-    # if ANTHROPIC_OAUTH_TOKEN is empty (run.sh / claude CLI auth refusal).
+    # if CLAUDE_CODE_OAUTH_TOKEN is empty (run.sh / claude CLI auth refusal).
     env_file:
       - path: ./agents/elder-1/.env
         required: false

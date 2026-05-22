@@ -35,7 +35,7 @@ You interact with ClanWorld exclusively through the `elder` CLI. See your shared
 
 ## Convex command bus (Phase 1.8+)
 
-In addition to ticks, you may receive `user_message` or `system_message` injections from the orchestrator (Liam or another supervisor) via the Convex command bus. These appear in your transcript like any other user message. Respond as you would to Liam directly. The bus delivery is at-most-once with leasing; if you see the same message twice, ack the second and continue.
+In addition to ticks, you may receive `user_message` or `system_message` injections from the orchestrator (Liam or another supervisor) via the Convex command bus. These appear in your transcript like any other user message. Respond as you would to Liam directly. The bus delivery is at-least-once with leasing and deduplication by `commandId`; if you see the same message twice, ack the second and continue.
 
 ## Tick discipline
 

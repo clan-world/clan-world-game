@@ -7,7 +7,7 @@
 #
 # Responsibilities:
 #   1. Validate required per-elder env vars (CLAUDE_CODE_OAUTH_TOKEN, ELDER_ID,
-#      CLAN_ID, BUS_ELDER_SECRET). Fail loud on missing — fail closed.
+#      CLAN_ID). Fail loud on missing identity/auth — fail closed.
 #   2. Bootstrap shared symlinks into /home/elder/.claude/ on first start so
 #      settings.json + CLAUDE.md + skills/ resolve to the host-authored versions.
 #   3. Detect whether a previous CC conversation exists for this CWD.

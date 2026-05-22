@@ -71,7 +71,6 @@ async function main(): Promise<void> {
     try { closeSync(lockFd); } catch { /* ignore */ }
     try { unlinkSync(lockPath); } catch { /* ignore */ }
   };
-  process.on("exit", cleanupLock);
 
   // Write readiness file to writable stateDir — entrypoint polls for this
   const readyPath = path.join(config.stateDir, "elder-runtime.ready");
@@ -87,8 +86,8 @@ async function main(): Promise<void> {
   const freeze = new FreezeGate();
 
   const ac = new AbortController();
-  process.on("SIGTERM", () => { cleanupLock(); ac.abort(); });
-  process.on("SIGINT", () => { cleanupLock(); ac.abort(); });
+  process.on("SIGTERM", () => { ac.abort(); });
+  process.on("SIGINT", () => { ac.abort(); });
 
   const heartbeatState: HeartbeatState = {
     lastTickProcessed: 0,
@@ -146,6 +145,7 @@ async function main(): Promise<void> {
       await new Promise(r => setTimeout(r, config.pollIntervalMs));
     }
   }
+  cleanupLock();
   console.log(`[elder-runtime] shutdown complete`);
 }
 
