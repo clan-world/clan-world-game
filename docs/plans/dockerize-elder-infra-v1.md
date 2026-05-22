@@ -147,7 +147,7 @@ Trade-off: shared-base updates propagate on next container init (`make restart-e
 
 #### D. Caddy in container vs host caddy
 
-**Decision: keep host caddy authoritative for unrelated shared-host routes, but route `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` directly from cloudflared to Docker Caddy.** The host caddy currently fronts pm-dobot, gstack, narrator, and other unrelated tunnels through cloudflared — we do not break those. We add ONE new cloudflared ingress entry for `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` → `http://127.0.0.1:${CADDY_HOST_PORT:-18081}`. Inside the container, Docker Caddy handles the subroute fan-out (`/`, `/map`, `/elder-N`). This avoids editing host Caddy for ClanWorld app routing while keeping the blast radius narrow if the docker stack misbehaves.
+**Decision: keep host caddy authoritative for unrelated shared-host routes, but route `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` directly from cloudflared to Docker Caddy.** The host caddy currently fronts pm-dobot, gstack, narrator, and other unrelated tunnels through cloudflared — we do not break those. We add ONE new cloudflared ingress entry for `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` → `http://127.0.0.1:${CADDY_HOST_PORT:-58731}`. Inside the container, Docker Caddy handles the subroute fan-out (`/`, `/map`, `/elder-N`). This avoids editing host Caddy for ClanWorld app routing while keeping the blast radius narrow if the docker stack misbehaves.
 
 #### E. `settings.local.json` writable by Elders?
 
@@ -288,7 +288,7 @@ Each sub-issue below is sized for one PR. Filed sequentially as GH issues #339 t
 
 ### Phase 1.5 — Caddy container with subroute config
 
-**Scope.** Define the `caddy` compose service running `caddy:2-alpine`. Caddyfile provides the path-routing fan-out: `/elder-N` → `elder-N:7681` (ttyd, with WS upgrade), `/map` → `CLAN_WORLD_WEB_UPSTREAM`, and `/` → `CLAN_WORLD_WEB_UPSTREAM`. Docker Caddy listens on container `:80` and publishes `127.0.0.1:${CADDY_HOST_PORT:-18081}:80`. On the VPS, cloudflared routes `app.clan-world.com` directly to that loopback port; host Caddy is not in the ClanWorld app path.
+**Scope.** Define the `caddy` compose service running `caddy:2-alpine`. Caddyfile provides the path-routing fan-out: `/elder-N` → `elder-N:7681` (ttyd, with WS upgrade), `/map` → `CLAN_WORLD_WEB_UPSTREAM`, and `/` → `CLAN_WORLD_WEB_UPSTREAM`. Docker Caddy listens on container `:80` and publishes `127.0.0.1:${CADDY_HOST_PORT:-58731}:80`. On the VPS, cloudflared routes `app.clan-world.com` directly to that loopback port; host Caddy is not in the ClanWorld app path.
 
 **WebSocket upgrade for ttyd (Finding 12 fix).** ttyd uses plain HTTP/1.1 WebSocket upgrades — Caddy pins transport to HTTP/1.1 for the elder routes. ttyd by default serves from path `/`, so we use Caddy's `handle_path` directive to strip the `/elder-N` prefix before proxying (Finding 13 fix). Required Caddyfile snippet (canonical file: `agents/shared/caddy.conf`):
 
@@ -329,7 +329,7 @@ Each sub-issue below is sized for one PR. Filed sequentially as GH issues #339 t
 Cloudflared ingress entry added before the final `http_status:404` catch-all:
 ```yaml
 - hostname: app.clan-world.com
-  service: http://127.0.0.1:18081
+  service: http://127.0.0.1:58731
   originRequest:
     httpHostHeader: app.clan-world.com
 ```
@@ -913,7 +913,7 @@ sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m
 
 # Insert the app.clan-world.com ingress BEFORE the final http_status:404 catch-all:
 # - hostname: app.clan-world.com
-#   service: http://127.0.0.1:18081
+#   service: http://127.0.0.1:58731
 #   originRequest:
 #     httpHostHeader: app.clan-world.com
 sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
@@ -1286,13 +1286,12 @@ services:
     volumes:
       - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
     ports:
-      - "127.0.0.1:${CADDY_HOST_PORT:-18081}:80"
+      - "127.0.0.1:${CADDY_HOST_PORT:-58731}:80"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
     networks: [clan-world-internal]
-    depends_on:
-      elder-1:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
       interval: 10s

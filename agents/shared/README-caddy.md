@@ -6,7 +6,7 @@ host, and routes to Docker-internal services such as `elder-1:7681`.
 
 ## Prod VPS
 
-Set `CADDY_HOST_PORT=18081` unless the operator intentionally chooses another
+Set `CADDY_HOST_PORT=58731` unless the operator intentionally chooses another
 free loopback port. The default `CLAN_WORLD_WEB_UPSTREAM` in the Caddyfile is
 `https://clan-world-game.vercel.app`.
 
@@ -36,12 +36,12 @@ sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m
 
 Edit `/etc/cloudflared/config.yml` and insert the `app.clan-world.com` ingress
 entry BEFORE the final `http_status:404` catch-all rule. The port in
-`config.yml` is literal: if you change `CADDY_HOST_PORT` from the `18081`
+`config.yml` is literal: if you change `CADDY_HOST_PORT` from the `58731`
 default, update this literal port to match.
 
 ```yaml
 - hostname: app.clan-world.com
-  service: http://127.0.0.1:18081
+  service: http://127.0.0.1:58731
   originRequest:
     httpHostHeader: app.clan-world.com
 ```
@@ -49,7 +49,7 @@ default, update this literal port to match.
 Validate and restart:
 
 ```bash
-EXPECTED_PORT=${CADDY_HOST_PORT:-18081}
+EXPECTED_PORT=${CADDY_HOST_PORT:-58731}
 CURRENT_CLOUDFLARED_PORT=$(sudo grep -A1 'app.clan-world.com' /etc/cloudflared/config.yml | grep -oE 'localhost:[0-9]+|127.0.0.1:[0-9]+' | grep -oE '[0-9]+' | head -1)
 if [ "$EXPECTED_PORT" != "$CURRENT_CLOUDFLARED_PORT" ]; then
   echo "ERROR: CADDY_HOST_PORT=$EXPECTED_PORT but cloudflared routes to port $CURRENT_CLOUDFLARED_PORT"
@@ -101,8 +101,8 @@ Docker network instead of `host.docker.internal`.
 
 ```bash
 docker compose --profile dev up -d caddy
-curl -fsS "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/healthz" | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
-curl -fsS -o /dev/null "http://127.0.0.1:${CADDY_HOST_PORT:-18081}/elder-1/"
+curl -fsS "http://127.0.0.1:${CADDY_HOST_PORT:-58731}/healthz" | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
+curl -fsS -o /dev/null "http://127.0.0.1:${CADDY_HOST_PORT:-58731}/elder-1/"
 ```
 
 These checks prove Caddy is reachable and can attempt an elder route. Full ttyd

@@ -252,7 +252,7 @@ docker compose --profile prod config   # validates prod topology
 > but `.env.local` matches existing conventions.
 
 ClanWorld's public app router is the compose `caddy` service. It publishes
-`127.0.0.1:${CADDY_HOST_PORT:-18081}:80`, routes `/elder-N/` to Docker-internal
+`127.0.0.1:${CADDY_HOST_PORT:-58731}:80`, routes `/elder-N/` to Docker-internal
 Elder ttyd services, and proxies `/` plus `/map` to `CLAN_WORLD_WEB_UPSTREAM`.
 On the VPS, cloudflared routes `app.${CLAN_WORLD_DOMAIN}` directly to that
 loopback port; host Caddy continues serving unrelated hostnames.

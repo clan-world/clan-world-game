@@ -247,7 +247,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Dockerized Caddy — ClanWorld-only router. The host cloudflared ingress maps
-  # app.clan-world.com -> 127.0.0.1:${CADDY_HOST_PORT:-18081}; Caddy then routes
+  # app.clan-world.com -> 127.0.0.1:${CADDY_HOST_PORT:-58731}; Caddy then routes
   # to Docker-internal services by name.
   # ---------------------------------------------------------------------------
   caddy:
@@ -255,7 +255,7 @@ services:
     restart: unless-stopped
     networks: [clan-world-internal]
     ports:
-      - "127.0.0.1:${CADDY_HOST_PORT:-18081}:80"
+      - "127.0.0.1:${CADDY_HOST_PORT:-58731}:80"
     extra_hosts:
       # Lets local dev point CLAN_WORLD_WEB_UPSTREAM at a host-run Vite server,
       # e.g. http://host.docker.internal:58740, on Linux Docker.
@@ -264,15 +264,6 @@ services:
       - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
     environment:
       CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
-    depends_on:
-      elder-1:
-        condition: service_started
-      elder-2:
-        condition: service_started
-      elder-3:
-        condition: service_started
-      elder-4:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
       interval: 10s

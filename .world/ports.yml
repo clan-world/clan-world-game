@@ -67,4 +67,4 @@ purposes:
   - name: clan-world-docker-caddy
     type: frontend
     env: prod
-    canonical: 18081   # cloudflared routes app.clan-world.com -> 127.0.0.1:18081 -> docker caddy (Phase 1.5 #348)
+    canonical: 58731   # cloudflared routes app.clan-world.com -> 127.0.0.1:58731 -> docker caddy (Phase 1.5 #348)
