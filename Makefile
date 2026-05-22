@@ -23,7 +23,7 @@ bootstrap-convex-admin-key:
 	  echo "ERROR: $(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE) already exists. Use FORCE=1 to overwrite." >&2; \
 	  exit 1; \
 	fi
-	docker compose --profile "$(PROFILE)" up -d convex-backend convex-dashboard
+	docker compose --profile "$(PROFILE)" up -d convex-backend
 	@for i in {1..30}; do \
 	  if docker compose --profile "$(PROFILE)" exec -T convex-backend curl -fsS http://localhost:3210/version >/dev/null 2>&1; then \
 	    break; \
@@ -31,6 +31,7 @@ bootstrap-convex-admin-key:
 	  if [[ "$$i" == "30" ]]; then echo "ERROR: convex-backend did not become healthy" >&2; exit 1; fi; \
 	  sleep 1; \
 	done
+	docker compose --profile "$(PROFILE)" up -d convex-dashboard
 	@if [[ "$(PROFILE)" == "dev" ]]; then \
 	  docker compose --profile "$(PROFILE)" up -d convex-backend-dev-port convex-dashboard-dev-port; \
 	fi
