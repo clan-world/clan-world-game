@@ -82,6 +82,9 @@ function createDb(tables: Record<string, any[]> = {}) {
                   const bVal = typeof b === "function" ? (b as any)(row) : b;
                   return aVal === bVal;
                 },
+                or(...args: boolean[]) {
+                  return args.some(Boolean);
+                },
                 field(name: string) {
                   return row[name];
                 },
@@ -241,6 +244,154 @@ describe("claimNext", () => {
   });
 });
 
+describe("claimNext control-verb priority", () => {
+  it("claims reset before queued user_message", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:1",
+          _creationTime: 1,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "reset",
+          createdAt: 2000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const claimed = await (claimNext as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    expect(claimed?._id).toBe("agentCommands:1");
+    expect(claimed?.kind).toBe("reset");
+    expect(tables.agentCommands![1].status).toBe("leased");
+  });
+
+  it("claims unfreeze before queued user_messages", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:1",
+          _creationTime: 1,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 2000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:2",
+          _creationTime: 2,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "unfreeze",
+          createdAt: 3000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const claimed = await (claimNext as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    expect(claimed?._id).toBe("agentCommands:2");
+    expect(claimed?.kind).toBe("unfreeze");
+    expect(tables.agentCommands![2].status).toBe("leased");
+  });
+
+  it("claims freeze before queued snapshot_request", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "snapshot_request",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:1",
+          _creationTime: 1,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "freeze",
+          createdAt: 2000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const claimed = await (claimNext as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    expect(claimed?._id).toBe("agentCommands:1");
+    expect(claimed?.kind).toBe("freeze");
+    expect(tables.agentCommands![1].status).toBe("leased");
+  });
+
+  it("claims the oldest control verb when multiple control verbs are queued", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "reset",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:1",
+          _creationTime: 1,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "freeze",
+          createdAt: 2000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:2",
+          _creationTime: 2,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "unfreeze",
+          createdAt: 3000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const claimed = await (claimNext as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    expect(claimed?._id).toBe("agentCommands:0");
+    expect(claimed?.kind).toBe("reset");
+    expect(tables.agentCommands![0].status).toBe("leased");
+  });
+});
+
 describe("ackCommand", () => {
   it("transitions leased to acked", async () => {
     const { db, tables } = createDb({
@@ -334,7 +485,36 @@ describe("completeCommand", () => {
 });
 
 describe("completeCommand (lease-expiry)", () => {
-  it("throws on expired lease when completing", async () => {
+  it("succeeds when lease is expired but within 30s grace window", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "acked",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() - 15_000,
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await (completeCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+        resultPayload: { ok: true },
+        tookMs: 42,
+      },
+    );
+    expect(tables.agentCommands![0].status).toBe("completed");
+    expect(tables.commandResults).toHaveLength(1);
+  });
+
+  it("throws when lease is expired beyond 30s grace window", async () => {
     const { db } = createDb({
       agentCommands: [
         {
@@ -343,7 +523,7 @@ describe("completeCommand (lease-expiry)", () => {
           targetAgentId: "elder-1",
           status: "acked",
           leaseOwner: "elder-1",
-          leaseExpiresAt: Date.now() - 1000, // expired
+          leaseExpiresAt: Date.now() - 60_000,
           createdAt: 1000,
           retryCount: 0,
         },
@@ -360,7 +540,62 @@ describe("completeCommand (lease-expiry)", () => {
           tookMs: 42,
         },
       ),
-    ).rejects.toThrow("Lease expired");
+    ).rejects.toThrow("Lease expired beyond grace");
+  });
+
+  it("returns no-op when command already completed", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "completed",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await (completeCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+        resultPayload: { ok: true },
+        tookMs: 42,
+      },
+    );
+    expect(tables.commandResults ?? []).toHaveLength(0);
+  });
+
+  it("returns no-op when command already completed with stale valid lease fields", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "completed",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() + 60_000,
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await (completeCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+        resultPayload: { ok: true },
+        tookMs: 42,
+      },
+    );
+    expect(tables.commandResults ?? []).toHaveLength(0);
+    expect(tables.agentCommands![0].status).toBe("completed");
   });
 });
 
@@ -455,7 +690,7 @@ describe("failCommand", () => {
 });
 
 describe("sweepStaleDelivered", () => {
-  it("re-queues expired leases", async () => {
+  it("re-queues expired leases past the 30s grace window", async () => {
     const now = Date.now();
     const { db, tables } = createDb({
       agentCommands: [
@@ -465,7 +700,7 @@ describe("sweepStaleDelivered", () => {
           targetAgentId: "elder-1",
           status: "leased",
           leaseOwner: "elder-1",
-          leaseExpiresAt: now - 1000, // expired
+          leaseExpiresAt: now - 60_000,
           createdAt: 1000,
           retryCount: 0,
         },
@@ -487,6 +722,27 @@ describe("sweepStaleDelivered", () => {
     expect(tables.agentCommands![1].status).toBe("leased"); // untouched
   });
 
+  it("does NOT sweep leases expired within the 30s grace window", async () => {
+    const now = Date.now();
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: now - 15_000,
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const result = await (sweepStaleDelivered as any)._handler({ db }, {});
+    expect(result.swept).toBe(0);
+    expect(tables.agentCommands![0].status).toBe("leased");
+  });
+
   it("re-queues expired acked commands (stuck after elder crash)", async () => {
     const now = Date.now();
     const { db, tables } = createDb({
@@ -497,7 +753,7 @@ describe("sweepStaleDelivered", () => {
           targetAgentId: "elder-1",
           status: "acked",
           leaseOwner: "elder-1",
-          leaseExpiresAt: now - 1000,
+          leaseExpiresAt: now - 60_000,
           ackedAt: now - 2000,
           createdAt: 1000,
           retryCount: 0,
