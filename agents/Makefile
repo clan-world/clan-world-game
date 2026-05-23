@@ -85,7 +85,7 @@ help:
 	@echo "BOOTSTRAP (one-time per stack - re-run with FORCE=1 to overwrite)"
 	@echo "  bootstrap-convex-admin-key     generate + persist Convex admin key (chmod 0600)"
 	@echo "  bootstrap-bus-secrets          generate bus/webhook secrets and set Convex BUS_* envs"
-	@echo "  bootstrap-convex-dashboard-auth generate basic-auth credentials for dashboard"
+	@echo "  bootstrap-convex-dashboard-auth generate reserved dashboard auth credentials"
 	@echo "  oauth-bootstrap                walk every elder through OAuth flow"
 	@echo "  oauth-bootstrap-elder-1        single-elder OAuth flow"
 	@echo ""
@@ -136,14 +136,19 @@ up: confirm-banner
 down:
 	$(DC) down
 
-status:
-	@$(DC) ps
+status: check-profile
+	@$(DC) --profile $(PROFILE) ps
 	@echo "---"
 	@for e in $(ELDERS); do \
+		$(DC) --profile $(PROFILE) ps $$e; \
 		echo -n "$$e tmux:       "; \
-		$(DC) exec -T $$e tmux ls 2>/dev/null | head -1 || echo DEAD; \
+		if $(DC) --profile $(PROFILE) exec -T $$e tmux has-session -t $$e 2>/dev/null; then \
+			echo OK; \
+		else \
+			echo "WARN session missing"; \
+		fi; \
 		echo -n "$$e supervisor: "; \
-		$(DC) exec -T $$e pgrep -f 'tsx.*elder-runtime/src/main.ts' > /dev/null 2>&1 \
+		$(DC) --profile $(PROFILE) exec -T $$e pgrep -f 'tsx.*elder-runtime/src/main.ts' > /dev/null 2>&1 \
 			&& echo OK || echo DEAD; \
 	done
 
@@ -284,6 +289,9 @@ bootstrap-bus-secrets:
 	echo "[bootstrap] File generation is idempotent, and Convex env sets are independent."; \
 	echo "[bootstrap] Verify all BUS_* and WEBHOOK_SHARED_SECRET values with: npx convex@$(CONVEX_CLI_PINNED_VERSION) env list"
 
+# No current compose/Caddy consumer reads this JSON; it is reserved for future
+# dashboard-local auth wiring. Do not pass password_sha512crypt to Caddy
+# basicauth; Caddy would require a bcrypt hash from `caddy hash-password`.
 bootstrap-convex-dashboard-auth:
 	@mkdir -p $(REPO_ROOT)/agents/secrets
 	@chmod 0700 $(REPO_ROOT)/agents/secrets
