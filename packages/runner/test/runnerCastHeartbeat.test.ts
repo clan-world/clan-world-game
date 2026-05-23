@@ -33,8 +33,8 @@ vi.mock('viem/accounts', () => ({
 import {
   configFromEnv,
   RunnerCastHeartbeat,
-  writeHeartbeatSuccessFile,
 } from '../src/runnerCastHeartbeat';
+import { writeHeartbeatSuccessFile } from '../src/heartbeatSuccessFile';
 
 let heartbeatSuccessDir = '';
 let heartbeatSuccessFile = '';
@@ -202,7 +202,7 @@ describe('RunnerCastHeartbeat', () => {
     try {
       expect(() => writeHeartbeatSuccessFile(join(unwritableDir, 'success'))).not.toThrow();
       expect(warn).toHaveBeenCalledWith(
-        '[RunnerCastHeartbeat] heartbeat success file write failed:',
+        '[heartbeatSuccessFile] heartbeat success file write failed:',
         expect.objectContaining({ code: 'EACCES' }),
       );
     } finally {

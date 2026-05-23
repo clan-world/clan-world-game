@@ -1,4 +1,3 @@
-import { renameSync, writeFileSync } from 'node:fs';
 import {
   ContractFunctionRevertedError,
   createPublicClient,
@@ -15,8 +14,7 @@ import {
   HeartbeatRateLimitedError,
   type IHeartbeatCaller,
 } from '@clan-world/agents/seams';
-
-const DEFAULT_HEARTBEAT_SUCCESS_FILE = '/tmp/last-heartbeat-success';
+import { writeHeartbeatSuccessFile } from './heartbeatSuccessFile';
 
 export interface RunnerHeartbeatConfig {
   /** Hex-encoded 64-char private key, optionally 0x-prefixed. */
@@ -256,17 +254,4 @@ function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
   // Preserve protocol/port; strip trailing slash if URL had no explicit path.
   return url.toString().replace(/\/$/, '');
-}
-
-export function writeHeartbeatSuccessFile(
-  successFile =
-    process.env['HEARTBEAT_SUCCESS_FILE_OVERRIDE'] ?? DEFAULT_HEARTBEAT_SUCCESS_FILE,
-): void {
-  try {
-    const tmpFile = `${successFile}.${process.pid}.tmp`;
-    writeFileSync(tmpFile, String(Math.floor(Date.now() / 1000)));
-    renameSync(tmpFile, successFile);
-  } catch (err) {
-    console.warn('[RunnerCastHeartbeat] heartbeat success file write failed:', err);
-  }
 }

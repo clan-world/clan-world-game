@@ -92,7 +92,7 @@ docker compose --profile dev restart anvil-fork
 
 After a restart, dev txs you submitted before the restart are still in chain state. You only lose the last <60s of activity (whatever happened between the most recent state dump and the restart).
 
-To inspect the volume from the host (read-only snapshot pattern — see `agents/Makefile` `link-mounts` for the canonical helper-container approach):
+To inspect the volume from the host with a read-only helper container:
 
 ```bash
 docker run --rm -v clan-world_anvil_data:/data:ro busybox ls -lh /data
@@ -103,16 +103,18 @@ docker run --rm -v clan-world_anvil_data:/data:ro busybox ls -lh /data
 Use this when fork state has drifted too far from real Base Sepolia, or when you want a fresh fork pinned to a new `FORK_BLOCK_NUMBER`.
 
 ```bash
-make -C agents reset-anvil PROFILE=dev
+make reset-anvil PROFILE=dev
 ```
 
-What that does (`agents/Makefile`):
+What that does (root `Makefile`):
 
 1. `docker compose --profile dev stop anvil-fork`
 2. `docker volume rm clan-world_anvil_data`
 3. `docker compose --profile dev up -d anvil-fork` — re-forks from `RPC_URL_PRIMARY` at `FORK_BLOCK_NUMBER`
 
 The Makefile target fails loud if `PROFILE` is unset or `PROFILE=prod` — the named volume `clan-world_anvil_data` should not exist in prod, but the guard is there as a safety net.
+
+After Bundle 3 lands, the per-elder `agents/Makefile` workflow can invoke this as `make -C agents reset-anvil`.
 
 When to reset:
 
@@ -134,7 +136,7 @@ Most common cause: `RPC_URL_PRIMARY` is unset, malformed, or rate-limited. Check
 docker compose --profile dev logs anvil-fork | tail -50
 ```
 
-Look for "fork URL" or "401 Unauthorized" or "429 Too Many Requests". Fix `RPC_URL_PRIMARY` in `.env.local` (e.g. swap to an Alchemy key with quota left), then `make -C agents reset-anvil PROFILE=dev`.
+Look for "fork URL" or "401 Unauthorized" or "429 Too Many Requests". Fix `RPC_URL_PRIMARY` in `.env.local` (e.g. swap to an Alchemy key with quota left), then `make reset-anvil PROFILE=dev`.
 
 ### "fork block not available" / "header not found"
 
@@ -144,7 +146,7 @@ Look for "fork URL" or "401 Unauthorized" or "429 Too Many Requests". Fix `RPC_U
 - Pick a more recent block from `cast block-number --rpc-url "$RPC_URL_PRIMARY"`, or
 - Swap to an archive RPC (Alchemy growth tier, QuickNode, etc).
 
-Then `make -C agents reset-anvil PROFILE=dev`.
+Then `make reset-anvil PROFILE=dev`.
 
 ### App side reports chain-ID mismatch
 
@@ -152,7 +154,7 @@ The heartbeat container's preflight asserts the observed chain ID matches `CHAIN
 
 - Confirm the compose `command:` block still passes `--chain-id=84532` (someone may have overridden it locally).
 - Confirm `CHAIN_NETWORK=dev` (not `prod`) in `.env.local`.
-- Reset the fork (`make -C agents reset-anvil PROFILE=dev`) to drop any state from a wrong-chain-id run.
+- Reset the fork (`make reset-anvil PROFILE=dev`) to drop any state from a wrong-chain-id run.
 
 ### Healthcheck flapping but RPC responds
 
@@ -162,6 +164,6 @@ The healthcheck uses `cast chain-id --rpc-url http://localhost:8545` with a 5s t
 
 - `docs/runbooks/fresh-vps-bootstrap.md` — full VPS bring-up; prod stack uses real Base Sepolia, not anvil-fork.
 - `docs/runbooks/soft-game-reset.md` — mid-season recovery flow; on dev profile, anvil-fork is the RPC the recovery txs hit.
-- `agents/Makefile` — `reset-anvil`, `up PROFILE=dev`, `down`, `status`, `link-mounts`.
+- `Makefile` — `reset-anvil`.
 - `docker-compose.yml` — `anvil-fork:` service definition.
 - `.env.template` — `RPC_URL_PRIMARY`, `FORK_BLOCK_NUMBER`, `DEV_RPC_URL`.
