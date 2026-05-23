@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   enqueueCommand,
   claimNext,
@@ -14,6 +14,10 @@ import {
 vi.stubEnv("BUS_OPERATOR_SECRET", "op-secret");
 vi.stubEnv("BUS_ELDER_SECRET_1", "elder-1-secret");
 vi.stubEnv("BUS_ELDER_SECRET_2", "elder-2-secret");
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function createDb(tables: Record<string, any[]> = {}) {
   return {
@@ -419,11 +423,37 @@ describe("ackCommand", () => {
     expect(tables.agentCommands![0].ackedAt).toBeDefined();
   });
 
-  it("throws on expired lease when acking", async () => {
-    // Symmetric guard with complete/fail (added round-1 fix from swarm
-    // review PR #538): an elder cannot transition leased→acked once the
-    // lease has expired — otherwise the work later fails complete/fail
-    // and the sweeper retries the same command.
+  it("acks when lease is expired but within 30s grace window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(361_000);
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: 360_000,
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await (ackCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+      },
+    );
+    expect(tables.agentCommands![0].status).toBe("acked");
+  });
+
+  it("throws when acking after lease is expired beyond 30s grace window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(395_000);
     const { db } = createDb({
       agentCommands: [
         {
@@ -432,7 +462,7 @@ describe("ackCommand", () => {
           targetAgentId: "elder-1",
           status: "leased",
           leaseOwner: "elder-1",
-          leaseExpiresAt: Date.now() - 1000, // expired
+          leaseExpiresAt: 360_000,
           createdAt: 1000,
           retryCount: 0,
         },
@@ -447,7 +477,7 @@ describe("ackCommand", () => {
           commandId: "agentCommands:0",
         },
       ),
-    ).rejects.toThrow("Lease expired");
+    ).rejects.toThrow("Lease expired beyond grace");
   });
 });
 
@@ -660,7 +690,41 @@ describe("failCommand", () => {
     expect(tables.agentCommands![0].retryCount).toBe(3);
   });
 
-  it("throws on expired lease when failing", async () => {
+  it("fails and re-queues when lease is expired but within 30s grace window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(361_000);
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: 360_000,
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+      commandResults: [],
+    });
+    await (failCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+        reason: "timeout",
+      },
+    );
+    expect(tables.agentCommands![0].status).toBe("queued");
+    expect(tables.agentCommands![0].retryCount).toBe(1);
+    expect(tables.commandResults).toHaveLength(1);
+  });
+
+  it("throws when failing after lease is expired beyond 30s grace window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(395_000);
     const { db } = createDb({
       agentCommands: [
         {
@@ -669,7 +733,7 @@ describe("failCommand", () => {
           targetAgentId: "elder-1",
           status: "leased",
           leaseOwner: "elder-1",
-          leaseExpiresAt: Date.now() - 1000, // expired
+          leaseExpiresAt: 360_000,
           createdAt: 1000,
           retryCount: 0,
         },
@@ -685,7 +749,7 @@ describe("failCommand", () => {
           reason: "timeout",
         },
       ),
-    ).rejects.toThrow("Lease expired");
+    ).rejects.toThrow("Lease expired beyond grace");
   });
 });
 

@@ -181,34 +181,34 @@ pause:
 unpause:
 	@for n in $(ELDER_NUMS); do $(MAKE) unpause-elder-$$n || true; done
 
-pause-heartbeat:
-	$(DC) stop heartbeat
+pause-heartbeat: check-profile
+	$(DC) --profile $(PROFILE) stop heartbeat
 
-unpause-heartbeat:
-	$(DC) start heartbeat
+unpause-heartbeat: check-profile
+	$(DC) --profile $(PROFILE) start heartbeat
 
-reset-%: FORCE
+reset-%: FORCE check-profile
 	-$(DC) exec -T $* tmux kill-session -t $* 2>/dev/null || true
-	$(DC) up -d --force-recreate $*
+	$(DC) --profile $(PROFILE) up -d --force-recreate $*
 
-restart-%: FORCE
-	$(DC) restart $*
+restart-%: FORCE check-profile
+	$(DC) --profile $(PROFILE) restart $*
 
-wipe-%: FORCE
+wipe-%: FORCE check-profile
 	@if [ "$(LEVEL)" = "workspace" ]; then \
 		echo "[wipe] $* LEVEL=workspace - clearing /workspace/*"; \
 		$(DC) exec -T $* sh -c 'rm -rf /workspace/*' || exit 1; \
-		$(MAKE) reset-$*; \
+		$(MAKE) reset-$* PROFILE=$(PROFILE); \
 	elif [ "$(LEVEL)" = "session" ]; then \
 		echo "[wipe] $* LEVEL=session - clearing /workspace/* + ~/.claude/projects"; \
 		$(DC) exec -T $* sh -c 'rm -rf /home/elder/.claude/projects /workspace/*' || exit 1; \
 		$(DC) exec -T $* sh -c 'if [ -f /opt/clan-world/shared/elder-bootstrap/workspace-CLAUDE.md ]; then cp /opt/clan-world/shared/elder-bootstrap/workspace-CLAUDE.md /workspace/CLAUDE.md; fi' || true; \
 		$(DC) exec -T $* sh -c 'if [ -f /opt/clan-world/shared/elder-bootstrap/workspace-ANCIENT_WISDOM.md ]; then cp /opt/clan-world/shared/elder-bootstrap/workspace-ANCIENT_WISDOM.md /workspace/ANCIENT_WISDOM.md; fi' || true; \
-		$(MAKE) reset-$*; \
+		$(MAKE) reset-$* PROFILE=$(PROFILE); \
 	elif [ "$(LEVEL)" = "full" ]; then \
 		echo "[wipe] $* LEVEL=full - destroying named volumes (compose project: clan-world)"; \
-		$(DC) stop $* || true; \
-		$(DC) rm -f $* || true; \
+		$(DC) --profile $(PROFILE) stop $* || true; \
+		$(DC) --profile $(PROFILE) rm -f $* || true; \
 		docker volume rm clan-world_$*-home clan-world_$*-workspace 2>/dev/null || true; \
 		echo "[wipe] $* FULL WIPE done."; \
 		echo "[wipe] NEXT: run \`make oauth-bootstrap-$*\` BEFORE \`make up\`; volumes will be recreated empty."; \
