@@ -2,7 +2,7 @@
   "name": "Clan World",
   "short_name": "Clan World",
   "description": "Onchain realm where AI Elders command clans on Base.",
-  "start_url": "/cockpit",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

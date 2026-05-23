@@ -1,0 +1,9 @@
+# Runtime state — mutable per-elder writes (CC harness output, transcripts, credentials)
+runtime/
+
+# Per-elder env files (real secrets — only .env.template is committed)
+.env
+elder-*/.env
+
+# Docker-compose symlink helper dir (created by `make link-mounts`)
+.docker-mounts/

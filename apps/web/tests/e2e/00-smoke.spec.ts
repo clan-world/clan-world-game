@@ -39,7 +39,7 @@ test('web app loads with no console errors', async ({ page }) => {
     pageErrors.push({ message: err.message, stack: err.stack });
   });
 
-  await page.goto('/');
+  await page.goto('/map');
 
   // Wait for canvas to mount — WorldMap renders one.
   // 10s gives PIXI v8 + Convex client time to initialize.
