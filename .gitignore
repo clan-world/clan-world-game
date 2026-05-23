@@ -200,6 +200,7 @@ docs/planning/V1/
 agents/runtime/
 agents/.env
 agents/.docker-mounts/
+agents/backups/
 agents/secrets/
 agents/elder-*/.env
 !agents/elder-*/.env.example

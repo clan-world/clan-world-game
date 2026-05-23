@@ -4,7 +4,6 @@ import { createConvexClient } from '@clan-world/shared/adapters';
 import { configFromEnv, RunnerCastHeartbeat } from './runnerCastHeartbeat';
 import { startHeartbeatScheduler } from './heartbeatScheduler';
 import { tickLoop, type PerElderDeps } from './tickLoop';
-import { makeSettleLatch } from './settleLatch';
 import { TmuxRunnerInbox } from './tmuxRunnerInbox';
 import { ELDER_IDS, type ElderId, type RunnerConfig } from './types';
 import { createMemoryStore } from './zeroGMemoryStore';
@@ -135,12 +134,9 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => onSignal('SIGTERM'));
   process.on('SIGINT', () => onSignal('SIGINT'));
 
-  const settleLatch = makeSettleLatch();
-
   startHeartbeatScheduler({
     heartbeatCaller,
     signal: abort.signal,
-    settleLatch,
     convex,
     runnerId: process.env['RUNNER_ID'] ?? 'clanworld-runner',
   });
@@ -151,7 +147,6 @@ async function main(): Promise<void> {
       perElder,
       config,
       signal: abort.signal,
-      settleLatch,
     });
   } finally {
     console.log('[runner] tick loop exited');

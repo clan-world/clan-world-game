@@ -1,3 +1,6 @@
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const viemMocks = vi.hoisted(() => ({
@@ -27,15 +30,37 @@ vi.mock('viem/accounts', () => ({
   })),
 }));
 
-import { configFromEnv, RunnerCastHeartbeat } from '../src/runnerCastHeartbeat';
+import {
+  configFromEnv,
+  RunnerCastHeartbeat,
+} from '../src/runnerCastHeartbeat';
+import { writeHeartbeatSuccessFile } from '../src/heartbeatSuccessFile';
+
+let heartbeatSuccessDir = '';
+let heartbeatSuccessFile = '';
+
+function cleanupHeartbeatSuccessFile(): void {
+  if (!heartbeatSuccessFile) return;
+  rmSync(heartbeatSuccessFile, { force: true });
+  rmSync(`${heartbeatSuccessFile}.${process.pid}.tmp`, { force: true });
+}
 
 beforeEach(() => {
+  heartbeatSuccessDir = mkdtempSync(join(tmpdir(), 'hb-test-'));
+  heartbeatSuccessFile = join(heartbeatSuccessDir, 'last-heartbeat-success');
+  vi.stubEnv('HEARTBEAT_SUCCESS_FILE_OVERRIDE', heartbeatSuccessFile);
+  cleanupHeartbeatSuccessFile();
   viemMocks.readContract.mockReset();
   viemMocks.waitForTransactionReceipt.mockReset();
   viemMocks.writeContract.mockReset();
 });
 
 afterEach(() => {
+  cleanupHeartbeatSuccessFile();
+  if (heartbeatSuccessDir) rmSync(heartbeatSuccessDir, { recursive: true, force: true });
+  heartbeatSuccessDir = '';
+  heartbeatSuccessFile = '';
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -148,6 +173,45 @@ describe('configFromEnv', () => {
 });
 
 describe('RunnerCastHeartbeat', () => {
+  it('writes heartbeat success file after receipt confirmation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(123_000);
+    const hash = `0x${'a'.repeat(64)}` as const;
+    viemMocks.writeContract.mockResolvedValue(hash);
+    viemMocks.waitForTransactionReceipt.mockResolvedValue({
+      status: 'success',
+      blockNumber: 123n,
+    });
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+    });
+
+    await expect(heartbeat.callHeartbeat()).resolves.toEqual({ txHash: hash });
+
+    expect(existsSync(heartbeatSuccessFile)).toBe(true);
+    expect(readFileSync(heartbeatSuccessFile, 'utf8')).toBe('123');
+  });
+
+  it('swallows EACCES when heartbeat success file cannot be written', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const unwritableDir = mkdtempSync(join(tmpdir(), 'heartbeat-success-'));
+    chmodSync(unwritableDir, 0o500);
+
+    try {
+      expect(() => writeHeartbeatSuccessFile(join(unwritableDir, 'success'))).not.toThrow();
+      expect(warn).toHaveBeenCalledWith(
+        '[heartbeatSuccessFile] heartbeat success file write failed:',
+        expect.objectContaining({ code: 'EACCES' }),
+      );
+    } finally {
+      chmodSync(unwritableDir, 0o700);
+      rmSync(unwritableDir, { recursive: true, force: true });
+      warn.mockRestore();
+    }
+  });
+
   it('reads heartbeatIntervalSeconds from the canonical ABI', async () => {
     viemMocks.readContract.mockResolvedValue(42n);
     const heartbeat = new RunnerCastHeartbeat({

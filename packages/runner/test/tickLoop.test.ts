@@ -80,6 +80,7 @@ describe('tickLoop', () => {
       const inbox: IRunnerInbox = {
         async deliverSituationBlock(tick: number): Promise<DeliveryStatus> {
           delivered.push({ elder, tick });
+          if (delivered.length === ELDER_IDS.length) abort.abort();
           return { ok: false, reason: 'duplicate-tick' };
         },
         async waitForAckAndClear() {
@@ -110,10 +111,6 @@ describe('tickLoop', () => {
       config: config(),
       signal: abort.signal,
       log,
-      settleLatch: {
-        lastSettledTick: () => -1,
-        markSettled: () => abort.abort(),
-      },
     });
 
     expect(delivered).toEqual(ELDER_IDS.map(elder => ({ elder, tick: 9 })));
@@ -136,6 +133,7 @@ describe('tickLoop', () => {
         },
         async waitForAckAndClear(timeoutMs: number) {
           resets.push({ elder, timeoutMs });
+          if (resets.length === ELDER_IDS.length) abort.abort();
           return elder === 1 ? 'timeout' : 'ack';
         },
       };
@@ -163,10 +161,6 @@ describe('tickLoop', () => {
       config: config(),
       signal: abort.signal,
       log,
-      settleLatch: {
-        lastSettledTick: () => -1,
-        markSettled: () => abort.abort(),
-      },
     });
 
     expect(delivered).toEqual(
@@ -189,6 +183,7 @@ describe('tickLoop', () => {
     for (const elder of ELDER_IDS) {
       const inbox: IRunnerInbox = {
         async deliverSituationBlock(): Promise<DeliveryStatus> {
+          if (elder === ELDER_IDS[ELDER_IDS.length - 1]) abort.abort();
           return { ok: true };
         },
         async waitForAckAndClear() {
@@ -208,10 +203,6 @@ describe('tickLoop', () => {
       perElder,
       config: config(),
       signal: abort.signal,
-      settleLatch: {
-        lastSettledTick: () => -1,
-        markSettled: () => abort.abort(),
-      },
     });
 
     expect(resets).toEqual([]);
