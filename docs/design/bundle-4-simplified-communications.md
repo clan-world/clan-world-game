@@ -1,248 +1,335 @@
 # Bundle 4 — Simplified Communications Architecture
 
-Design doc capturing the runner/elder/supervisor refactor that follows Bundle 2 + 3 dockerize migration. Replaces the over-engineered command bus with a thin message-injection layer plus hook-based liveness plus tick-driven resets.
+Design doc for the elder agent infrastructure refactor that follows Bundle 1 + 2 + 3 dockerize migration. Strips the over-engineered command bus and replaces it with a thin message-injection layer, hook-based liveness, kill-tmux resets, and per-elder runners co-located with each elder container.
 
-**Status:** Draft for review (2026-05-22 ~15:10 ET). Source of design points: Liam voice messages 16646 through 16720.
+**Status:** Locked design (2026-05-23 PM ET — superseded the 2026-05-22 draft after design conversation with Liam). Awaiting DA round 2 + sub-PR planning.
 
-## Motivation
+## Why this rewrite
 
-The current command bus (Bundle 2 PR #542 + Bundle 3 PR #549) ships a distributed-durable-queue design with lease management, ack/complete/fail state machines, sweep crons, and retry semantics. It was built assuming elders are unreliable and might die mid-command.
+The previous draft (2026-05-22) shipped to a DA review that surfaced 7 CRITICAL ambiguities. Most were about who owns which control surface — the runner, the supervisor, the indexer, or Convex. The 2026-05-23 design conversation collapsed those ambiguities by reframing the process layout:
 
-Liam's design intent is the opposite: elders are responsible for their own resilience, resets are intentionally jarring, and the runner uses fire-and-forget messaging into elder tmux sessions. The Claude Code harness already queues stdin properly so we don't need a separate queue layer.
+- The **heartbeat container** becomes a dumb singleton — it submits the on-chain heartbeat transaction and nothing else.
+- The **per-elder runner** moves inside each elder container and owns the entire elder lifecycle: tmux session management, send-keys injection, reset, recovery, healthcheck.
+- The **command bus** as a distributed-queue abstraction goes away. Messages are written to a thin `pendingMessages` table, read by the per-elder runner, fire-and-forget.
+- **Resets are kill-tmux + spawn-fresh-claude**, NOT `/clear`. Recovery is the same flow but with `claude --continue`.
 
-Bundle 4 strips the queue/lease/retry/sweep machinery and replaces it with the simpler shape below.
+This means three of the original DA CRITICAL findings (`/clear` detection too hand-wavy, reset path contradicts itself, pending-message loss not implementable) are simply resolved by the new shape rather than patched.
 
-## Communications taxonomy — eight categories
+## Process model
 
-Every cross-process interaction in the system falls into one of these:
+Five processes total in production:
 
-1. **Game state read** — elder calls Convex queries or chain reads to learn world state (vault, clansmen, missions, world tick).
-2. **Game state write** — elder submits orders to the contract via their own private key. On-chain transaction.
-3. **Communications read** — elder reads private whispers from other elders + public bulletin board entries. Convex queries.
-4. **Communications write** — elder writes whispers to specific elders + posts to bulletin board. Convex mutations.
-5. **Owner whispers** — Liam (or whoever owns the agent) injects arbitrary text into a specific elder's context. Goes through the admin-inject path.
-6. **Runner world messages** — per-tick world snapshot, memory-wipe-incoming warnings (no longer requires ack), post-reset re-orientation. Injected by runner.
-7. **Control plane** — process-level control: reset, restart-supervisor, kill-and-recreate. Not user-visible to elder. Tick-driven for reset; supervisor-managed for restarts.
-8. **Liveness/observability** — `PostToolUse` hook posts to Convex on every Claude tool call. Elder is unaware. Operator/dashboard queries the resulting log for "last activity" + "tool-use rate per tick" signals.
+| Process | Cardinality | Container | Responsibility |
+|---|---|---|---|
+| `heartbeat` | 1 | `heartbeat` container | Submit on-chain heartbeat tx on schedule. Nothing else. |
+| `elder-N runner` | 4 (one per elder) | `elder-N` container, alongside tmux | Subscribe to ticks, derive templates, send-keys into local tmux pane, manage tmux lifecycle, watch the local Claude process. |
+| `tmux` | 4 (one per elder) | `elder-N` container | Hosts the elder's claude process so ttyd can attach. |
+| `claude` | 4 (one per elder) | `elder-N` container, inside tmux | The actual LLM doing the agent work. |
+| `ttyd` | 4 (one per elder) | `elder-N` container | Read-only web terminal exposing the tmux pane to the operator cockpit. |
 
-Categories 1-4 go through the elder CLI (already exists). Categories 5-6 go through a new thin message-injection layer described below. Category 7 is process control (no user-visible API). Category 8 is hooks-only.
+Naming: what we previously called "supervisor" is now "runner". The thing previously called "runner" (the heartbeat package) is renamed "heartbeat" to match.
 
-## The message-injection layer
+## Package renames
 
-**Single operation:** "inject text into elder N's tmux session."
+Two `packages/` package renames as part of Bundle 4:
 
-Two writers: the runner (during tick injection) and the admin dev-UI (for R&D experimentation).
+| Before | After | Why |
+|---|---|---|
+| `packages/runner/` | `packages/heartbeat/` | Reflects the dumb-singleton role. Only owns heartbeat tx submission. |
+| `packages/elder-runtime/` | `packages/runner/` | Reflects the new role — runner is now the per-elder process. |
 
-### Convex table
+Codex handles the rename across the monorepo as part of the Bundle 4 PR (tsconfig paths, pnpm workspaces, Docker `COPY` targets, import paths in `apps/server/convex/`, etc.).
+
+## Runner lifecycle
+
+### Startup (per elder container boot)
+
+1. **Read game settings** from Convex once. Cache in memory. Settings include: heartbeat interval, ticks-between-memory-resets, winter timing, season length, current diamond address, etc.
+2. **Check one-claude-per-container invariant**. `pgrep claude` should return exactly zero (cold boot) or exactly one (warm restart, runner restarted but elder process survived). If we find multiple claudes, fail loud + exit non-zero. Do not pgrep+pkill — discovery beats silent recovery for R&D.
+3. **Check tmux session state**. Three possibilities:
+   - No session exists → fresh launch path.
+   - Session exists, claude alive → warm restart, continue normal flow.
+   - Session exists, no claude → recovery path: respawn claude inside the existing tmux session.
+4. **Look up last-received tick** from Convex (see "Two-phase commit" below). Compare to current tick.
+5. **Subscribe to tick updates**. Begin normal tick-handling loop.
+
+### Normal tick handling (per tick)
+
+1. Wake on new tick number from Convex subscription.
+2. Query Convex for current world state (tickClock + game settings drift check + auxiliary tables as needed for event-driven templates).
+3. **Drift check**: re-fetch game settings as part of the per-tick read. If any cached value diverges, panic + exit non-zero. Operator must restart all elder containers to pick up new settings.
+4. **Template selection** — compute which templates apply to this tick:
+   - **Pure-tick-math templates** (computed locally): `00_game_start.md`, `05_pre_memory_wipe_5ticks.md`, `06_pre_memory_wipe_1tick.md`, `07_post_memory_wipe.md`, `10_pre_winter_10ticks.md`, `11_winter_started.md`, `12_winter_ended.md`.
+   - **Event-driven templates** (require auxiliary query): `20_bandits_appeared.md`, `21_bandits_attacking.md`, `22_post_bandit_attack.md`. Runner queries `banditView` + `chainEvents` to detect events on this tick.
+5. **Compose message**: base line `tick: <N>` + each applicable template body wrapped in `<world_update name="<template-name>">...</world_update>` XML, concatenated in alphabetical order by template filename (numbered prefix = priority knob).
+6. **Two-phase commit**:
+   - Write `sent` row to Convex: `{elderId, tickNumber, sentAt, messageHash}`.
+   - Run `tmux load-buffer` + `tmux paste-buffer` + `tmux send-keys Enter`.
+7. The `UserPromptSubmit` hook fires when Claude actually receives the message; it writes `received` row to Convex: `{elderId, tickNumber, receivedAt}`.
+8. Loop.
+
+### Restart behavior (runner crash → docker compose restart)
+
+After `Startup` steps 1-3:
+
+1. Look up the highest `tickNumber` with a `received` record for this elder.
+2. Look up `current_tick` from Convex `tickClock`.
+3. Branch:
+   - **a) `current_tick == last_received`** → no-op. Don't re-send. Wait for next tick.
+   - **b) `current_tick > last_received` AND no memory-wipe boundary in the gap** → inject fast-forward prefix `"Fast-forwarding from tick <last_received> to tick <current_tick>"` (one line) + the normal tick-N message (template selection per current state). The fast-forward prefix is grep-able in logs for R&D anomaly hunting.
+   - **c) `current_tick > last_received` AND memory-wipe boundary falls in `(last_received, current_tick]`** → SPECIAL CASE. Do kill-tmux + spawn-fresh-claude (no `--continue`) + inject `07_post_memory_wipe.md` template for current tick. The elder's memory was wiped during the runner outage; they need a clean fresh start.
+   - **d) `current_tick == last_received + 1` AND received-but-not-sent state (hook landed without sent record)** → impossible state, log + treat as case (a).
+   - **e) `sent` recorded but no `received` for tick N == current_tick** → trust the `received` record. Re-send the message. Double-paste accepted as harmless: claude sees a duplicate prompt, responds twice or shrugs. The hook will then record the receipt.
+
+### Tick backlog handling
+
+A runner can fall behind only via: operator pause (`docker compose pause`), network partition, OS scheduling stall, OOM kill, container restart. All of these effectively look identical to the restart behavior above — the runner wakes up, reads `last_received` from Convex, computes `current_tick`, and runs the same branch logic. Same code path, no separate "backlog" handler.
+
+### Reset (tick-driven hard wipe)
+
+When `current_tick % ticks_between_memory_resets == 0` (computed locally from cached settings):
+
+1. **Log reset start** to Convex: `{elderId, resetTick, startedAt, reason: "scheduled"}`.
+2. **Kill the existing tmux session**: `tmux kill-session -t elder-N`. This disconnects ttyd; cockpit detects the disconnect and overlays a "Elder memory is being reset…" animation in place of the default ttyd reconnect screen.
+3. **Spawn a fresh tmux session**: `tmux new-session -d -s elder-N -c /workspace`.
+4. **Launch claude WITHOUT `--continue`**: `tmux send-keys -t elder-N "claude" Enter`. Fresh session id, fresh JSONL. Memory is gone.
+5. **Brand the session**: send-keys `"/rename Ælder Crimson"` + Enter + Enter + `"/color red"` + Enter + Enter. Branding values keyed off `ELDER_ID` env var. (Elders: Crimson/red, Azure/blue, Verdant/green, Amber/yellow — exact mapping in `agents/shared/runner/elder-config.json`.)
+6. **Inject first tick**: `tick: <current_tick>` + `<world_update name="07_post_memory_wipe">...</world_update>`.
+7. **Log reset complete** to Convex: `{elderId, resetTick, completedAt}`.
+8. Resume normal tick handling.
+
+The reset-event log is **observability-only**. It does NOT gate the next tick. The runner moves on as soon as step 7 commits.
+
+### Recovery / resume (cold boot with prior state)
+
+When the elder container boots and finds tmux + claude alive, OR boots fresh but `agents/elder-N/.claude/projects/` already has JSONL files from a prior life:
+
+1. If tmux + claude alive: do nothing, just begin tick handling. Claude is already running and has its history.
+2. If tmux exists but claude died: `tmux send-keys -t elder-N "claude --continue" Enter`. `--continue` picks up the latest session JSONL, restoring color + rename + chat history.
+3. If tmux doesn't exist but `.claude/projects/` does: `tmux new-session -d -s elder-N` + `tmux send-keys "claude --continue" Enter` (preserves prior state).
+4. If neither tmux nor `.claude/projects/` exists: fresh launch (same as reset step 3+ but inject `00_game_start.md` instead of `07_post_memory_wipe.md`).
+
+### Late-join (operator brings up a new elder mid-game)
+
+This is the "container 5+ created after game has been running for 500 ticks" scenario. Reuse the reset flow with the `07_post_memory_wipe.md` template. The elder wakes up with no memory in a running game; same semantic as post-wipe.
+
+## Game settings — immutable for game duration
+
+Read-once at runner startup. Cached in memory. Drift-checked on every per-tick query (piggyback, zero extra reads). If the cached value ever diverges from Convex on the per-tick re-fetch, panic. Fail loud — the operator forgot to restart after changing a setting.
+
+**Operational rule (capture in runbook):** To change ANY setting in `gameSettings` (heartbeat interval, memory-reset cadence, winter timing, season length), restart every elder container. There is no live-update path. The fail-loud drift check is a defensive trip-wire; it does not coordinate the change.
+
+## Prompt templates
+
+### Storage location
+
+On disk at `agents/shared/runner/prompts/`. Files copied into each elder container's image at build time. Template content is static markdown. Edits require a runner-image rebuild + container restart.
+
+(Future: skills could provide dynamic behavior — a prompt can include `/run <skill-name>` slash commands that claude executes. That makes the static templates extensible without inflating the runner code. Out of scope for Bundle 4.)
+
+### Naming + ordering
+
+Numbered prefix `NN_<purpose>.md`. Alphabetical sort = priority order. To reshuffle priority, renumber.
+
+### Template list (Bundle 4 v1)
+
+| File | Trigger | Class |
+|---|---|---|
+| `00_game_start.md` | First tick of a new game | tick-math |
+| `05_pre_memory_wipe_5ticks.md` | `current_tick % wipe_interval == wipe_interval - 5` | tick-math |
+| `06_pre_memory_wipe_1tick.md` | `current_tick % wipe_interval == wipe_interval - 1` | tick-math |
+| `07_post_memory_wipe.md` | First tick immediately after a wipe; also late-join + recovery from gap | tick-math |
+| `10_pre_winter_10ticks.md` | 10 ticks before winter starts | tick-math |
+| `11_winter_started.md` | Tick winter starts | tick-math |
+| `12_winter_ended.md` | Tick winter ends | tick-math |
+| `20_bandits_appeared.md` | Bandit just spawned this tick | event-driven |
+| `21_bandits_attacking.md` | Bandit in attack state this tick | event-driven |
+| `22_post_bandit_attack.md` | Tick after a bandit resolved an attack | event-driven |
+| `99_clansmen_revived_and_resources_injected.md` | Operator manually revived clansmen + injected resources (no fresh season) | event-driven |
+
+Multiple templates can fire on the same tick. They concat in alphabetical order. Tick number always prefixes.
+
+### Message wire format
+
+```
+tick: 537
+<world_update name="05_pre_memory_wipe_5ticks">
+Your memory will be reset in 5 ticks. Make sure your ancient wisdom journal is up-to-date.
+</world_update>
+<world_update name="10_pre_winter_10ticks">
+Winter approaches. 10 ticks remain in the harvest. Stockpile food.
+</world_update>
+```
+
+For most ticks, only the first line fires (no templates active).
+
+## Admin / user message injection
+
+Same writer table, separate trigger source.
+
+### Convex `pendingMessages` table
 
 ```typescript
-// pendingMessages
 {
   _id: Id<"pendingMessages">,
   targetElderId: "elder-1" | "elder-2" | "elder-3" | "elder-4",
   text: string,
   insertedAt: number,
-  source: "runner" | "admin-injection",
+  source: "admin-injection" | "user-message",
+  consumedBy: Optional<string>, // runner instance ID that processed this row
+  consumedAt: Optional<number>,
 }
 ```
 
-That's the whole schema. No status, no lease, no retry count.
+### Runner subscription
 
-### Runner-side write
+The runner watches `pendingMessages` filtered by `targetElderId == own_id AND consumedBy == null`. When a row appears, the runner pastes immediately (does NOT wait for next tick). Marks `consumedBy` + `consumedAt` after the UserPromptSubmit hook confirms receipt.
 
-Per tick, runner calls a Convex mutation `enqueueElderMessage` with the tick's world snapshot text targeted at each living elder. One row per (elder, tick).
+### Admin injection flow
 
-For the mod-N reset tick, the runner instead writes a structured reset payload (see "Reset workflow" below).
+Dev-UI panel writes a row with `source: "admin-injection"`. Runner picks it up within poll interval (1-2 seconds), pastes into the elder's tmux pane. Same UserPromptSubmit hook records receipt to the same `tickReceiveLog` table (with `tickNumber == null` since it's not a tick message).
 
-### Admin dev-UI write
+### Authorization
 
-Dev-UI calls the same `enqueueElderMessage` mutation with `source: "admin-injection"` and an operator-supplied text. Selects target elders via checkbox or per-elder field.
+Admin injection requires `BUS_OPERATOR_SECRET`. Writes from other sources rejected at the Convex mutation level. (Survives from Bundle 2; carries forward.)
 
-### Supervisor-side read
+## Two-phase commit (tick delivery)
 
-Inside each elder container, the supervisor polls `pendingMessages` filtered by its own elder ID. For each pending row, in `insertedAt` ASC order:
-
-1. Read the row.
-2. Paste the text into the local tmux session targeting the Claude pane.
-3. Delete the row.
-
-No lease. No ack. No retry. If the supervisor crashes between read and paste, the row sits in the table until the supervisor restarts and picks it up. If the supervisor pastes successfully but crashes before delete, the next poll will paste the same row again — operator should design messages to be safely idempotent at the elder layer (typically a no-op since the elder reads world state fresh each turn anyway).
-
-### What this discards from Bundle 2 + 3
-
-- `agentCommands` table (replaced by `pendingMessages`)
-- `claimNext` / `ackCommand` / `completeCommand` / `failCommand` mutations
-- `sweepStaleDelivered` cron
-- `LEASE_MS`, `COMPLETION_GRACE_MS` constants
-- Bracketed-paste nonce protocol + supervisor scrollback grep
-- Control-verb priority pass in claimNext (reset is now process-level, not message-level)
-- `elderHeartbeat` table writes from the supervisor (replaced by hook-based liveness)
-- `elder ack-clear` CLI subcommand and the runner's await-ack flow (issue #555)
-
-### What this keeps from Bundle 2 + 3
-
-- Supervisor process inside each elder container (slimmed to a thin watchdog)
-- Tmux + ttyd lifecycle management
-- Bus secret per elder for authenticating the supervisor's Convex calls
-- Healthcheck infrastructure (Caddy + per-elder process supervision)
-- All the elder CLI surface (game read/write, comm read/write)
-
-## Liveness — PostToolUse hook
-
-Configure a `PostToolUse` hook in `agents/shared/home-claude/settings.json`. The hook fires after every Claude tool call. The hook script:
-
-1. Read tool-call metadata (tool name, timestamp) from hook stdin.
-2. Curl POST to a Convex action `recordToolUse` with `{ elderId, toolName, ts }`.
-3. Exit cleanly. Hook errors are silenced — elder must not be aware of liveness machinery.
-
-### Convex table
+### `tickSendLog` table
 
 ```typescript
-// elderActivity
 {
-  _id: Id<"elderActivity">,
+  _id: Id<"tickSendLog">,
   elderId: string,
-  toolName: string,
-  ts: number,
+  tickNumber: number,
+  sentAt: number,
+  messageHash: string,  // sha256 of the composed message body
 }
 ```
 
-### Liveness query
+Index: `by_elder_tick` on `(elderId, tickNumber DESC)`.
+
+Runner writes one row BEFORE running `tmux paste-buffer`. If the runner crashes between write and paste, the row is a "sent but no record of receipt" → restart logic re-sends per case (e) above.
+
+### `tickReceiveLog` table
 
 ```typescript
-// "is elder-N alive?"
-const lastActivity = await ctx.db
-  .query("elderActivity")
-  .withIndex("by_elder_ts", q => q.eq("elderId", "elder-1"))
-  .order("desc")
-  .first();
-
-const isAlive = lastActivity && (Date.now() - lastActivity.ts) < ALIVENESS_THRESHOLD_MS;
-```
-
-### Dashboard signals
-
-The same `elderActivity` table powers richer signals:
-
-- Tool-use frequency per elder (idle vs active)
-- Tool-type distribution (which tools are getting used)
-- Per-tick activity (how many tool calls between two `UserPromptSubmit` events from the runner's tick injection)
-
-## Reset workflow — tick-driven
-
-### Configuration
-
-A new Convex table `gameSettings` holds the reset-cadence knob.
-
-```typescript
-// gameSettings
 {
-  _id: Id<"gameSettings">,
-  resetEveryNTicks: 50, // default
-  // future: maxTick, tickIntervalMs, etc.
+  _id: Id<"tickReceiveLog">,
+  elderId: string,
+  tickNumber: number | null,  // null for admin injections
+  receivedAt: number,
+  messagePreview: string,     // first 100 chars for operator visibility
 }
 ```
 
-### Trigger condition
+Index: `by_elder_tick` on `(elderId, tickNumber DESC)`.
 
-On each tick `T`, the runner queries `gameSettings.resetEveryNTicks` (call it `N`). If `T % N === 0`, the next tick injection becomes a reset workflow instead of a normal tick injection.
+### `UserPromptSubmit` hook
 
-### Reset workflow (per-elder, parallel)
+Lives at `agents/shared/home-claude/hooks/user_prompt_submit.sh` (or `.py`). Triggers on every user prompt submitted to Claude. Inspects the prompt for the deterministic first-line pattern `tick: <N>`. If matched, extracts `<N>` and writes a `tickReceiveLog` row. If first line doesn't match `tick:` (admin injection), writes the row with `tickNumber: null`.
 
-For each elder:
+Hook authentication: passes `BUS_ELDER_SECRET_N` from env (already injected into the container via Docker secrets, available to the hook). Convex mutation rejects writes without a valid secret.
 
-1. **Issue Claude `/clear`** — write `/clear` into the elder's tmux pane via the supervisor. (Open question: paste as text vs send-keys. `/clear` is a Claude Code REPL command, not a tmux primitive — pasting it as text should work if the Claude pane is foreground.)
-2. **Wait for `/clear` to land** — supervisor watches session JSONL for the `system: cleared` marker or equivalent. Configurable timeout, default 10 seconds.
-3. **If `/clear` doesn't land in timeout** — supervisor escalates: kill the Claude process inside tmux, restart Claude via `claude` (no `--continue`), which gives a fresh context. Tmux session itself stays alive — ttyd terminal UX preserved, no flicker.
-4. **If kill-restart also fails** — supervisor escalates further: `exit 1` from the supervisor process, container exits, docker compose `restart: unless-stopped` brings up a fresh container.
-5. **After Claude is fresh** — runner injects the rename + color seed message, then injects the reorientation prompt: "You're in the middle of a game on tick N out of TOTAL_TICKS. Check world snapshot, recall memories, resume play."
+Hook failure (network blip, Convex down): logs the error to stderr + does NOT block the prompt. Next runner restart will see the missing `received` row and re-send — the double-paste is the accepted recovery cost.
 
-### What's NOT in the reset workflow
+## Healthcheck (three-part)
 
-- No graceful drain of pending messages. Any `pendingMessages` rows targeted at the elder at reset moment are LOST. Intentional — by design, the elder has to deal with the gap.
-- No elder-side ack. Runner doesn't wait for elder to confirm. Reset happens unconditionally.
-- No reset-warning message. The 60-second warning (if we keep it) is embedded as a field in the regular world-snapshot tick message: `ticksUntilWipe: 1` or similar. Elder reads it or doesn't.
+`docker-compose.yml` healthcheck for each elder container:
 
-### Open question — does the runner inject reset directly or via supervisor?
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "sh /opt/clan-world/shared/runner/bin/healthcheck.sh"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
 
-Option A: Runner has docker exec access to each elder container, writes the `/clear` itself.
-Option B: Runner writes a structured reset row to `pendingMessages` with `source: "reset"`, supervisor recognizes and executes the workflow locally.
+`healthcheck.sh` validates:
 
-Option B is consistent with the rest of the architecture (everything routes through `pendingMessages`) but introduces a marshalled "reset" type that breaks the "just text injection" simplicity. Option A keeps `pendingMessages` purely text but requires the runner to have docker control access.
+1. **Runner process alive**: `pgrep -x runner` returns one PID.
+2. **Tmux session alive**: `tmux has-session -t $ELDER_ID` returns 0.
+3. **Claude process alive**: `pgrep -x claude` returns exactly one PID (one-claude invariant).
 
-**Recommended:** Option A. Runner can do `docker exec elder-N tmux send-keys ...` directly. Keeps `pendingMessages` simple. Reset is process control, separate from message injection.
+Failure on any check → docker restarts the container. Compose `restart: unless-stopped` retries indefinitely until the operator intervenes.
 
-## Supervisor — thin watchdog
+## Liveness observability
 
-Two-layer recovery:
+Separate from healthcheck. The dev-UI subscribes to two tables:
 
-1. **Layer 1 — Claude restart inside tmux.** Supervisor monitors the Claude process. If Claude exits or hangs, supervisor kills it and restarts `claude` inside the same tmux session. Ttyd terminal UX preserved.
-2. **Layer 2 — Container restart fallback.** If Layer 1 fails N times within M minutes (e.g. 3 failures in 5 minutes), supervisor exits 1 → docker compose `restart: unless-stopped` recreates the entire container. Fresh tmux, fresh ttyd, fresh everything. Ttyd briefly disappears from the dev UI.
+- `tickReceiveLog`: last-received-per-elder is the freshest liveness signal. If an elder hasn't received a tick in N intervals while ticks are firing, alert.
+- `resetEventLog`: shows reset history per elder. Useful for forensics.
 
-Configurable thresholds via env vars.
+No `elderHeartbeat` table from the old design. The runner doesn't self-report; the hook does the reporting.
 
-Beyond watchdog, the supervisor also:
+## New + dropped Convex tables
 
-- Polls `pendingMessages` for its elder ID and pastes them into tmux.
-- Optionally captures snapshot scrollback on operator demand (for debugging).
+### NEW
 
-That's it. No bus polling, no state machine, no liveness reporting, no nonce verification.
+- `pendingMessages` — admin + user message injection queue.
+- `tickSendLog` — runner-side "sent" record.
+- `tickReceiveLog` — hook-side "received" record.
+- `resetEventLog` — observability log for reset events.
 
-## Admin dev-UI injection
+### DROPPED (compared to Bundle 1+2+3 state)
 
-A new dev-UI panel allows the operator to:
+- `agentCommands` — old command bus FSM (queued/leased/acked/completed/failed). Gone.
+- `elderHeartbeat` — old supervisor self-report. Gone (replaced by `tickReceiveLog` derived liveness).
+- `commandResults` — old result rows. Gone.
 
-- Select target elders (checkboxes for elder-1..N or "all")
-- Write arbitrary text in a textarea
-- Click "Inject" — fires a Convex mutation `enqueueElderMessage` with `source: "admin-injection"` per selected elder
+`crons.ts` cron `bus-sweep-stale-delivered` also dropped — no leases to sweep.
 
-Use cases: R&D experimentation, prompting an elder with a specific scenario while watching gameplay, sending "you are now in a debug session" cues during dev.
+## Schema migration
 
-## What goes to issue trackers
+Bundle 4 ships a clean break. The new tables are created, old tables are dropped. No data migration — production has no data in `agentCommands` / `elderHeartbeat` / `commandResults` worth preserving (the bus was never actually exercised; per the PR #560 super-swarm finding, the bootstrap secrets were never plumbed so the bus was non-functional on dev).
 
-Bundle 4 PR will include:
+## Sub-PR planning hints
 
-- `apps/server/convex/commandBus.ts` — strip queue/lease/sweep code, leave only `enqueueElderMessage` mutation + `recordToolUse` action + liveness query helpers
-- `apps/server/convex/schema.ts` — drop `agentCommands`, add `pendingMessages` + `elderActivity` + `gameSettings`
-- `packages/elder-runtime/` — strip bus polling logic, slim to watchdog + paste loop
-- `agents/shared/home-claude/settings.json` — add PostToolUse hook config
-- `agents/shared/home-claude/hooks/post-tool-use.sh` — new hook script
-- `packages/runner/` — add tick-driven reset trigger, replace user-message dispatch with `enqueueElderMessage`
-- Reset workflow — runner-side docker-exec dispatch (Option A)
-- `agents/shared/home-claude/CLAUDE.md` — remove ack-clear cheat-sheet entry, simplify memory-wipe cycle docs
-- `agents/shared/APPENDED_SYSTEM_PROMPT.md` — same
-- Tests — full review for tech debt; existing tests on the queue machinery get deleted, new tests on the simpler shape get added
+Bundle 4 likely decomposes into ~6 sub-PRs targeting `dev-phase-4-simplified-comms`:
 
-Separate (after Bundle 4):
+1. **Package renames + Convex schema migration**: `packages/runner/` → `packages/heartbeat/`, `packages/elder-runtime/` → `packages/runner/`. New tables in `packages/sdk/convex/schema.ts`. Drop the old tables + cron.
+2. **Runner core rewrite**: `packages/runner/src/main.ts` becomes the per-elder runner. Tick subscription + template selection + tmux send-keys + reset/recovery flow.
+3. **Prompt templates**: `agents/shared/runner/prompts/*.md` per the table above.
+4. **UserPromptSubmit hook**: `agents/shared/home-claude/hooks/user_prompt_submit.sh` + settings.json wiring.
+5. **Cockpit UI**: ttyd-disconnect-detection overlay with "Elder memory is being reset…" animation.
+6. **Admin injection UI panel**: dev-UI form for operator message injection. (Could split to follow-up if scope is tight.)
 
-- Issue #555 — remove `elder ack-clear` from elder CLI in `packages/agents/`
-- Dev UI panel for admin injection (separate PR in `apps/web/`)
+Stack them under `dev-phase-4-simplified-comms` per the ADR 0018 4-level branching pattern.
 
-## Open questions
+## Open items for DA round 2
 
-1. **Two pending messages for one elder — batch-paste or serialize?** Recommend serialize (one-at-a-time in insertedAt order) because Claude Code already handles stdin queuing properly. Batching would just inject extra `--- next message ---` separators that are noise.
-2. **Admin-inject rate limiting?** Probably not needed in v1. Operator is the only authorized writer to that source, and abuse from operator is operator's problem.
-3. **Liveness threshold default?** Recommend 5 minutes — elders take long Claude turns occasionally (especially during complex strategy planning), so a 30-second threshold would false-positive. 5 minutes catches dead elders without flapping.
-4. **Hook failure handling?** PostToolUse hook posts to Convex via curl. If Convex is down, the hook should fail silent so elder is unaware. Worst-case effect: liveness signal drops until Convex returns. Acceptable.
-5. **Bundle 4 vs separate ack-clear PR ordering?** Bundle 4 can land first; ack-clear is in a different package (`packages/agents/`) outside the dockerize migration scope. Sequence: Bundle 4 → ack-clear PR.
+The locked-in design above resolves the 2026-05-22 DA review's 7 CRITICAL findings. The remaining DA SHOULD-RESOLVE items get re-asked against the new shape:
 
-## Release plan
+- Poll cadence and batch semantics for the per-elder runner reading `pendingMessages`.
+- Retention/TTL for `tickSendLog`, `tickReceiveLog`, `resetEventLog` (write-heavy, grow forever otherwise).
+- Hook failure aggregate alerting (one elder's hook stops posting → operator knows).
+- Container-restart-mid-tick orientation (which template, which session JSONL).
+- Specific test plan: duplicate paste, fast-forward gap, memory-wipe-in-gap special case, hook failure, late-join.
+- Naming convention nits: `tickSendLog` vs `runnerSentTicks`, etc.
 
-**Option A (preferred):** Ship Bundle 2 + Bundle 3 release PRs to dev as they are. Open Bundle 4 immediately on top of dev. Pros: ships working code now, no rebase pain. Cons: dev briefly contains the over-engineered queue before Bundle 4 strips it.
+Dispatch DA round 2 against this rewrite for sharper findings.
 
-**Option B:** Hold Bundle 2 release PR, rewrite the queue parts of PR #542 on the new shape, ship Bundle 2 with the simpler design from the start. Pros: never ships the over-engineered version. Cons: significant rework of Bundle 2 PR #542's design, weeks of delay.
+---
 
-Liam's call (voice 16713): Option A. Watch closely for tech debt in the test files during Bundle 4 — the queue-machinery tests need to be deleted cleanly, not left as dead helpers.
+**Locked decisions recap** (Liam-locked 2026-05-23 PM ET, do not re-litigate):
 
-## Verification before Bundle 4 lands
-
-- Codex DA round on this design doc to catch architectural gaps before code lands
-- 3-tier swarm review on the Bundle 4 PR
-- Manual smoke test once stack is up: admin-inject a message, see it land in elder tmux, see the elder respond, see the PostToolUse hook fire and record activity in Convex
-- Reset workflow smoke: force a tick to be `T % N === 0`, observe `/clear` landing, observe reorientation message, observe elder picking up
-
-## Mental model summary
-
-The system becomes: "elders play the game by themselves; the only inbound channel from the operator is text injection; the only outbound signal the operator can read is the hook-driven tool-use log; the runner manages tick + reset cadence deterministically from world tick number."
-
-Elders are autonomous, harshly time-bound, and have to be strategic about their own state preservation. The infrastructure is dumb fire-and-forget plumbing.
+1. Heartbeat container = dumb chain submitter, package rename `packages/runner/` → `packages/heartbeat/`.
+2. Per-elder runner inside elder container, package rename `packages/elder-runtime/` → `packages/runner/`.
+3. Reset = kill-tmux + spawn-fresh + `claude` no `--continue` + inject first-tick. NOT `/clear`.
+4. Recovery = same flow + `claude --continue`.
+5. Cockpit UI animation overlays the ttyd disconnect window during reset.
+6. Per-elder branding via `/rename` + `/color` CC TUI slash commands keyed off `ELDER_ID`.
+7. Game settings = read-once at boot, cached, immutable. Restart-all to change.
+8. Drift detection = piggyback on per-tick read, panic on drift.
+9. Runner reacts to tick number only. Queries Convex auxiliary tables per tick for event-driven template inputs (Option B — business logic in runner, not indexer).
+10. Prompt templates on disk under `agents/shared/runner/prompts/`. Numbered prefix = alphabetical = priority. Concat multiple when applicable.
+11. Message format = `tick: <N>` + optional `<world_update name="...">...</world_update>` wraps.
+12. Two-phase commit = runner writes `tickSendLog` before paste, `UserPromptSubmit` hook writes `tickReceiveLog` after landing.
+13. Restart trust = `tickReceiveLog` is authoritative. Re-send when sent-but-not-received (Option B). Double-paste harmless.
+14. Memory-wipe-in-gap = SPECIAL CASE kill-tmux fresh launch with post-memory-wipe template (Option A).
+15. One-claude-per-container = defensive fail-loud check at runner boot. No pgrep+pkill (Option B).
+16. Tick backlog collapses into restart logic (same code path).
+17. Reset event logging = observability only, never gates tick processing.
+18. Admin + user message injection IS in Bundle 4 scope. Same `pendingMessages` table, separate trigger from ticks.
+19. Late-join (operator brings up new elder mid-game) reuses `07_post_memory_wipe.md` template.
+20. Container healthcheck = three-part: runner alive + tmux alive + exactly one claude alive.
