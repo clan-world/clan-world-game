@@ -38,7 +38,7 @@ agents/
 
 ## Dev workflow
 
-1. Copy each `elder-N/.env.template` → `elder-N/.env`, fill in `ANTHROPIC_OAUTH_TOKEN` and `BUS_ELDER_SECRET`.
+1. Copy each `elder-N/.env.template` → `elder-N/.env`, fill in `CLAUDE_CODE_OAUTH_TOKEN` and `BUS_ELDER_SECRET`.
 2. `make up` — bring up all 4 elder containers + supporting services.
 3. `make status` — see container + tmux + plugin states.
 4. `make logs ELDER=elder-2` — tail one elder's run.sh + claude output.
