@@ -80,14 +80,22 @@ async function latestClock(ctx: { db: any }) {
 }
 
 async function latestReceivedTick(ctx: { db: any }, elderId: string): Promise<number | null> {
-  const rows = await ctx.db
+  // Use by_elder_tick instead of by_elder_received + take(200) + filter. The
+  // previous approach broke when 200+ whispers/special-msgs arrived between
+  // ticks: the filtered array was empty → returned null → decideRestart treated
+  // it as late_join → endless reset loop on every boot (super-swarm R1 gemini HIGH).
+  //
+  // by_elder_tick is indexed on (elderId, tickNumber). Convex orders undefined
+  // FIRST in ascending sort, so descending order puts the highest defined
+  // tickNumber first. Whisper/special-msg rows (tickNumber = undefined) sort
+  // to the tail and don't displace tick rows.
+  const latestTickRow = await ctx.db
     .query("tickReceiveLog")
-    .withIndex("by_elder_received", (q: any) => q.eq("elderId", elderId))
+    .withIndex("by_elder_tick", (q: any) => q.eq("elderId", elderId))
     .order("desc")
-    .take(200);
-  const tickRows = rows.filter((row: any) => typeof row.tickNumber === "number");
-  if (tickRows.length === 0) return null;
-  return Math.max(...tickRows.map((row: any) => row.tickNumber));
+    .first();
+  const tickNumber = latestTickRow?.tickNumber;
+  return typeof tickNumber === "number" ? tickNumber : null;
 }
 
 export const getRunnerStartupState = query({

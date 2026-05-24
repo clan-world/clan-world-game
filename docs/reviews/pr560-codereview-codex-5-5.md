@@ -1,0 +1,22 @@
+# Phase Super-Swarm Review — PR #560 (head 09f78c8) — Codex 5.5
+
+## SUMMARY
+NEEDS_FIXES. The command-bus core is mostly coherent, but the release train does not yet deliver an operable “containerized elders with centralized command bus” because the bus secrets are never bootstrapped/applied to Convex, the promised Caddy/public routing surface is absent, and several operator docs point at commands/targets that do not exist. I would not merge to main until the bootstrap/runbook seams are made executable end-to-end.
+
+## HIGH severity findings
+- `docker-compose.yml:52`, `docker-compose.yml:55`, `docker-compose.yml:57`, `docker-compose.yml:59`, `docker-compose.yml:61`, `docker-compose.yml:64`; `Makefile:6`; `.env.template:278`; `apps/server/convex/commandBus.ts:8`, `apps/server/convex/commandBus.ts:16`: the stack requires five bus/webhook secret files and Convex requires `BUS_OPERATOR_SECRET` / `BUS_ELDER_SECRET_1..4`, but there is no `bootstrap-bus-secrets` target or script in the repo, despite the template saying to generate them with `make bootstrap-bus-secrets`. A fresh `docker compose up` fails before elders start if these files are absent, and even manually created files are never pushed into the self-hosted Convex env, so every `enqueueCommand`/`claimNext` call rejects as unauthorized. Add the bootstrap target/script, generate chmod-600 files, and add a pinned helper that sets the matching Convex env vars from those files.
+
+- `README.md:254`, `.env.template:180`, `docker-compose.yml:19`, `docker-compose.yml:260`: the release brief says Bundle 3 ships dockerized Caddy v3, but this head has no Caddy service, no `host/caddy/clan-world-docker.caddy`, no `ports:` mapping for `elder-N:7681`, and no route from `app.${CLAN_WORLD_DOMAIN}`/`CADDY_HOST_PORT` to the elder ttyd endpoints. The elder containers can run internally, but the cockpit/public terminal surface is unreachable from the host/browser as shipped. Either land the Caddy/route files in this PR or remove the claims and add an explicit, tested host routing path.
+
+## MEDIUM severity findings
+- `agents/README.md:41`, `agents/shared/run.sh:47`, `docker-compose.yml:276`, `packages/elder-runtime/src/config.ts:25`: the docs and `run.sh` still tell operators to put `BUS_ELDER_SECRET` in `agents/elder-N/.env`, while the actual supervisor reads only `BUS_ELDER_SECRET_FILE` from the Docker secret mount. Following the README leaves operators thinking the bus is configured while `run.sh` warns it is disabled and the runtime ignores that env value. Remove `BUS_ELDER_SECRET` from the per-elder templates/docs or wire it deliberately as a fallback.
+
+- `docs/runbooks/self-hosted-convex.md:49`: the post-deploy env block still uses bare `convex env set`, bypassing the pinned `CONVEX_CLI_PINNED_VERSION` path enforced by `bin/deploy-convex.sh:14`. This is exactly the operator path that must set the new bus/indexer secrets on the self-hosted deployment; using a global/stale CLI can target the wrong deployment or version-skew the schema/env state. Replace with the same `npx -y convex@${CONVEX_CLI_PINNED_VERSION:-1.39.1}` wrapper, preferably via a make target.
+
+- `README.md:264`, `README.md:265`, `agents/README.md:44`, `agents/README.md:45`, `agents/README.md:46`, `Makefile:6`: the documented elder lifecycle commands (`make up`, `make pause-elder-1`, `make unpause-elder-1`, `make logs`, `make reset-elder-3`, `make wipe-elder-3`) do not exist in the shipped Makefile. That makes the migration/runbook non-executable and blocks the acceptance workflow for operating the new containers. Add the targets or change the docs to the actual `docker compose` commands that exist.
+
+## LOW severity findings
+- `packages/elder-runtime/src/main.ts:75`: the readiness file is written before the `BusClient`, `TmuxSink`, and heartbeat/poll loop have performed any Convex or tmux operation, so entrypoint health can advance to process checks even when the bus URL/secret is unusable. This is not a correctness bug once healthchecks catch process death, but a later readiness marker after a successful heartbeat or `tmux has-session` check would make failures clearer.
+
+## Cross-cutting observations
+The in-code command FSM and tmux paste path have the right shape, and `docker compose --profile dev config --quiet` parses with dummy env. I could not complete typecheck/tests in this review environment because the sandbox is read-only: `tsc --noEmit` tries to write `tsconfig.tsbuildinfo`, and Vitest failed creating temp SSR dirs.

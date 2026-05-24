@@ -63,8 +63,13 @@ else
   exit 1
 fi
 
-# 2. Start ttyd attached to the runner-created tmux session (background)
-ttyd --port "${TTYD_PORT}" --writable tmux attach-session -t "${SESSION_NAME}" &
+# 2. Start ttyd attached to the runner-created tmux session (background).
+# READ-ONLY (no --writable): operator input goes through the /api/admin/* endpoint
+# (Bundle 4 PR6), which goes through the runner's two-phase commit so receipts are
+# logged. Allowing direct terminal input would bypass tickSendLog/tickReceiveLog
+# accounting and break the runner's delivery confirmation. Super-swarm R1 codex
+# 5.5 HIGH — see docs/reviews/pr576-synthesis.md.
+ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
 TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import { requireBusOperatorSecret } from "./authShared";
 import { mutation } from "./_generated/server";
 
 const KNOWN_ELDER_IDS = new Set(["elder-1", "elder-2", "elder-3", "elder-4"]);
@@ -8,6 +9,12 @@ const UID_MAX = 200;
 
 export const recordReceive = mutation({
   args: {
+    // Bus operator secret: super-swarm R1 HIGH (3/5 cross-tier). Public mutation
+    // let any caller with the Convex URL forge tick receipts, advancing the
+    // runner past undelivered ticks. The Python hook reads BUS_OPERATOR_SECRET
+    // from its container env (mounted via Docker secret) and passes it here.
+    // Matches the auth pattern PR6's adminMessages established.
+    secret: v.string(),
     elderId: v.string(),
     prefix: v.union(v.literal("tick"), v.literal("whisper"), v.literal("special-msg")),
     tickNumber: v.optional(v.number()),
@@ -16,13 +23,13 @@ export const recordReceive = mutation({
     messagePreview: v.string(),
   },
   handler: async (ctx, args) => {
+    requireBusOperatorSecret(args.secret);
+
     if (!KNOWN_ELDER_IDS.has(args.elderId)) {
       throw new Error(`unknown elderId: ${args.elderId}`);
     }
 
     // Exactly one id field must match the prefix; others must be absent.
-    // Defends the public mutation against malformed callers (the hook is well-behaved,
-    // but the endpoint is unauthenticated — see docs/design/bundle-4-simplified-communications.md).
     if (args.prefix === "tick") {
       if (args.tickNumber === undefined) {
         throw new Error(`prefix=tick requires tickNumber`);
@@ -50,8 +57,12 @@ export const recordReceive = mutation({
     const whisperUid = args.whisperUid?.slice(0, UID_MAX);
     const specialMsgUid = args.specialMsgUid?.slice(0, UID_MAX);
 
+    // Strip secret before inserting — never persist auth material.
+    const { secret: _secret, ...rest } = args;
+    void _secret;
+
     return await ctx.db.insert("tickReceiveLog", {
-      ...args,
+      ...rest,
       whisperUid,
       specialMsgUid,
       messagePreview,

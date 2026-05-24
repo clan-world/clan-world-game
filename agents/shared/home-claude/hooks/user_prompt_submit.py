@@ -99,14 +99,44 @@ def parse_receipt(prompt: str) -> dict[str, Any] | None:
     }
 
 
+def _read_bus_operator_secret() -> str | None:
+    """Read the bus operator secret either from BUS_OPERATOR_SECRET (raw env)
+    or BUS_OPERATOR_SECRET_FILE (Docker secret mount path). The runner container
+    typically uses the file path convention; supporting both keeps the hook
+    portable across local dev + container runtimes.
+
+    Added in Bundle 4 R1 polish — super-swarm flagged the prior unauthenticated
+    public mutation as a HIGH (forged tick receipts → false delivery confirmation).
+    """
+    raw = os.environ.get("BUS_OPERATOR_SECRET")
+    if raw:
+        return raw
+    path = os.environ.get("BUS_OPERATOR_SECRET_FILE")
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError as exc:
+        log(f"failed to read BUS_OPERATOR_SECRET_FILE={path}: {exc}")
+        return None
+
+
 def record_receipt(args: dict[str, Any]) -> None:
     elder_id = os.environ.get("ELDER_ID")
     convex_url = os.environ.get("CONVEX_DEPLOY_URL")
+    secret = _read_bus_operator_secret()
     if not elder_id:
         log("ELDER_ID is not set; skipping receive log")
         return
     if not convex_url:
         log("CONVEX_DEPLOY_URL is not set; skipping receive log")
+        return
+    if not secret:
+        log(
+            "BUS_OPERATOR_SECRET (or _FILE) is not set; skipping receive log. "
+            "The runner's resend cap will eventually surface a HOOK_FAILURE."
+        )
         return
 
     try:
@@ -115,7 +145,7 @@ def record_receipt(args: dict[str, Any]) -> None:
         log(f"failed to import convex SDK: {exc}")
         return
 
-    payload = {"elderId": elder_id, **args}
+    payload = {"secret": secret, "elderId": elder_id, **args}
     client = ConvexClient(convex_url)
     client.mutation(MUTATION_NAME, payload)
 
