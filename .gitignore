@@ -199,7 +199,8 @@ docs/planning/V1/
 # Makefile targets generate them at runtime.
 agents/runtime/
 agents/.env
-agents/.docker-mounts/
+agents/.docker-mounts/*
+!agents/.docker-mounts/.gitkeep
 agents/backups/
 agents/secrets/
 agents/elder-*/.env

@@ -90,7 +90,7 @@ graph TD
 
 ### Locked decisions (from round 4 + earlier rounds)
 
-1. **Parallel-coexist cutover (NOT big-bang).** Stand up the compose stack in parallel with the current VPS layout on different ports. Legacy systemd units stay ENABLED AND RUNNING through Phase 2 internal smoke + Caddy cutover + a 30-minute observation window. ONLY after the 30-min coexist window validates all 10 smoke-test acceptance criteria do we disable legacy. This is the locked cutover policy — Phase 2 implements it in this order: (1) compose up on alternate ports, (2) Convex import, (3) internal smoke, (4) Caddy snippet add (additive, host caddy still routes legacy too), (5) 30-min coexist observation, (6) full smoke acceptance gate, (7) disable legacy systemd, (8) archive legacy state. If any step fails, legacy stays live and rollback is "remove the additive Caddy snippet + `docker compose down`". See Phase 2 for exact commands and the validation gate before step 7.
+1. **Parallel-coexist cutover (NOT big-bang).** Stand up the compose stack in parallel with the current VPS layout on different ports. Legacy systemd units stay ENABLED AND RUNNING through Phase 2 internal smoke + Caddy cutover + a 30-minute observation window. ONLY after the 30-min coexist window validates all 10 smoke-test acceptance criteria do we disable legacy. This is the locked cutover policy — Phase 2 implements it in this order: (1) compose up on alternate ports, (2) Convex import, (3) internal smoke, (4) cloudflared routes `app.clan-world.com` directly to the Docker Caddy loopback port, (5) 30-min coexist observation, (6) full smoke acceptance gate, (7) disable legacy systemd, (8) archive legacy state. If any step fails, legacy stays live and rollback is "remove the additive cloudflared ingress entry + `docker compose down`". See Phase 2 for exact commands and the validation gate before step 7.
 2. **Self-hosted Convex** in a separate container (backend + dashboard + SQLite). Image pin: `ghcr.io/get-convex/convex-backend:<commit-sha>` (not `:latest`), dashboard `ghcr.io/get-convex/convex-dashboard:<commit-sha>`. Admin key persisted via env var, not auto-regen.
 3. **Anvil-fork container for dev RPC** — `dev` compose profile only. Prod profile points at real Base Sepolia.
 4. **One container per Elder.** v1 spins up 4 Elders. Service definition is parameterized so 12-Elder mode is a config change (the compose file uses templated YAML or a small `gen-compose.sh` that emits per-Elder service blocks from a list).
@@ -103,7 +103,7 @@ graph TD
 9. **ANCIENT_WISDOM.md** auto-injected via `SessionStart` hook from per-Elder workspace.
 10. **No network egress** except an explicit allowlist (resolves Finding 4):
     - **Outbound TCP/443 allowed to:** `api.anthropic.com`, `claude.ai`, `accounts.anthropic.com`. (Codex API hosts added later under separate issue.)
-    - **Internal Docker network allowed:** the `clan-world-internal` bridge subnet (resolved at container init via `ip route | awk '/eth0/{print $1}'`). This permits container-to-container traffic to `convex-backend:3210`, `anvil-fork:8545`, `caddy:8080`, `heartbeat`, etc. without enumerating service IPs.
+    - **Internal Docker network allowed:** the `clan-world-internal` bridge subnet (resolved at container init via `ip route | awk '/eth0/{print $1}'`). This permits container-to-container traffic to `convex-backend:3210`, `anvil-fork:8545`, `caddy:80`, `heartbeat`, etc. without enumerating service IPs.
     - **Docker DNS allowed:** UDP/TCP 53 to `127.0.0.11` (Docker embedded DNS).
     - **Public DNS allowed:** UDP 53 to whatever resolver `/etc/resolv.conf` lists (needed for the Anthropic hostnames). The init script reads `/etc/resolv.conf` at startup and adds explicit rules per nameserver.
     - **DENIED by default:** GitHub, npm registry, Google, generic IPv4 internet. Image build is the ONLY time `npm install`/`apt-get` runs; runtime egress is locked down. If an agent needs npm/GitHub at runtime, file a follow-up issue (Phase 1.6 acceptance must include a test confirming this is blocked).
@@ -147,7 +147,7 @@ Trade-off: shared-base updates propagate on next container init (`make restart-e
 
 #### D. Caddy in container vs host caddy
 
-**Decision: keep host caddy authoritative, route ONLY the `${CLAN_WORLD_DOMAIN}` (i.e., `clan-world.com`) hostname to the docker Caddy.** The host caddy currently fronts pm-dobot, gstack, narrator, and other unrelated tunnels through cloudflared — we do not break those. We add ONE new server block to the host caddy that reverse-proxies `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` → `127.0.0.1:${COMPOSE_CADDY_PORT}` (we'll allocate a unique port via `port-for clan-world-docker-caddy`). Inside the container, the docker caddy handles the subroute fan-out (`/`, `/map`, `/elder-N`). Host caddy stays as the single TLS terminator + cloudflared peer; docker caddy is path-routing-only on plain HTTP inside the compose network. This minimizes the blast radius if the docker stack misbehaves: nothing about pm-dobot or narrator goes through the docker Caddy.
+**Decision: keep host caddy authoritative for unrelated shared-host routes, but route `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` directly from cloudflared to Docker Caddy.** The host caddy currently fronts pm-dobot, gstack, narrator, and other unrelated tunnels through cloudflared — we do not break those. We add ONE new cloudflared ingress entry for `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` → `http://127.0.0.1:${CADDY_HOST_PORT:-58731}`. Inside the container, Docker Caddy handles the subroute fan-out (`/`, `/map`, `/elder-N`). This avoids editing host Caddy for ClanWorld app routing while keeping the blast radius narrow if the docker stack misbehaves.
 
 #### E. `settings.local.json` writable by Elders?
 
@@ -288,77 +288,50 @@ Each sub-issue below is sized for one PR. Filed sequentially as GH issues #339 t
 
 ### Phase 1.5 — Caddy container with subroute config
 
-**Scope.** Define the `caddy` compose service running `caddy:2-alpine`. Caddyfile provides the path-routing fan-out: `/elder-N` → `elder-N:7681` (ttyd, with WS upgrade), `/map` → frontend container (wired in Phase 1.11), `/` → frontend (cockpit), `/convex-admin/` → `convex-dashboard:6791` with basic-auth. Caddy listens on internal `:8080` (HTTP); host caddy terminates TLS upstream and reverse-proxies plain HTTP into the container. Allocate the host-side port via `port-for clan-world-docker-caddy` (NOT hardcoded).
+**Scope.** Define the `caddy` compose service running `caddy:2-alpine`. Caddyfile provides the path-routing fan-out: `/elder-N` → `elder-N:7681` (ttyd, with WS upgrade), `/map` → `CLAN_WORLD_WEB_UPSTREAM`, and `/` → `CLAN_WORLD_WEB_UPSTREAM`. Docker Caddy listens on container `:80` and publishes `127.0.0.1:${CADDY_HOST_PORT:-58731}:80`. On the VPS, cloudflared routes `app.clan-world.com` directly to that loopback port; host Caddy is not in the ClanWorld app path.
 
-**WebSocket upgrade for ttyd (Finding 12 fix).** ttyd uses plain HTTP/1.1 WebSocket upgrades — Caddy must explicitly enable WS upgrades and pin transport to HTTP/1.1 for the elder routes. ttyd by default serves from path `/`, so we use Caddy's `handle_path` directive to strip the `/elder-N` prefix before proxying (Finding 13 fix). Required Caddyfile snippet (canonical for `agents/caddy/Caddyfile`):
+**WebSocket upgrade for ttyd (Finding 12 fix).** ttyd uses plain HTTP/1.1 WebSocket upgrades — Caddy pins transport to HTTP/1.1 for the elder routes. ttyd by default serves from path `/`, so we use Caddy's `handle_path` directive to strip the `/elder-N` prefix before proxying (Finding 13 fix). Required Caddyfile snippet (canonical file: `agents/shared/caddy.conf`):
 
 ```caddyfile
-:8080 {
-  # WebSocket matcher (any path matching elder routes with Connection: Upgrade)
-  @ws_elder {
-    path /elder-1* /elder-2* /elder-3* /elder-4*
-    header Connection *Upgrade*
-    header Upgrade websocket
+:80 {
+  handle /healthz {
+    respond "ok" 200
   }
 
-  # ttyd routes: strip /elder-N prefix, pin transport to HTTP/1.1 (ttyd does NOT speak h2)
+  @bare_elder path /elder-1 /elder-2 /elder-3 /elder-4
+  redir @bare_elder {path}/ 308
+
   handle_path /elder-1/* {
     reverse_proxy elder-1:7681 {
-      transport http { versions h1 }
-      header_up Host {host}
-      header_up X-Real-IP {remote_host}
+      transport http { versions 1.1 }
     }
   }
+
   handle_path /elder-2/* {
-    reverse_proxy elder-2:7681 { transport http { versions h1 } }
+    reverse_proxy elder-2:7681 { transport http { versions 1.1 } }
   }
   handle_path /elder-3/* {
-    reverse_proxy elder-3:7681 { transport http { versions h1 } }
+    reverse_proxy elder-3:7681 { transport http { versions 1.1 } }
   }
   handle_path /elder-4/* {
-    reverse_proxy elder-4:7681 { transport http { versions h1 } }
-  }
-  # Also handle the bare /elder-N (no trailing slash) — redirect to /elder-N/
-  @bare_elder path /elder-1 /elder-2 /elder-3 /elder-4
-  redir @bare_elder {path}/ 301
-
-  # Convex dashboard with basic-auth (Finding 14 fix — see basic-auth lifecycle below)
-  handle_path /convex-admin/* {
-    basicauth {
-      admin {$CONVEX_DASHBOARD_BASIC_AUTH_HASH}
-    }
-    reverse_proxy convex-dashboard:6791 {
-      transport http { versions h1 }
-    }
+    reverse_proxy elder-4:7681 { transport http { versions 1.1 } }
   }
 
-  # Frontend fallthrough (wired in Phase 1.11)
-  handle /map {
-    reverse_proxy frontend:3000
+  handle /map* {
+    reverse_proxy {$CLAN_WORLD_WEB_UPSTREAM:https://clan-world-game.vercel.app}
   }
-  handle / {
-    reverse_proxy frontend:3000
-  }
-  # Long timeouts for ttyd (interactive sessions can idle for hours)
-  servers {
-    timeouts {
-      read_body 30s
-      read_header 10s
-      write 0          # 0 = no write timeout (ttyd streams)
-      idle 1h
-    }
+  handle {
+    reverse_proxy {$CLAN_WORLD_WEB_UPSTREAM:https://clan-world-game.vercel.app}
   }
 }
 ```
 
-Host caddy snippet at `host/caddy/clan-world-docker.caddy`:
-```caddyfile
-app.{$CLAN_WORLD_DOMAIN} {
-  reverse_proxy 127.0.0.1:{$CADDY_HOST_PORT} {
-    transport http { versions h1 }
-    flush_interval -1     # stream ttyd output without buffering
-  }
-}
+Cloudflared ingress entry added before the final `http_status:404` catch-all:
+```yaml
+- hostname: app.clan-world.com
+  service: http://127.0.0.1:58731
+  originRequest:
+    httpHostHeader: app.clan-world.com
 ```
 
 **Basic-auth lifecycle for `/convex-admin` (Finding 14 fix).** Hash NOT committed to repo. Generated via `make bootstrap-convex-dashboard-auth` (Phase 1.12 must include this target):
@@ -369,16 +342,15 @@ app.{$CLAN_WORLD_DOMAIN} {
 5. If the hash file is missing at Caddy startup, Caddy FAILS to start (no fail-open on auth). Acceptance: stop the file, `docker compose up caddy` fails with clear error.
 
 **Files affected.**
-- `docker-compose.yml` (UPDATE — add caddy service, mount secrets)
-- `agents/caddy/Caddyfile` (NEW — per snippet above)
-- `agents/caddy/.gitignore` (NEW — `data/`, `config/`)
-- `host/caddy/clan-world-docker.caddy` (NEW — snippet per above; **routes only `app.${CLAN_WORLD_DOMAIN}`** (Finding 15 fix — wording normalized) — NOT the bare root domain)
-- `scripts/bootstrap-convex-dashboard-auth.sh` (NEW)
-- `docs/runbooks/caddy-coexistence.md` (NEW — explains host vs docker caddy responsibilities + WS upgrade gotchas)
+- `docker-compose.yml` (UPDATE — add caddy service)
+- `agents/shared/caddy.conf` (NEW — per snippet above)
+- `agents/shared/README-caddy.md` (NEW — explains Docker Caddy, cloudflared ingress, local dev, and smoke checks)
+- `docs/runbooks/dockerize-migration-v1.md` (UPDATE — Step 8 cloudflared cutover)
+- `.env.template` (UPDATE — `CADDY_HOST_PORT`, `CLAN_WORLD_WEB_UPSTREAM` docs if needed)
 
 **Dependencies.** Phase 1.1.
 
-**Complexity.** Medium (the host caddy snippet must integrate cleanly without disturbing pm-dobot / narrator routes; WS path-strip + h1 pin is easy to get wrong).
+**Complexity.** Medium (cloudflared cutover must preserve other tunnel entries; WS path-strip + h1 pin is easy to get wrong).
 
 **Acceptance.**
 - `make up` brings caddy healthy (with elder/frontend upstreams down, expect 502 on those paths, NOT Caddy crash)
@@ -390,7 +362,7 @@ app.{$CLAN_WORLD_DOMAIN} {
 - **Path-strip test:** static asset request `GET /elder-1/static/index.css` returns the ttyd asset (proves `handle_path` strips `/elder-1` correctly).
 - `/convex-admin` returns 401 without basic-auth header; returns 200 with correct credentials.
 - `/convex-admin` fails-closed if hash file missing.
-- Host caddy snippet placed via the deploy-host-caddy-snippet runbook does NOT break any existing tunnel (verify by hitting pm-dobot, narrator, etc. — explicit hostname-by-hostname test).
+- Cloudflared ingress added for `app.clan-world.com` does NOT break any existing tunnel (verify by hitting cockpit and one unrelated tunnel after restart).
 
 ---
 
@@ -845,7 +817,7 @@ Define the `dev` vs `prod` compose profile semantics in `docker-compose.dev.yml`
 3. Stand up self-hosted (`make up PROFILE=prod`), confirm backend healthy, schema deploys cleanly.
 4. Hosted→self-hosted import via `npx convex import --replace-all`. Compare schema fingerprints (before vs after). If diverged, abort and run targeted migration script (none expected for v1; document the migration-script slot for future use).
 5. Swap deploy targets in `apps/web/.env`, redeploy Vercel for the `web` app.
-6. Deploy host Caddy snippet (additive, with pre-edit backup).
+6. Add cloudflared ingress for `app.clan-world.com` → Docker Caddy loopback port.
 7. 30-min coexist observation.
 8. Validation gate (`make smoke-test`).
 9. Disable legacy systemd + cron.
@@ -933,20 +905,23 @@ Schema migration: v2.8.4 hosted → self-hosted backend at pinned commit SHA —
 
 Run the 10-criterion smoke acceptance list below against the compose stack via its alternate-port URLs (e.g., `http://localhost:${CADDY_HOST_PORT}/`). Legacy is still live on its own routes; do NOT touch host caddy yet. If any criterion fails, fix in-place; legacy is unaffected.
 
-### Step 4 — Add additive host-caddy snippet (legacy STILL routed too)
+### Step 4 — Add additive cloudflared ingress (legacy STILL routed too)
 
 ```bash
-# Back up the existing /etc/caddy/Caddyfile before any edit (Finding 45 fix)
-sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-dockerize-$(date +%Y%m%d-%H%M%S)
-sudo caddy validate --config /etc/caddy/Caddyfile
+# Back up the existing cloudflared config before any edit.
+sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m%d%H%M%S)
 
-# Add the docker-caddy reverse-proxy snippet (DOES NOT touch existing blocks)
-sudo cp host/caddy/clan-world-docker.caddy /etc/caddy/snippets/
-sudo cat host/caddy/clan-world-docker.caddy | sudo tee -a /etc/caddy/Caddyfile  # OR include via import directive
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo caddy reload --config /etc/caddy/Caddyfile
+# Insert the app.clan-world.com ingress BEFORE the final http_status:404 catch-all:
+# - hostname: app.clan-world.com
+#   service: http://127.0.0.1:58731
+#   originRequest:
+#     httpHostHeader: app.clan-world.com
+sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
+sudo systemctl restart cloudflared
+curl -fsS https://app.clan-world.com/healthz | grep -q '^ok$' || { echo 'ERROR: healthz did not return ok'; exit 1; }
+curl -fsS -o /dev/null https://cockpit.clan-world.com
 
-# Verify pm-dobot, narrator, gstack still resolve
+# Verify unrelated tunnels still resolve
 for tunnel in pm-dobot narrator gstack; do
   curl -sf "https://${tunnel}.${BASE_DOMAIN}/health" > /dev/null && echo "$tunnel OK" || echo "$tunnel FAIL"
 done
@@ -961,7 +936,7 @@ For 30 minutes, observe BOTH stacks. Operator may use `https://app.clan-world.co
 Coexist observation gate (all must hold for full 30 min):
 - New stack `make status` shows all containers healthy throughout
 - New stack `tickClock.tick` in self-hosted Convex advances each time legacy heartbeat fires (via the new webhook — proves Convex is mirroring)
-- No new tunnel/route errors in `/var/log/caddy/access.log` for non-clan-world hosts
+- No new tunnel/route errors in cloudflared logs for non-clan-world hosts
 - `curl https://app.clan-world.com/map` and `/elder-1` work (WS upgrade verified per Finding 12)
 
 ### Step 6 — Validation gate (explicit pass/fail before step 7)
@@ -1021,11 +996,11 @@ make down                                                     # only the new sta
 # No host state changed yet. Legacy frontend still points at hosted Convex via Vercel env. Investigate import error.
 # To wipe and retry: docker compose down -v && make up && retry import
 
-# If step 4 (Caddy snippet add) fails:
-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo caddy reload --config /etc/caddy/Caddyfile
-# pm-dobot, narrator, gstack now back on pre-snippet config.
+# If step 4 (cloudflared ingress add) fails:
+sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml
+sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
+sudo systemctl restart cloudflared
+# pm-dobot, narrator, gstack now back on pre-ingress config.
 
 # If step 5 (coexist) reveals interference:
 make pause                                                     # pause all new-stack runners + heartbeat
@@ -1056,9 +1031,9 @@ systemctl --user enable --now clanworld-runner.service
 for n in 1 2 3 4; do systemctl --user enable --now ttyd-elder-${n}.service; done
 # Restore legacy heartbeat cron
 crontab -e   # re-add: */1 * * * * /home/claude/bin/start-heartbeat-loop.sh
-# Restore host Caddy
-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile
-sudo caddy reload --config /etc/caddy/Caddyfile
+# Restore cloudflared config
+sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml
+sudo systemctl restart cloudflared
 # Stop new stack
 make down
 ```
@@ -1070,7 +1045,7 @@ These are executed programmatically by `make smoke-test` (Phase 1.12). The valid
 1. **All four Elder containers alive.** `docker compose ps` shows `elder-1` ... `elder-4` in `healthy` state. Each container hosts 3 processes (ttyd + tmux + supervisor) — verified by `docker compose exec elder-N pgrep -fa <name>`. Healthchecks (Finding 47 fix) are explicit in compose:
    - elders: `healthcheck.test: ["CMD-SHELL", "tmux has-session -t elder-${N} && pgrep -f /opt/elder-runtime/main.js"]`
    - convex-backend: `healthcheck.test: ["CMD", "curl", "-f", "http://localhost:3210/health"]`
-   - caddy: `healthcheck.test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]`
+   - caddy: `healthcheck.test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]`
    - heartbeat: derived from last successful webhook timestamp via a small `healthcheck.sh`
 2. **Heartbeat ticking AND single-caller.** `tickClock.tick` in self-hosted Convex advances by 1 every ~60s; legacy heartbeat cron is absent (Finding 29 fix — preflight). Verified by `make logs SERVICE=heartbeat` showing single-caller preflight passing and chain-network assertion green.
 3. **Convex receiving events with correct payload.** Inserting a manual `enqueueCommand` from the dashboard or CLI (with `BUS_OPERATOR_SECRET`) lands in the correct elder's tmux scrollback within 5s. Webhook payload matches the AGENTS.md shape (`{chain, engineAddress, txHash, firedAtTs, source}`; no `tick`).
@@ -1168,20 +1143,14 @@ Phase 2 cutover requires Liam approval (it touches production-adjacent VPS state
 
 **R3. Caddy coexistence breaks pm-dobot / narrator tunnels.**
 *Likelihood:* low (the docker caddy is path-scoped to one hostname).
-*Impact:* high (other agents unreachable, including the orchestrator's own bot).
-*Mitigation:* Phase 1.5 requires explicit verification that the host caddy reload does NOT change behavior for any other Caddy server block. Test by hitting each non-clan-world endpoint before and after.
-*Rollback (Finding 45 fix — `/etc/caddy/Caddyfile` is NOT in this repo's git history; corrected procedure):*
+*Impact:* medium (cloudflared restart briefly drops all tunnels).
+*Mitigation:* Phase 1.5 requires explicit verification that the cloudflared restart does NOT strand existing tunnels. Test by hitting `cockpit.clan-world.com` and at least one unrelated endpoint after restart.
+*Rollback:*
 ```bash
-# Before any /etc/caddy/Caddyfile edit, create a timestamped backup:
-sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-dockerize-$(date +%Y%m%d-%H%M%S)
-sudo caddy validate --config /etc/caddy/Caddyfile
-
-# Rollback:
-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile
-sudo caddy validate --config /etc/caddy/Caddyfile
-sudo caddy reload --config /etc/caddy/Caddyfile
+sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml
+sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
+sudo systemctl restart cloudflared
 ```
-The host-caddy snippet is in this repo at `host/caddy/clan-world-docker.caddy`, but `/etc/caddy/Caddyfile` itself is NOT — it has host-specific content (other tunnels) that must NOT be reverted via git. Always use the timestamped-backup approach.
 
 **R4. Iptables init bricks the container's outbound to Anthropic.**
 *Likelihood:* medium (firewall scripts often miss DNS or have ordering bugs).
@@ -1216,13 +1185,12 @@ cd ~/code/clan-world/clan-world-game
 make down PROFILE=dev 2>/dev/null || docker compose down -v
 docker volume ls --format '{{.Name}}' | grep '^clan-world_' | xargs -r docker volume rm
 
-# 2. Remove host caddy snippet if it was deployed
-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile 2>/dev/null || \
-  echo "no pre-dockerize backup found — manually inspect /etc/caddy/Caddyfile"
-sudo caddy reload --config /etc/caddy/Caddyfile
+# 2. Remove app.clan-world.com cloudflared ingress if it was deployed
+sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml 2>/dev/null || \
+  echo "no cloudflared backup found — manually inspect /etc/cloudflared/config.yml"
+sudo systemctl restart cloudflared
 
-# 3. Remove cloudflared tunnel routes that were added (keep legacy routes intact)
-# (Only run if app.clan-world.com route was added during testing AND legacy cockpit.clan-world.com is the actual prod route)
+# 3. Remove DNS tunnel routes only if DNS was created during testing
 # cloudflared tunnel route dns delete app.clan-world.com  # only if needed
 
 # 4. Remove generated secrets that were bootstrapped (these are NOT in git, so safe to remove)
@@ -1316,18 +1284,16 @@ services:
   caddy:
     image: caddy:2-alpine
     volumes:
-      - ./agents/shared/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /etc/clan-world/secrets/convex-dashboard-basicauth.hash:/run/secrets/dashboard-basicauth:ro
-    environment:
-      CONVEX_DASHBOARD_BASIC_AUTH_HASH_FILE: /run/secrets/dashboard-basicauth
+      - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
     ports:
-      - "${CADDY_HOST_PORT}:8080"
+      - "127.0.0.1:${CADDY_HOST_PORT:-58731}:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
     networks: [clan-world-internal]
-    depends_on:
-      convex-dashboard:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
