@@ -22,6 +22,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/agents/package.json packages/agents/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/contract-types/package.json packages/contract-types/package.json
+COPY packages/heartbeat/package.json packages/heartbeat/package.json
 COPY packages/runner/package.json packages/runner/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/shared/package.json packages/shared/package.json
@@ -30,8 +31,8 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-# The @clan-world/runner heartbeat script invokes tsx with
-# --env-file=../../.env.local from packages/runner. Compose supplies runtime
+# The @clan-world/heartbeat heartbeat script invokes tsx with
+# --env-file=../../.env.local from packages/heartbeat. Compose supplies runtime
 # env vars, but the file path still needs to exist in the image.
 RUN touch .env.local \
   && chmod +x agents/heartbeat/entrypoint.sh

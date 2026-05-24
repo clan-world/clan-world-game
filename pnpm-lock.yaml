@@ -350,7 +350,7 @@ importers:
 
   packages/contracts: {}
 
-  packages/elder-runtime:
+  packages/runner:
     dependencies:
       convex:
         specifier: 1.17.4
@@ -369,7 +369,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@25.6.0)(lightningcss@1.32.0)(terser@5.46.2)
 
-  packages/runner:
+  packages/heartbeat:
     dependencies:
       '@0glabs/0g-ts-sdk':
         specifier: 0.3.3

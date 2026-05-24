@@ -1,11 +1,8 @@
-> **DEPRECATED**: This package is superseded by `packages/elder-runtime/` (Phase 1.9, issue #352).
-> It will be removed in Phase 2. The elder-runtime supervisor runs inside each elder container
-> and replaces the centralized multi-elder runner daemon.
+# @clan-world/heartbeat
 
-# @clan-world/runner
-
-ClanWorld runner daemon — drives 4 Elder Claude Code sessions through the
-per-tick reasoning loop. Memory and peer-inbox layers are pluggable.
+ClanWorld heartbeat package. In Bundle 4 PR1 this is a mechanical rename of
+the old centralized runner package; PR2 will strip it down to the dumb
+heartbeat singleton.
 
 ## What it does
 
@@ -71,7 +68,7 @@ export TELEGRAM_BOT_TOKEN=...                # optional; enables heartbeat failu
 #    elder-1, elder-2, elder-3, elder-4
 
 # 3. Start the daemon:
-pnpm --filter @clan-world/runner start
+pnpm --filter @clan-world/heartbeat start
 ```
 
 ## Env vars
@@ -117,9 +114,9 @@ Install with:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp packages/runner/clanworld-runner.service ~/.config/systemd/user/
+cp packages/heartbeat/clanworld-runner.service ~/.config/systemd/user/
 mkdir -p ~/.config/clanworld-runner
-cp packages/runner/.env.example ~/.config/clanworld-runner/runner.env
+cp packages/heartbeat/.env.example ~/.config/clanworld-runner/runner.env
 chmod 600 ~/.config/clanworld-runner/runner.env
 # edit runner.env, then:
 systemctl --user daemon-reload

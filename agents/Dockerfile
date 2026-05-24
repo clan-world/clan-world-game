@@ -81,7 +81,7 @@ RUN echo "elder ALL=(root) NOPASSWD: /opt/clan-world/init-firewall.sh" > /etc/su
 # elder-runtime supervisor (Phase 1.9, issue #352).
 # Copy source + install deps as root so node_modules land in /opt/elder-runtime/node_modules
 # and are readable by the elder user. tsx resolves imports from this directory at runtime.
-COPY --chown=root:root packages/elder-runtime/ /opt/elder-runtime/
+COPY --chown=root:root packages/runner/ /opt/elder-runtime/
 RUN cd /opt/elder-runtime && npm install --omit=dev \
     && chown -R elder:elder /opt/elder-runtime
 

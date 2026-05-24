@@ -17,7 +17,6 @@ import type * as agentLogs from "../agentLogs.js";
 import type * as authShared from "../authShared.js";
 import type * as bulletins from "../bulletins.js";
 import type * as clansmen from "../clansmen.js";
-import type * as commandBus from "../commandBus.js";
 import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
@@ -51,7 +50,6 @@ declare const fullApi: ApiFromModules<{
   authShared: typeof authShared;
   bulletins: typeof bulletins;
   clansmen: typeof clansmen;
-  commandBus: typeof commandBus;
   comms: typeof comms;
   crons: typeof crons;
   events: typeof events;

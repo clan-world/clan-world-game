@@ -39,13 +39,8 @@ export function loadConfig(): ElderRuntimeConfig {
     pollIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_POLL_MS"], 5000, "ELDER_RUNTIME_POLL_MS"),
     heartbeatIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_HEARTBEAT_MS"], 30000, "ELDER_RUNTIME_HEARTBEAT_MS"),
     noncePollIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_NONCE_POLL_MS"], 2000, "ELDER_RUNTIME_NONCE_POLL_MS"),
-    // Default 240_000 (4 min) is strictly less than the command-bus LEASE_MS
-    // of 5 min so the supervisor's nonce-wait expires + failCommand fires
-    // BEFORE the Convex sweepStaleDelivered cron requeues the command. Without
-    // this margin, the sweeper re-leases the same command while the supervisor
-    // is still polling → duplicate tmux paste delivered to Claude (super-swarm
-    // R+1 finding, PR #543). If you raise this env, also raise LEASE_MS in
-    // commandBus.ts and the sweeper interval in convex/crons.ts.
+    // TODO(PR2): remove this command-bus-era timing once pendingMessages drives
+    // delivery. PR1 preserves the knob so the renamed runtime boots unchanged.
     nonceTimeoutMs: parsePositiveInt(process.env["ELDER_RUNTIME_NONCE_TIMEOUT_MS"], 240000, "ELDER_RUNTIME_NONCE_TIMEOUT_MS"),
     runScriptPath: process.env["ELDER_RUN_SCRIPT_PATH"] ?? "/opt/clan-world/shared/run.sh",
   };
