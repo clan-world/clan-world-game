@@ -41,8 +41,16 @@ async function main(): Promise<void> {
         if (aux.pendingMessages.length > 0) await handlePendingMessages(deps, aux);
         continue;
       }
-      await handleAuxiliaryUpdate(deps, aux);
-      lastTickDelivered = aux.tickClock.tick;
+      const result = await handleAuxiliaryUpdate(deps, aux);
+      // Only advance the "delivered" cursor on confirmed receipt — if the
+      // hook didn't write tickReceiveLog within the resend cap, the next
+      // tick subscription wake-up will see this tick still un-delivered and
+      // retry via the regular path (including any bundled pendingMessages).
+      // Without this guard, lastTickDelivered ratchets past unconfirmed
+      // ticks and the within-tick retry path is bypassed (tier-1 MED).
+      if (result.confirmed) {
+        lastTickDelivered = aux.tickClock.tick;
+      }
     }
   } finally {
     started.flock.release();

@@ -12,7 +12,18 @@ export function decideRestart(input: RestartDecisionInput): RestartDecision {
   if (input.lastReceivedTick === null) {
     return { kind: "reset", caseName: "D", reason: "late_join" };
   }
-  if (input.wipeMarkerTick === input.currentTick) {
+  // If a wipe marker is present at or beyond what we've already received,
+  // we crashed mid-reset and must replay it. Strict equality (was:
+  // === currentTick) missed the case where a tick advances between the
+  // crash and the restart for manual / late_join reasons that aren't
+  // aligned to memoryWipeTickInterval. Modulo-aligned scheduled wipes
+  // were still caught by containsMemoryWipeTick below, but non-aligned
+  // ticks slipped through and led to `claude --continue` launching with
+  // pre-wipe memory. The wider check rescues both.
+  if (
+    input.wipeMarkerTick !== null &&
+    input.wipeMarkerTick >= input.lastReceivedTick
+  ) {
     return { kind: "reset", caseName: "D", reason: "memory_wipe_gap" };
   }
 
