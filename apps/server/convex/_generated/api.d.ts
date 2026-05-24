@@ -13,11 +13,11 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as adminMessages from "../adminMessages.js";
 import type * as agentLogs from "../agentLogs.js";
 import type * as authShared from "../authShared.js";
 import type * as bulletins from "../bulletins.js";
 import type * as clansmen from "../clansmen.js";
-import type * as commandBus from "../commandBus.js";
 import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
@@ -33,9 +33,12 @@ import type * as kickstart from "../kickstart.js";
 import type * as memory from "../memory.js";
 import type * as mock from "../mock.js";
 import type * as ops from "../ops.js";
+import type * as resetEvents from "../resetEvents.js";
 import type * as resetLock from "../resetLock.js";
 import type * as retention from "../retention.js";
+import type * as runner from "../runner.js";
 import type * as runnerStatus from "../runnerStatus.js";
+import type * as tickReceiveLog from "../tickReceiveLog.js";
 import type * as vault from "../vault.js";
 
 /**
@@ -47,11 +50,11 @@ import type * as vault from "../vault.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  adminMessages: typeof adminMessages;
   agentLogs: typeof agentLogs;
   authShared: typeof authShared;
   bulletins: typeof bulletins;
   clansmen: typeof clansmen;
-  commandBus: typeof commandBus;
   comms: typeof comms;
   crons: typeof crons;
   events: typeof events;
@@ -67,9 +70,12 @@ declare const fullApi: ApiFromModules<{
   memory: typeof memory;
   mock: typeof mock;
   ops: typeof ops;
+  resetEvents: typeof resetEvents;
   resetLock: typeof resetLock;
   retention: typeof retention;
+  runner: typeof runner;
   runnerStatus: typeof runnerStatus;
+  tickReceiveLog: typeof tickReceiveLog;
   vault: typeof vault;
 }>;
 export declare const api: FilterApi<

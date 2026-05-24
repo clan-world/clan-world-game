@@ -3,7 +3,7 @@
 ## 0G Storage
 
 - Stores per-clan Elder memory.
-- Active code path: `packages/runner/src/zeroGMemoryStore.ts`.
+- Active code path: `packages/heartbeat/src/zeroGMemoryStore.ts`.
 - Fallback: local file memory store.
 
 ## 0G iNFT / ERC-7857

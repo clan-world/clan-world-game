@@ -1,9 +1,19 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSafeQuery as useQuery } from '../../../hooks/useSafeQuery';
+import { api } from '../../../../../server/convex/_generated/api';
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
 import {
   useTerminalFrameReconnect,
   type TerminalFrameStatus,
 } from '../../../hooks/useTerminalFrameReconnect';
+import { ElderResetOverlay } from '../ElderResetOverlay';
+import {
+  getElderResetId,
+  RESET_DETECTION_WINDOW_MS,
+  RESET_OVERLAY_FADE_MS,
+  shouldCheckForReset,
+} from '../resetOverlayState';
 
 interface Props {
   elder: ElderDef;
@@ -31,7 +41,66 @@ export function TerminalTab({ elder, testIdPrefix }: Props) {
     baseUrl: url,
     clanId: elder.clanId,
   });
-  const showOverlay = status !== 'connected';
+  const [disconnectedAt, setDisconnectedAt] = useState<number | null>(null);
+  const [resetConfirmed, setResetConfirmed] = useState(false);
+  const [resetExiting, setResetExiting] = useState(false);
+  const clearResetTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const resetCheckActive = shouldCheckForReset(status);
+  const elderResetId = useMemo(() => getElderResetId(elder.clanId), [elder.clanId]);
+  const resetQueryArgs = resetCheckActive && disconnectedAt != null
+    ? {
+        elderId: elderResetId,
+        sinceTs: disconnectedAt - RESET_DETECTION_WINDOW_MS,
+        disconnectedAt,
+      }
+    : 'skip';
+  const resetEvent = useQuery(api.resetEvents.getResetDuringDisconnect, resetQueryArgs);
+  const showResetOverlay = resetConfirmed || resetExiting;
+  const showReconnectOverlay = status !== 'connected' && !showResetOverlay;
+
+  useEffect(() => {
+    if (resetCheckActive && disconnectedAt == null) {
+      setDisconnectedAt(Date.now());
+    }
+  }, [disconnectedAt, resetCheckActive]);
+
+  useEffect(() => {
+    if (resetEvent) {
+      setResetConfirmed(true);
+    }
+  }, [resetEvent]);
+
+  useEffect(() => {
+    if (status !== 'connected') return;
+
+    setDisconnectedAt(null);
+    if (!resetConfirmed) {
+      // Either we never confirmed a reset (no exit state to clear) OR the
+      // exit-transition is already in flight (started by the previous run
+      // that flipped resetConfirmed true→false). Don't touch resetExiting
+      // here — the fade-out timer owns it. Without this guard, the effect
+      // re-runs after we set resetConfirmed=false and cancels its own fade.
+      return;
+    }
+
+    if (clearResetTimerRef.current) {
+      clearTimeout(clearResetTimerRef.current);
+    }
+    setResetExiting(true);
+    setResetConfirmed(false);
+    clearResetTimerRef.current = setTimeout(() => {
+      setResetExiting(false);
+      clearResetTimerRef.current = undefined;
+    }, RESET_OVERLAY_FADE_MS);
+  }, [resetConfirmed, status]);
+
+  useEffect(() => {
+    return () => {
+      if (clearResetTimerRef.current) {
+        clearTimeout(clearResetTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -76,10 +145,18 @@ export function TerminalTab({ elder, testIdPrefix }: Props) {
           background: '#000',
         }}
       />
-      {showOverlay && (
+      {showReconnectOverlay && (
         <TerminalReconnectOverlay
           status={status}
           testIdPrefix={testIdPrefix}
+          onReconnect={reconnectNow}
+        />
+      )}
+      {showResetOverlay && (
+        <ElderResetOverlay
+          elder={elder}
+          testIdPrefix={testIdPrefix}
+          isExiting={resetExiting}
           onReconnect={reconnectNow}
         />
       )}

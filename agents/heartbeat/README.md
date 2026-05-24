@@ -3,11 +3,11 @@
 This container runs the existing TypeScript heartbeat loop:
 
 ```bash
-pnpm --filter @clan-world/runner heartbeat
+pnpm --filter @clan-world/heartbeat heartbeat
 ```
 
 It is intentionally not a shell heartbeat loop. The container preserves the
-runner package behavior: on-chain scheduling from `nextHeartbeatAtTs`,
+heartbeat package behavior: on-chain scheduling from `nextHeartbeatAtTs`,
 `heartbeatIntervalSeconds()` observability, retry/backoff, best-effort Convex
 `runnerStatus` writes, Telegram alerts, and the Convex webhook POST.
 
@@ -32,7 +32,7 @@ Node starts.
 | `RUNNER_ID` | Stable row id for `runnerStatus`, e.g. `heartbeat-dev`. |
 
 The entrypoint exports the selected RPC URL as `RPC_URL_PRIMARY` because the
-existing runner reads `RPC_URL_PRIMARY`, not `DEV_RPC_URL` or `PROD_RPC_URL`.
+existing heartbeat process reads `RPC_URL_PRIMARY`, not `DEV_RPC_URL` or `PROD_RPC_URL`.
 It also reads `WEBHOOK_SHARED_SECRET_FILE` and exports `WEBHOOK_SHARED_SECRET`
 for the bearer-auth webhook contract.
 
@@ -51,7 +51,7 @@ compose `anvil-fork` service and viem's `baseSepolia` chain config.
 ## Healthcheck
 
 The compose healthcheck reads `/tmp/last-heartbeat-success` (path configurable
-via `HEARTBEAT_SUCCESS_FILE_OVERRIDE`). The runner writes the current Unix timestamp
+via `HEARTBEAT_SUCCESS_FILE_OVERRIDE`). The heartbeat process writes the current Unix timestamp
 there after either (a) a confirmed heartbeat transaction, OR (b) the
 receipt-timeout recovery path when on-chain
 `nextHeartbeatAtTs` is observed to have advanced (no confirmed receipt, no
@@ -66,7 +66,7 @@ the on-chain interval, update this threshold with it so the container does not
 flap unhealthy between normal ticks.
 
 This file proves heartbeat tx progress. Convex ingest can still fail
-independently; webhook and `runnerStatus` failures are logged by the runner and
+independently; webhook and `runnerStatus` failures are logged by the heartbeat process and
 treated as non-fatal.
 
 ## Restart Policy

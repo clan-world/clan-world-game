@@ -1,0 +1,2581 @@
+diff --git a/.env.template b/.env.template
+index 2e36ecd1..998c4c24 100644
+--- a/.env.template
++++ b/.env.template
+@@ -176,16 +176,15 @@ RUNNER_SETTLE_WINDOW_SEC=10
+ # (Phase 1.12, issue #355). DO NOT put raw secret bytes in .env — the
+ # compose file references file paths via the `secrets:` block.
+ 
+-# --- Domain + Caddy host port ---
+-# Hostname suffix used by the host caddy snippet in host/caddy/clan-world-docker.caddy
+-# (added in Phase 1.5, issue #348). Default values bind the stack to
+-# app.clan-world.com via cloudflared.
++# --- Domain + Docker Caddy host port ---
++# Domain metadata for operator runbooks. Docker Caddy itself listens on :80
++# inside the compose network and does not need hostname-specific site blocks.
+ CLAN_WORLD_DOMAIN=clan-world.com
+ TLD_APP_SUBDOMAIN=app
+-# Host port the docker caddy listens on; the host (system-level) caddy
+-# reverse-proxies app.${CLAN_WORLD_DOMAIN} -> 127.0.0.1:${CADDY_HOST_PORT}.
+-# Canonical allocation via .world/ports.yml (purpose: clan-world-docker-caddy,
+-# frontend prod sub-band). 58731 falls in 587xx slot's prod sub-band (10-39).
++# Loopback port published by the Docker Caddy service. Prod VPS cloudflared
++# routes app.${CLAN_WORLD_DOMAIN} directly to http://127.0.0.1:${CADDY_HOST_PORT}.
++# Local dev can set CADDY_HOST_PORT=8080 and open http://127.0.0.1:8080 with no
++# host Caddy or cloudflared.
+ CADDY_HOST_PORT=58731
+ 
+ # --- Chain selection (REQUIRED — heartbeat preflight asserts this) ---
+diff --git a/.gitignore b/.gitignore
+index 222536c1..855db2de 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -199,7 +199,8 @@ docs/planning/V1/
+ # Makefile targets generate them at runtime.
+ agents/runtime/
+ agents/.env
+-agents/.docker-mounts/
++agents/.docker-mounts/*
++!agents/.docker-mounts/.gitkeep
+ agents/backups/
+ agents/secrets/
+ agents/elder-*/.env
+diff --git a/.world/ports.yml b/.world/ports.yml
+index 0a2c9730..f7a6d56a 100644
+--- a/.world/ports.yml
++++ b/.world/ports.yml
+@@ -67,4 +67,4 @@ purposes:
+   - name: clan-world-docker-caddy
+     type: frontend
+     env: prod
+-    canonical: 58731   # host caddy reverse-proxies app.clan-world.com -> 127.0.0.1:58731 -> docker caddy (Phase 1.5 #348)
++    canonical: 58731   # cloudflared routes app.clan-world.com -> 127.0.0.1:58731 -> docker caddy (Phase 1.5 #348)
+diff --git a/README.md b/README.md
+index aa4c3ac4..44fa6e80 100644
+--- a/README.md
++++ b/README.md
+@@ -251,9 +251,11 @@ docker compose --profile prod config   # validates prod topology
+ > (`tsx --env-file=.env.local`, runbooks, etc.). `.env` is gitignored too
+ > but `.env.local` matches existing conventions.
+ 
+-Caddy is intentionally NOT a compose service — the host caddy stays
+-authoritative and reverse-proxies `app.${CLAN_WORLD_DOMAIN}` to
+-`127.0.0.1:${CADDY_HOST_PORT}` (see the host caddy snippet added in #348).
++ClanWorld's public app router is the compose `caddy` service. It publishes
++`127.0.0.1:${CADDY_HOST_PORT:-58731}:80`, routes `/elder-N/` to Docker-internal
++Elder ttyd services, and proxies `/` plus `/map` to `CLAN_WORLD_WEB_UPSTREAM`.
++On the VPS, cloudflared routes `app.${CLAN_WORLD_DOMAIN}` directly to that
++loopback port; host Caddy continues serving unrelated hostnames.
+ 
+ **Bring-up + per-Elder lifecycle** is fronted by `agents/Makefile`, which
+ ships in [#355](https://github.com/clan-world/clan-world-game/issues/355).
+diff --git a/agents/.docker-mounts/.gitkeep b/agents/.docker-mounts/.gitkeep
+new file mode 100644
+index 00000000..fd260342
+--- /dev/null
++++ b/agents/.docker-mounts/.gitkeep
+@@ -0,0 +1,11 @@
++# agents/.docker-mounts/
++#
++# Populated by `make link-mounts`. The Makefile runs a helper busybox
++# container that snapshots each elder's named volumes (`elder-N-workspace`,
++# `elder-N-home`) into this directory with the operator's UID, so the
++# contents are readable WITHOUT sudo and inspectable from anywhere in the
++# repo via `ls agents/.docker-mounts/elder-1-workspace/`.
++#
++# Trade-off: snapshots get stale — re-run `make link-mounts` to refresh.
++# All contents under this directory are gitignored (only this .gitkeep is
++# tracked).
+diff --git a/agents/.gitignore b/agents/.gitignore
+index ae4f88f2..8dcc075b 100644
+--- a/agents/.gitignore
++++ b/agents/.gitignore
+@@ -5,5 +5,8 @@ runtime/
+ .env
+ elder-*/.env
+ 
+-# Docker-compose symlink helper dir (created by `make link-mounts`)
+-.docker-mounts/
++# Docker-compose helper-container snapshot dir (populated by `make link-mounts`).
++# The directory is checked in (via .gitkeep) so operators see it without
++# needing to run link-mounts first, but all snapshot contents are gitignored.
++.docker-mounts/*
++!.docker-mounts/.gitkeep
+diff --git a/agents/Makefile b/agents/Makefile
+new file mode 100644
+index 00000000..bb10cd98
+--- /dev/null
++++ b/agents/Makefile
+@@ -0,0 +1,354 @@
++# agents/Makefile - ClanWorld Elder Infrastructure operator entrypoint
++#
++# Issue #355 (Phase 1.12). Codifies operator-facing lifecycle, bootstrap,
++# wipe, and smoke-test targets for the dockerized elder stack. The compose
++# project name is `clan-world` (declared in docker-compose.yml), so volumes
++# created by compose are prefixed `clan-world_*`.
++#
++# PROFILE is REQUIRED on every state-mutating target. No default - fail loud.
++# On the VPS, almost certainly PROFILE=prod.
++#
++# Run from the repo root: `make -C agents <target> PROFILE=dev|prod`
++# Or `cd agents && make <target> PROFILE=...`
++#
++# All paths in compose-volume names + secrets files are relative to the
++# REPO ROOT (the parent of this Makefile), because docker-compose.yml lives
++# at the repo root and `docker compose` is invoked from there.
++
++SHELL := /usr/bin/env bash
++
++REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
++COMPOSE   := docker compose
++DC        := cd $(REPO_ROOT) && $(COMPOSE)
++
++ELDERS := elder-1 elder-2 elder-3 elder-4
++ELDER_NUMS := 1 2 3 4
++
++PROFILE ?=
++LEVEL ?= session
++
++CONVEX_CLI_PINNED_VERSION ?= 1.39.1
++CONVEX_SELF_HOSTED_ADMIN_KEY_FILE ?= agents/secrets/convex-admin.key
++WEBHOOK_SHARED_SECRET_FILE ?= agents/secrets/webhook-shared.key
++BUS_OPERATOR_SECRET_FILE ?= agents/secrets/bus-operator.key
++BUS_ELDER_SECRET_FILE_1 ?= agents/secrets/bus-elder-1.key
++BUS_ELDER_SECRET_FILE_2 ?= agents/secrets/bus-elder-2.key
++BUS_ELDER_SECRET_FILE_3 ?= agents/secrets/bus-elder-3.key
++BUS_ELDER_SECRET_FILE_4 ?= agents/secrets/bus-elder-4.key
++
++.PHONY: help \
++        check-profile confirm-banner setup \
++        up down status logs \
++        pause unpause \
++        pause-heartbeat unpause-heartbeat \
++        reset-anvil \
++        link-mounts \
++        bootstrap-convex-admin-key bootstrap-bus-secrets bootstrap-convex-dashboard-auth \
++        oauth-bootstrap \
++        smoke-test build FORCE
++
++FORCE:
++
++help:
++	@echo "ClanWorld Elder Infrastructure - agents/Makefile"
++	@echo ""
++	@echo "USAGE"
++	@echo "  make <target> PROFILE=dev|prod"
++	@echo ""
++	@echo "  PROFILE is required for compose lifecycle targets: setup, up, build,"
++	@echo "  reset-anvil, and any target that starts/restarts profile-scoped services."
++	@echo "  On the VPS, use PROFILE=prod unless intentionally operating dev."
++	@echo ""
++	@echo "LIFECYCLE"
++	@echo "  setup PROFILE=...              One-time bring-up: bootstrap secrets + secret dirs"
++	@echo "  up PROFILE=...                 docker compose --profile <P> up -d (with confirmation banner)"
++	@echo "  down                           docker compose down (idempotent; no profile required)"
++	@echo "  status                         compose ps + per-elder tmux/supervisor health"
++	@echo "  logs ELDER=elder-2             tail one service"
++	@echo ""
++	@echo "PAUSE / RESUME"
++	@echo "  pause-elder-2                  SIGSTOP elder-runtime supervisor inside elder-2"
++	@echo "  unpause-elder-2                SIGCONT elder-runtime supervisor"
++	@echo "  pause                          fan-out SIGSTOP across all elders"
++	@echo "  unpause                        fan-out SIGCONT across all elders"
++	@echo "  pause-heartbeat                stop heartbeat service (coexist window)"
++	@echo "  unpause-heartbeat              start heartbeat service"
++	@echo ""
++	@echo "RESET / WIPE"
++	@echo "  reset-elder-3                  soft reset: kill tmux session, restart container"
++	@echo "  restart-elder-3                full container restart (no wipe)"
++	@echo "  wipe-elder-3 LEVEL=workspace   clear /workspace/* only, keep ~/.claude"
++	@echo "  wipe-elder-3 LEVEL=session     clear /workspace/* + ~/.claude/projects"
++	@echo "  wipe-elder-3 LEVEL=full        destroy named volumes; oauth-bootstrap required after"
++	@echo "  reset-anvil PROFILE=dev        wipe anvil fork state + restart (dev only)"
++	@echo ""
++	@echo "BOOTSTRAP (one-time per stack - re-run with FORCE=1 to overwrite)"
++	@echo "  bootstrap-convex-admin-key     generate + persist Convex admin key (chmod 0600)"
++	@echo "  bootstrap-bus-secrets          generate bus/webhook secrets and set Convex BUS_* envs"
++	@echo "  bootstrap-convex-dashboard-auth generate reserved dashboard auth credentials"
++	@echo "  oauth-bootstrap                walk every elder through OAuth flow"
++	@echo "  oauth-bootstrap-elder-1        single-elder OAuth flow"
++	@echo ""
++	@echo "DEV HELPERS"
++	@echo "  link-mounts                    snapshot named-volume contents into agents/.docker-mounts/"
++	@echo "  smoke-test                     run end-to-end stack health check (bin/check-stack-health.sh)"
++	@echo "  build                          docker compose build for the selected profile"
++
++check-profile:
++	@if [ -z "$(PROFILE)" ]; then \
++		echo "ERROR: PROFILE=dev|prod required. On VPS, almost certainly PROFILE=prod." >&2; \
++		exit 1; \
++	fi
++	@if [ "$(PROFILE)" != "dev" ] && [ "$(PROFILE)" != "prod" ]; then \
++		echo "ERROR: PROFILE must be dev or prod (got: $(PROFILE))" >&2; \
++		exit 1; \
++	fi
++
++confirm-banner: check-profile
++	@echo "===================================="
++	@echo " ClanWorld stack bring-up"
++	@echo " PROFILE:        $(PROFILE)"
++	@echo " CHAIN_NETWORK:  $${CHAIN_NETWORK:-<unset>}"
++	@if [ "$(PROFILE)" = "dev" ]; then \
++		echo " RPC URL:        $${DEV_RPC_URL:-<unset - anvil-fork will be used>}"; \
++	else \
++		echo " RPC URL:        $${RPC_URL_PRIMARY:-<unset - bring-up WILL fail>}"; \
++	fi
++	@echo " Contract:       $${CLAN_WORLD_CONTRACT_ADDRESS:-<unset>}"
++	@echo " Convex:         $${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:$${CONVEX_BACKEND_HOST_PORT:-3210}}"
++	@echo "===================================="
++
++setup: check-profile
++	@echo "[setup] bootstrapping ClanWorld stack for PROFILE=$(PROFILE)"
++	@mkdir -p $(REPO_ROOT)/agents/secrets
++	@chmod 0700 $(REPO_ROOT)/agents/secrets
++	$(MAKE) bootstrap-convex-admin-key PROFILE=$(PROFILE) FORCE=$(FORCE)
++	$(MAKE) bootstrap-bus-secrets PROFILE=$(PROFILE) FORCE=$(FORCE)
++	@echo "[setup] done."
++	@echo "[setup] Next:"
++	@echo "  1. make oauth-bootstrap                  # per-elder OAuth credentials"
++	@echo "  2. make up PROFILE=$(PROFILE)            # spin up the stack"
++	@echo "  3. make smoke-test                       # verify all green"
++
++up: confirm-banner
++	$(DC) --profile $(PROFILE) up -d
++
++down:
++	$(DC) down
++
++status: check-profile
++	@$(DC) --profile $(PROFILE) ps
++	@echo "---"
++	@for e in $(ELDERS); do \
++		$(DC) --profile $(PROFILE) ps $$e; \
++		echo -n "$$e tmux:       "; \
++		if $(DC) --profile $(PROFILE) exec -T $$e tmux has-session -t $$e 2>/dev/null; then \
++			echo OK; \
++		else \
++			echo "WARN session missing"; \
++		fi; \
++		echo -n "$$e supervisor: "; \
++		$(DC) --profile $(PROFILE) exec -T $$e pgrep -f 'tsx.*elder-runtime/src/main.ts' > /dev/null 2>&1 \
++			&& echo OK || echo DEAD; \
++	done
++
++logs:
++	@if [ -z "$(ELDER)" ]; then \
++		echo "ERROR: ELDER=<service-name> required (e.g. ELDER=elder-2 or ELDER=heartbeat)" >&2; \
++		exit 1; \
++	fi
++	$(DC) logs -f $(ELDER)
++
++pause-elder-%: FORCE
++	@PID=$$($(DC) exec -T elder-$* pgrep -f 'tsx.*elder-runtime/src/main.ts' 2>/dev/null | head -1); \
++	if [ -z "$$PID" ]; then \
++		echo "[pause-elder-$*] no supervisor process running - already paused or stopped"; \
++	else \
++		$(DC) exec -T elder-$* kill -STOP "$$PID" && echo "[pause-elder-$*] SIGSTOP sent to PID $$PID"; \
++	fi
++
++unpause-elder-%: FORCE
++	@PID=$$($(DC) exec -T elder-$* pgrep -f 'tsx.*elder-runtime/src/main.ts' 2>/dev/null | head -1); \
++	if [ -z "$$PID" ]; then \
++		echo "[unpause-elder-$*] no supervisor process running - already unpaused or stopped"; \
++	else \
++		$(DC) exec -T elder-$* kill -CONT "$$PID" && echo "[unpause-elder-$*] SIGCONT sent to PID $$PID"; \
++	fi
++
++pause:
++	@for n in $(ELDER_NUMS); do $(MAKE) pause-elder-$$n || true; done
++
++unpause:
++	@for n in $(ELDER_NUMS); do $(MAKE) unpause-elder-$$n || true; done
++
++pause-heartbeat:
++	$(DC) stop heartbeat
++
++unpause-heartbeat:
++	$(DC) start heartbeat
++
++reset-%: FORCE
++	-$(DC) exec -T $* tmux kill-session -t $* 2>/dev/null || true
++	$(DC) up -d --force-recreate $*
++
++restart-%: FORCE
++	$(DC) restart $*
++
++wipe-%: FORCE
++	@if [ "$(LEVEL)" = "workspace" ]; then \
++		echo "[wipe] $* LEVEL=workspace - clearing /workspace/*"; \
++		$(DC) exec -T $* sh -c 'rm -rf /workspace/*' || exit 1; \
++		$(MAKE) reset-$*; \
++	elif [ "$(LEVEL)" = "session" ]; then \
++		echo "[wipe] $* LEVEL=session - clearing /workspace/* + ~/.claude/projects"; \
++		$(DC) exec -T $* sh -c 'rm -rf /home/elder/.claude/projects /workspace/*' || exit 1; \
++		$(DC) exec -T $* sh -c 'if [ -f /opt/clan-world/shared/elder-bootstrap/workspace-CLAUDE.md ]; then cp /opt/clan-world/shared/elder-bootstrap/workspace-CLAUDE.md /workspace/CLAUDE.md; fi' || true; \
++		$(DC) exec -T $* sh -c 'if [ -f /opt/clan-world/shared/elder-bootstrap/workspace-ANCIENT_WISDOM.md ]; then cp /opt/clan-world/shared/elder-bootstrap/workspace-ANCIENT_WISDOM.md /workspace/ANCIENT_WISDOM.md; fi' || true; \
++		$(MAKE) reset-$*; \
++	elif [ "$(LEVEL)" = "full" ]; then \
++		echo "[wipe] $* LEVEL=full - destroying named volumes (compose project: clan-world)"; \
++		$(DC) stop $* || true; \
++		$(DC) rm -f $* || true; \
++		docker volume rm clan-world_$*-home clan-world_$*-workspace 2>/dev/null || true; \
++		echo "[wipe] $* FULL WIPE done."; \
++		echo "[wipe] NEXT: run \`make oauth-bootstrap-$*\` BEFORE \`make up\`; volumes will be recreated empty."; \
++	else \
++		echo "ERROR: LEVEL must be workspace, session, or full (got: $(LEVEL))" >&2; \
++		exit 1; \
++	fi
++
++reset-anvil: check-profile
++	@if [ "$(PROFILE)" != "dev" ]; then \
++		echo "ERROR: reset-anvil is dev-only (PROFILE=dev)" >&2; \
++		exit 1; \
++	fi
++	$(DC) --profile dev stop anvil-fork
++	-docker volume rm clan-world_anvil_data 2>/dev/null || true
++	$(DC) --profile dev up -d anvil-fork
++
++link-mounts:
++	@mkdir -p $(REPO_ROOT)/agents/.docker-mounts
++	@for e in $(ELDERS); do \
++		echo "[link-mounts] snapshotting $$e-workspace + $$e-home"; \
++		docker run --rm \
++			-v clan-world_$$e-workspace:/src-workspace:ro \
++			-v clan-world_$$e-home:/src-home:ro \
++			-v $(REPO_ROOT)/agents/.docker-mounts:/dst \
++			busybox sh -c "\
++				rm -rf /dst/$$e-workspace /dst/$$e-home && \
++				cp -a /src-workspace /dst/$$e-workspace && \
++				cp -a /src-home /dst/$$e-home && \
++				chown -R $$(id -u):$$(id -g) /dst/$$e-workspace /dst/$$e-home \
++			" || echo "[link-mounts] WARN: $$e snapshot skipped (volume may not exist yet)"; \
++	done
++	@echo "[link-mounts] snapshots at $(REPO_ROOT)/agents/.docker-mounts/"
++
++bootstrap-convex-admin-key: check-profile
++	$(MAKE) -C $(REPO_ROOT) bootstrap-convex-admin-key PROFILE=$(PROFILE) FORCE=$(FORCE) CONVEX_SELF_HOSTED_ADMIN_KEY_FILE="$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)"
++
++bootstrap-bus-secrets:
++	@set -euo pipefail; \
++	resolve_path() { case "$$1" in /*) printf '%s\n' "$$1";; *) printf '%s/%s\n' "$(REPO_ROOT)" "$$1";; esac; }; \
++	write_secret() { \
++		name="$$1"; path="$$(resolve_path "$$2")"; \
++		mkdir -p "$$(dirname "$$path")"; chmod 0700 "$$(dirname "$$path")"; \
++		if [ -s "$$path" ] && [ "$(FORCE)" != "1" ]; then \
++			echo "[bootstrap] $$path exists; skipping. Re-run with FORCE=1 to regenerate."; \
++		else \
++			openssl rand -hex 32 > "$$path"; chmod 0600 "$$path"; \
++			echo "[bootstrap] $$name generated at $$path"; \
++		fi; \
++	}; \
++	write_secret bus-operator "$(BUS_OPERATOR_SECRET_FILE)"; \
++	write_secret webhook-shared "$(WEBHOOK_SHARED_SECRET_FILE)"; \
++	write_secret bus-elder-1 "$(BUS_ELDER_SECRET_FILE_1)"; \
++	write_secret bus-elder-2 "$(BUS_ELDER_SECRET_FILE_2)"; \
++	write_secret bus-elder-3 "$(BUS_ELDER_SECRET_FILE_3)"; \
++	write_secret bus-elder-4 "$(BUS_ELDER_SECRET_FILE_4)"; \
++	admin_key_file="$$(resolve_path "$(CONVEX_SELF_HOSTED_ADMIN_KEY_FILE)")"; \
++	if [ ! -s "$$admin_key_file" ]; then \
++		echo "ERROR: $$admin_key_file not found - run bootstrap-convex-admin-key first" >&2; \
++		exit 1; \
++	fi; \
++	export CONVEX_SELF_HOSTED_ADMIN_KEY="$$(cat "$$admin_key_file")"; \
++	export CONVEX_SELF_HOSTED_URL="$${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:$${CONVEX_BACKEND_HOST_PORT:-3210}}"; \
++	unset CONVEX_DEPLOYMENT CONVEX_DEPLOY_KEY; \
++	npx -y convex@$(CONVEX_CLI_PINNED_VERSION) env set BUS_OPERATOR_SECRET "$$(cat "$$(resolve_path "$(BUS_OPERATOR_SECRET_FILE)")")"; \
++	for n in 1 2 3 4; do \
++		case "$$n" in \
++			1) file="$(BUS_ELDER_SECRET_FILE_1)" ;; \
++			2) file="$(BUS_ELDER_SECRET_FILE_2)" ;; \
++			3) file="$(BUS_ELDER_SECRET_FILE_3)" ;; \
++			4) file="$(BUS_ELDER_SECRET_FILE_4)" ;; \
++		esac; \
++		npx -y convex@$(CONVEX_CLI_PINNED_VERSION) env set BUS_ELDER_SECRET_$$n "$$(cat "$$(resolve_path "$$file")")"; \
++	done; \
++	npx -y convex@$(CONVEX_CLI_PINNED_VERSION) env set WEBHOOK_SHARED_SECRET "$$(cat "$$(resolve_path "$(WEBHOOK_SHARED_SECRET_FILE)")")"; \
++	echo "[bootstrap] bus secrets injected into Convex env (BUS_OPERATOR_SECRET, BUS_ELDER_SECRET_1..4, WEBHOOK_SHARED_SECRET)."; \
++	echo "[bootstrap] If a Convex env set failed partway through, rerun this target without FORCE=1."; \
++	echo "[bootstrap] File generation is idempotent, and Convex env sets are independent."; \
++	echo "[bootstrap] Verify all BUS_* and WEBHOOK_SHARED_SECRET values with: npx convex@$(CONVEX_CLI_PINNED_VERSION) env list"
++
++# No current compose/Caddy consumer reads this JSON; it is reserved for future
++# dashboard-local auth wiring. Do not pass password_sha512crypt to Caddy
++# basicauth; Caddy would require a bcrypt hash from `caddy hash-password`.
++bootstrap-convex-dashboard-auth:
++	@mkdir -p $(REPO_ROOT)/agents/secrets
++	@chmod 0700 $(REPO_ROOT)/agents/secrets
++	@DEST=$(REPO_ROOT)/agents/secrets/convex-dashboard-auth.json; \
++	if [ -s "$$DEST" ] && [ "$(FORCE)" != "1" ]; then \
++		echo "[bootstrap] $$DEST exists; skipping. Re-run with FORCE=1 to regenerate."; \
++		exit 0; \
++	fi; \
++	printf "Username: " >&2; \
++	read u; \
++	printf "Password: " >&2; \
++	stty -echo 2>/dev/null || true; \
++	read p; \
++	stty echo 2>/dev/null || true; \
++	echo >&2; \
++	if [ -z "$$u" ] || [ -z "$$p" ]; then \
++		echo "ERROR: username + password required" >&2; \
++		exit 1; \
++	fi; \
++	SALT="$$(openssl rand -base64 16)"; \
++	HASH=$$(printf '%s\n' "$$p" | openssl passwd -6 -stdin -salt "$$SALT" 2>/dev/null) || { echo "ERROR: openssl passwd -6 failed (LibreSSL not supported; install GNU openssl)" >&2; exit 1; }; \
++	if [ -z "$$HASH" ]; then echo "ERROR: openssl passwd -6 returned empty hash" >&2; exit 1; fi; \
++	printf '{"username":"%s","password_sha512crypt":"%s"}\n' "$$u" "$$HASH" > "$$DEST"; \
++	chmod 0600 "$$DEST"; \
++	echo "[bootstrap] convex-dashboard-auth.json saved to $$DEST"
++
++oauth-bootstrap:
++	@for n in 1 2 3 4; do $(MAKE) oauth-bootstrap-elder-$$n; done
++
++oauth-bootstrap-%: FORCE
++	@mkdir -p $(REPO_ROOT)/agents/$*
++	@DEST=$(REPO_ROOT)/agents/$*/.env; \
++	if [ -s "$$DEST" ] && [ "$(FORCE)" != "1" ]; then \
++		echo "[oauth] $$DEST already populated; skipping. Re-run with FORCE=1 to overwrite."; \
++		exit 0; \
++	fi; \
++	echo "[oauth] $* - paste CLAUDE_CODE_OAUTH_TOKEN (input hidden):" >&2; \
++	stty -echo 2>/dev/null || true; \
++	read token; \
++	stty echo 2>/dev/null || true; \
++	echo >&2; \
++	if [ -z "$$token" ]; then \
++		echo "ERROR: empty token" >&2; \
++		exit 1; \
++	fi; \
++	CLAN_ID=$$(echo "$*" | sed 's/elder-//'); \
++	{ \
++		echo "# Generated by \`make oauth-bootstrap-$*\` - do not commit."; \
++		echo "CLAUDE_CODE_OAUTH_TOKEN=$$token"; \
++		echo "ELDER_ID=$*"; \
++		echo "CLAN_ID=$$CLAN_ID"; \
++	} > "$$DEST"; \
++	chmod 0600 "$$DEST"; \
++	echo "[oauth] $* credentials saved to $$DEST"
++
++build: check-profile
++	$(DC) --profile $(PROFILE) build
++
++smoke-test:
++	bash $(REPO_ROOT)/bin/check-stack-health.sh
+diff --git a/agents/entrypoint.sh b/agents/entrypoint.sh
+index e590f4e0..68cda890 100755
+--- a/agents/entrypoint.sh
++++ b/agents/entrypoint.sh
+@@ -39,8 +39,10 @@ fi
+ tmux new-session -d -s "${SESSION_NAME}" -c /workspace "/opt/clan-world/shared/run.sh"
+ echo "[entrypoint] tmux session ${SESSION_NAME} created"
+ 
+-# 2. Start ttyd attached to that session (background)
+-ttyd --port "${TTYD_PORT}" --writable tmux attach-session -t "${SESSION_NAME}" &
++# 2. Start ttyd attached to that session (background). ttyd 1.7.7 is
++# read-only unless --writable is passed; operators send commands through the
++# Convex command bus, not through the browser terminal.
++ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
+ TTYD_PID=$!
+ echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
+ 
+diff --git a/agents/shared/README-caddy.md b/agents/shared/README-caddy.md
+new file mode 100644
+index 00000000..7868b4ab
+--- /dev/null
++++ b/agents/shared/README-caddy.md
+@@ -0,0 +1,117 @@
++# Docker Caddy Routing
++
++ClanWorld's public app router lives inside the compose stack as the `caddy`
++service. It reads `agents/shared/caddy.conf`, publishes one loopback port on the
++host, and routes to Docker-internal services such as `elder-1:7681`.
++
++## Prod VPS
++
++Set `CADDY_HOST_PORT=58731` unless the operator intentionally chooses another
++free loopback port. The default `CLAN_WORLD_WEB_UPSTREAM` in the Caddyfile is
++`https://clan-world-game.vercel.app`.
++
++Cloudflare Access is the production auth gate for `app.clan-world.com`. The
++ttyd terminals are read-only; operators send commands through the Convex command
++bus, not through the browser terminal.
++
++### Cloudflared Ingress
++
++Warning: restarting cloudflared briefly drops ALL tunnels, usually for about 5
++seconds. Choose an operator-approved time.
++
++Pre-check for duplicate ingress entries:
++
++```bash
++if sudo grep -q "hostname: *app.clan-world.com" /etc/cloudflared/config.yml; then
++  echo "ERROR: app.clan-world.com already exists in cloudflared config -- abort + update existing entry instead of adding"
++  exit 1
++fi
++```
++
++Back up the current config:
++
++```bash
++sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m%d%H%M%S)
++```
++
++Edit `/etc/cloudflared/config.yml` and insert the `app.clan-world.com` ingress
++entry BEFORE the final `http_status:404` catch-all rule. The port in
++`config.yml` is literal: if you change `CADDY_HOST_PORT` from the `58731`
++default, update this literal port to match.
++
++```yaml
++- hostname: app.clan-world.com
++  service: http://127.0.0.1:58731
++  originRequest:
++    httpHostHeader: app.clan-world.com
++```
++
++Validate and restart:
++
++```bash
++EXPECTED_PORT=${CADDY_HOST_PORT:-58731}
++CURRENT_CLOUDFLARED_PORT=$(sudo grep -A1 'app.clan-world.com' /etc/cloudflared/config.yml | grep -oE 'localhost:[0-9]+|127.0.0.1:[0-9]+' | grep -oE '[0-9]+' | head -1)
++if [ "$EXPECTED_PORT" != "$CURRENT_CLOUDFLARED_PORT" ]; then
++  echo "ERROR: CADDY_HOST_PORT=$EXPECTED_PORT but cloudflared routes to port $CURRENT_CLOUDFLARED_PORT"
++  exit 1
++fi
++sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
++sudo systemctl restart cloudflared
++```
++
++Verify the new route and one existing tunnel:
++
++```bash
++curl -fsS https://app.clan-world.com/healthz | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
++curl -fsS -o /dev/null https://cockpit.clan-world.com
++```
++
++Rollback uses the timestamped backup from the first command:
++
++```bash
++sudo cp /etc/cloudflared/config.yml.bak-YYYYMMDDHHMMSS /etc/cloudflared/config.yml
++sudo systemctl restart cloudflared
++```
++
++## Local Dev
++
++Set `CADDY_HOST_PORT=8080` or any other free loopback port, then open:
++
++```text
++http://127.0.0.1:8080
++```
++
++No host Caddy or cloudflared setup is required for local development. Local dev
++has no Caddy auth layer; bind the port to `127.0.0.1` only.
++
++By default, Caddy proxies `/` and `/map` to
++`https://clan-world-game.vercel.app`. To use a host-run local frontend instead,
++set `CLAN_WORLD_WEB_UPSTREAM`, for example:
++
++```dotenv
++CLAN_WORLD_WEB_UPSTREAM=http://host.docker.internal:58740
++```
++
++The compose `caddy` service includes
++`host.docker.internal:host-gateway`, so this works on Linux Docker too. If a
++developer points at a frontend container instead, use that service name on the
++Docker network instead of `host.docker.internal`.
++
++## Smoke Checks
++
++```bash
++docker compose --profile dev up -d caddy
++curl -fsS "http://127.0.0.1:${CADDY_HOST_PORT:-58731}/healthz" | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
++curl -fsS -o /dev/null "http://127.0.0.1:${CADDY_HOST_PORT:-58731}/elder-1/"
++```
++
++These checks prove Caddy is reachable and can attempt an elder route. Full ttyd
++validation requires the full stack up and a follow-up Playwright or `websocat`
++smoke that verifies the WebSocket upgrade and terminal output.
++
++### Healthcheck Scope
++
++The compose `caddy` healthcheck only proves that Caddy itself responds on
++`/healthz`. It does not prove that `CLAN_WORLD_WEB_UPSTREAM` is reachable, that
++the elder services are running, or that ttyd WebSocket upgrades work. Operators
++must run the smoke commands after compose up for route-level validation.
+diff --git a/agents/shared/caddy.conf b/agents/shared/caddy.conf
+new file mode 100644
+index 00000000..6244b6e6
+--- /dev/null
++++ b/agents/shared/caddy.conf
+@@ -0,0 +1,69 @@
++{
++	auto_https off
++	servers {
++		protocols h1 h2
++		timeouts {
++			read_body 30s
++			read_header 10s
++			write 0
++			idle 1h
++		}
++	}
++}
++
++:80 {
++	encode gzip zstd
++
++	handle /healthz {
++		respond "ok" 200
++	}
++
++	@bare_elder path /elder-1 /elder-2 /elder-3 /elder-4
++	redir @bare_elder {path}/ 308
++
++	handle_path /elder-1/* {
++		reverse_proxy elder-1:7681 {
++			transport http {
++				versions 1.1
++			}
++		}
++	}
++
++	handle_path /elder-2/* {
++		reverse_proxy elder-2:7681 {
++			transport http {
++				versions 1.1
++			}
++		}
++	}
++
++	handle_path /elder-3/* {
++		reverse_proxy elder-3:7681 {
++			transport http {
++				versions 1.1
++			}
++		}
++	}
++
++	handle_path /elder-4/* {
++		reverse_proxy elder-4:7681 {
++			transport http {
++				versions 1.1
++			}
++		}
++	}
++
++	handle /map* {
++		reverse_proxy {$CLAN_WORLD_WEB_UPSTREAM:https://clan-world-game.vercel.app} {
++			header_up X-Forwarded-Proto https
++			header_up Host {upstream_host}
++		}
++	}
++
++	handle {
++		reverse_proxy {$CLAN_WORLD_WEB_UPSTREAM:https://clan-world-game.vercel.app} {
++			header_up X-Forwarded-Proto https
++			header_up Host {upstream_host}
++		}
++	}
++}
+diff --git a/agents/shared/home-claude/settings.json b/agents/shared/home-claude/settings.json
+index db009c61..82d02b4f 100644
+--- a/agents/shared/home-claude/settings.json
++++ b/agents/shared/home-claude/settings.json
+@@ -19,6 +19,27 @@
+       "Bash(cat //proc/*/environ)",
+       "Bash(cat //agent/.env)",
+       "Bash(cat //home/elder/.env)",
++      "Read(/run/secrets/**)",
++      "Read(//run/secrets/**)",
++      "Bash(cat /run/secrets/**)",
++      "Bash(cat //run/secrets/**)",
++      "Bash(ls /run/secrets/**)",
++      "Bash(ls //run/secrets/**)",
++      "Bash(strings *)",
++      "Bash(set)",
++      "Bash(set *)",
++      "Bash(declare *)",
++      "Bash(export)",
++      "Bash(export *)",
++      "Bash(node -e *)",
++      "Bash(perl -e *)",
++      "Bash(perl -E *)",
++      "Bash(python -c *)",
++      "Bash(python3 -c *)",
++      "Bash(ruby -e *)",
++      "Bash(bash -c *)",
++      "Bash(sh -c *)",
++      "Bash(zsh -c *)",
+       "Write(~/.claude/settings.json)",
+       "Write(//home/elder/.claude/settings.json)",
+       "Write(~/.claude/CLAUDE.md)",
+diff --git a/apps/server/convex/commandBus.test.ts b/apps/server/convex/commandBus.test.ts
+index 2ea82e38..b9feea16 100644
+--- a/apps/server/convex/commandBus.test.ts
++++ b/apps/server/convex/commandBus.test.ts
+@@ -82,6 +82,9 @@ function createDb(tables: Record<string, any[]> = {}) {
+                   const bVal = typeof b === "function" ? (b as any)(row) : b;
+                   return aVal === bVal;
+                 },
++                or(...args: boolean[]) {
++                  return args.some(Boolean);
++                },
+                 field(name: string) {
+                   return row[name];
+                 },
+@@ -241,6 +244,154 @@ describe("claimNext", () => {
+   });
+ });
+ 
++describe("claimNext control-verb priority", () => {
++  it("claims reset before queued user_message", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "user_message",
++          createdAt: 1000,
++          retryCount: 0,
++        },
++        {
++          _id: "agentCommands:1",
++          _creationTime: 1,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "reset",
++          createdAt: 2000,
++          retryCount: 0,
++        },
++      ],
++    });
++    const claimed = await (claimNext as any)._handler(
++      { db },
++      { secret: "elder-1-secret", agentId: "elder-1" },
++    );
++    expect(claimed?._id).toBe("agentCommands:1");
++    expect(claimed?.kind).toBe("reset");
++    expect(tables.agentCommands![1].status).toBe("leased");
++  });
++
++  it("claims unfreeze before queued user_messages", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "user_message",
++          createdAt: 1000,
++          retryCount: 0,
++        },
++        {
++          _id: "agentCommands:1",
++          _creationTime: 1,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "user_message",
++          createdAt: 2000,
++          retryCount: 0,
++        },
++        {
++          _id: "agentCommands:2",
++          _creationTime: 2,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "unfreeze",
++          createdAt: 3000,
++          retryCount: 0,
++        },
++      ],
++    });
++    const claimed = await (claimNext as any)._handler(
++      { db },
++      { secret: "elder-1-secret", agentId: "elder-1" },
++    );
++    expect(claimed?._id).toBe("agentCommands:2");
++    expect(claimed?.kind).toBe("unfreeze");
++    expect(tables.agentCommands![2].status).toBe("leased");
++  });
++
++  it("claims freeze before queued snapshot_request", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "snapshot_request",
++          createdAt: 1000,
++          retryCount: 0,
++        },
++        {
++          _id: "agentCommands:1",
++          _creationTime: 1,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "freeze",
++          createdAt: 2000,
++          retryCount: 0,
++        },
++      ],
++    });
++    const claimed = await (claimNext as any)._handler(
++      { db },
++      { secret: "elder-1-secret", agentId: "elder-1" },
++    );
++    expect(claimed?._id).toBe("agentCommands:1");
++    expect(claimed?.kind).toBe("freeze");
++    expect(tables.agentCommands![1].status).toBe("leased");
++  });
++
++  it("claims the oldest control verb when multiple control verbs are queued", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "reset",
++          createdAt: 1000,
++          retryCount: 0,
++        },
++        {
++          _id: "agentCommands:1",
++          _creationTime: 1,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "freeze",
++          createdAt: 2000,
++          retryCount: 0,
++        },
++        {
++          _id: "agentCommands:2",
++          _creationTime: 2,
++          targetAgentId: "elder-1",
++          status: "queued",
++          kind: "unfreeze",
++          createdAt: 3000,
++          retryCount: 0,
++        },
++      ],
++    });
++    const claimed = await (claimNext as any)._handler(
++      { db },
++      { secret: "elder-1-secret", agentId: "elder-1" },
++    );
++    expect(claimed?._id).toBe("agentCommands:0");
++    expect(claimed?.kind).toBe("reset");
++    expect(tables.agentCommands![0].status).toBe("leased");
++  });
++});
++
+ describe("ackCommand", () => {
+   it("transitions leased to acked", async () => {
+     const { db, tables } = createDb({
+@@ -334,7 +485,36 @@ describe("completeCommand", () => {
+ });
+ 
+ describe("completeCommand (lease-expiry)", () => {
+-  it("throws on expired lease when completing", async () => {
++  it("succeeds when lease is expired but within 30s grace window", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "acked",
++          leaseOwner: "elder-1",
++          leaseExpiresAt: Date.now() - 15_000,
++          createdAt: 1000,
++          retryCount: 0,
++        },
++      ],
++    });
++    await (completeCommand as any)._handler(
++      { db },
++      {
++        secret: "elder-1-secret",
++        agentId: "elder-1",
++        commandId: "agentCommands:0",
++        resultPayload: { ok: true },
++        tookMs: 42,
++      },
++    );
++    expect(tables.agentCommands![0].status).toBe("completed");
++    expect(tables.commandResults).toHaveLength(1);
++  });
++
++  it("throws when lease is expired beyond 30s grace window", async () => {
+     const { db } = createDb({
+       agentCommands: [
+         {
+@@ -343,7 +523,7 @@ describe("completeCommand (lease-expiry)", () => {
+           targetAgentId: "elder-1",
+           status: "acked",
+           leaseOwner: "elder-1",
+-          leaseExpiresAt: Date.now() - 1000, // expired
++          leaseExpiresAt: Date.now() - 60_000,
+           createdAt: 1000,
+           retryCount: 0,
+         },
+@@ -360,7 +540,62 @@ describe("completeCommand (lease-expiry)", () => {
+           tookMs: 42,
+         },
+       ),
+-    ).rejects.toThrow("Lease expired");
++    ).rejects.toThrow("Lease expired beyond grace");
++  });
++
++  it("returns no-op when command already completed", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "completed",
++          createdAt: 1000,
++          retryCount: 0,
++        },
++      ],
++    });
++    await (completeCommand as any)._handler(
++      { db },
++      {
++        secret: "elder-1-secret",
++        agentId: "elder-1",
++        commandId: "agentCommands:0",
++        resultPayload: { ok: true },
++        tookMs: 42,
++      },
++    );
++    expect(tables.commandResults ?? []).toHaveLength(0);
++  });
++
++  it("returns no-op when command already completed with stale valid lease fields", async () => {
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "completed",
++          leaseOwner: "elder-1",
++          leaseExpiresAt: Date.now() + 60_000,
++          createdAt: 1000,
++          retryCount: 0,
++        },
++      ],
++    });
++    await (completeCommand as any)._handler(
++      { db },
++      {
++        secret: "elder-1-secret",
++        agentId: "elder-1",
++        commandId: "agentCommands:0",
++        resultPayload: { ok: true },
++        tookMs: 42,
++      },
++    );
++    expect(tables.commandResults ?? []).toHaveLength(0);
++    expect(tables.agentCommands![0].status).toBe("completed");
+   });
+ });
+ 
+@@ -455,7 +690,7 @@ describe("failCommand", () => {
+ });
+ 
+ describe("sweepStaleDelivered", () => {
+-  it("re-queues expired leases", async () => {
++  it("re-queues expired leases past the 30s grace window", async () => {
+     const now = Date.now();
+     const { db, tables } = createDb({
+       agentCommands: [
+@@ -465,7 +700,7 @@ describe("sweepStaleDelivered", () => {
+           targetAgentId: "elder-1",
+           status: "leased",
+           leaseOwner: "elder-1",
+-          leaseExpiresAt: now - 1000, // expired
++          leaseExpiresAt: now - 60_000,
+           createdAt: 1000,
+           retryCount: 0,
+         },
+@@ -487,6 +722,27 @@ describe("sweepStaleDelivered", () => {
+     expect(tables.agentCommands![1].status).toBe("leased"); // untouched
+   });
+ 
++  it("does NOT sweep leases expired within the 30s grace window", async () => {
++    const now = Date.now();
++    const { db, tables } = createDb({
++      agentCommands: [
++        {
++          _id: "agentCommands:0",
++          _creationTime: 0,
++          targetAgentId: "elder-1",
++          status: "leased",
++          leaseOwner: "elder-1",
++          leaseExpiresAt: now - 15_000,
++          createdAt: 1000,
++          retryCount: 0,
++        },
++      ],
++    });
++    const result = await (sweepStaleDelivered as any)._handler({ db }, {});
++    expect(result.swept).toBe(0);
++    expect(tables.agentCommands![0].status).toBe("leased");
++  });
++
+   it("re-queues expired acked commands (stuck after elder crash)", async () => {
+     const now = Date.now();
+     const { db, tables } = createDb({
+@@ -497,7 +753,7 @@ describe("sweepStaleDelivered", () => {
+           targetAgentId: "elder-1",
+           status: "acked",
+           leaseOwner: "elder-1",
+-          leaseExpiresAt: now - 1000,
++          leaseExpiresAt: now - 60_000,
+           ackedAt: now - 2000,
+           createdAt: 1000,
+           retryCount: 0,
+diff --git a/apps/server/convex/commandBus.ts b/apps/server/convex/commandBus.ts
+index 7047668a..703b06bf 100644
+--- a/apps/server/convex/commandBus.ts
++++ b/apps/server/convex/commandBus.ts
+@@ -1,8 +1,11 @@
+ import { mutation, query, internalMutation } from "./_generated/server";
+ import { v } from "convex/values";
+ 
+-const LEASE_MS = 5 * 60 * 1000; // 5 minutes
++const LEASE_MS = 6 * 60 * 1000; // 6 minutes
++const COMPLETION_GRACE_MS = 30 * 1000;
+ const MAX_RETRIES = 3;
++const CONTROL_COMMAND_KINDS = ["reset", "freeze", "unfreeze"] as const;
++type ControlCommandKind = typeof CONTROL_COMMAND_KINDS[number];
+ 
+ function checkOperatorAuth(secret: string) {
+   if (!process.env.BUS_OPERATOR_SECRET || secret !== process.env.BUS_OPERATOR_SECRET) {
+@@ -81,12 +84,28 @@ export const claimNext = mutation({
+   args: { secret: v.string(), agentId: v.string() },
+   handler: async (ctx, args) => {
+     checkElderAuth(args.secret, args.agentId);
+-    const cmd = await ctx.db.query("agentCommands")
++
++    let cmd = await ctx.db.query("agentCommands")
+       .withIndex("by_target_status", q =>
+         q.eq("targetAgentId", args.agentId).eq("status", "queued"),
+       )
++      .filter(q => q.or(
++        ...CONTROL_COMMAND_KINDS.map((kind: ControlCommandKind) =>
++          q.eq(q.field("kind"), kind),
++        ),
++      ))
+       .order("asc")
+       .first();
++
++    if (!cmd) {
++      cmd = await ctx.db.query("agentCommands")
++        .withIndex("by_target_status", q =>
++          q.eq("targetAgentId", args.agentId).eq("status", "queued"),
++        )
++        .order("asc")
++        .first();
++    }
++
+     if (!cmd) return null;
+     const now = Date.now();
+     await ctx.db.patch(cmd._id, {
+@@ -130,11 +149,13 @@ export const completeCommand = mutation({
+   handler: async (ctx, args) => {
+     checkElderAuth(args.secret, args.agentId);
+     const cmd = await ctx.db.get(args.commandId);
+-    if (!cmd || (cmd.status !== "acked" && cmd.status !== "leased") || cmd.leaseOwner !== args.agentId) {
++    if (!cmd) throw new Error("Command not found");
++    if (cmd.status === "completed") return;
++    if ((cmd.status !== "acked" && cmd.status !== "leased") || cmd.leaseOwner !== args.agentId) {
+       throw new Error("Command not found or not owned by this elder");
+     }
+-    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt <= Date.now()) {
+-      throw new Error("Lease expired — re-claim the command before completing");
++    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt + COMPLETION_GRACE_MS <= Date.now()) {
++      throw new Error("Lease expired beyond grace — re-claim the command before completing");
+     }
+     const now = Date.now();
+     await ctx.db.patch(args.commandId, { status: "completed", completedAt: now, leaseOwner: undefined, leaseExpiresAt: undefined });
+@@ -225,14 +246,15 @@ export const sweepStaleDelivered = internalMutation({
+   args: {},
+   handler: async (ctx) => {
+     const now = Date.now();
++    const sweepBefore = now - COMPLETION_GRACE_MS;
+     const expiredLeased = await ctx.db.query("agentCommands")
+       .withIndex("by_status_lease", q =>
+-        q.eq("status", "leased").lt("leaseExpiresAt", now)
++        q.eq("status", "leased").lt("leaseExpiresAt", sweepBefore)
+       )
+       .collect();
+     const expiredAcked = await ctx.db.query("agentCommands")
+       .withIndex("by_status_lease", q =>
+-        q.eq("status", "acked").lt("leaseExpiresAt", now)
++        q.eq("status", "acked").lt("leaseExpiresAt", sweepBefore)
+       )
+       .collect();
+     const expired = [...expiredLeased, ...expiredAcked];
+diff --git a/docker-compose.rehearsal.yml b/docker-compose.rehearsal.yml
+new file mode 100644
+index 00000000..b2233876
+--- /dev/null
++++ b/docker-compose.rehearsal.yml
+@@ -0,0 +1,66 @@
++# docker-compose.rehearsal.yml
++#
++# Throwaway overlay for the Phase 2 migration rehearsal.
++# Docs: docs/runbooks/dockerize-migration-v1.md
++#
++# Usage:
++#   docker compose -f docker-compose.rehearsal.yml up -d
++#   docker compose -f docker-compose.rehearsal.yml down -v
++#
++# This stack intentionally rehearses only the self-hosted Convex import path:
++#   - project name: clan-world-rehearsal
++#   - host ports: 38050 API, 38051 HTTP actions/site, 38052 dashboard
++#   - volumes: rehearsal-suffixed, wiped by down -v
++#   - no elders, heartbeat, anvil, or Caddy
++
++name: clan-world-rehearsal
++
++services:
++  convex-backend:
++    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-latest}
++    stop_grace_period: 10s
++    stop_signal: SIGINT
++    environment:
++      INSTANCE_NAME: clan-world-rehearsal
++      INSTANCE_SECRET: ${CONVEX_REHEARSAL_INSTANCE_SECRET:-clan-world-rehearsal-local-only-change-before-use}
++      CONVEX_CLOUD_ORIGIN: http://127.0.0.1:38050
++      CONVEX_SITE_ORIGIN: http://127.0.0.1:38051
++      DISABLE_BEACON: ${DISABLE_BEACON:-true}
++      DISABLE_METRICS_ENDPOINT: ${DISABLE_METRICS_ENDPOINT:-true}
++      DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-true}
++      RUST_LOG: ${RUST_LOG:-info}
++    ports:
++      - "127.0.0.1:38050:3210"
++      - "127.0.0.1:38051:3211"
++    volumes:
++      - convex_data_rehearsal:/convex/data
++    healthcheck:
++      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
++      interval: 5s
++      timeout: 3s
++      retries: 6
++      start_period: 15s
++    restart: unless-stopped
++
++  convex-dashboard:
++    image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-latest}
++    stop_grace_period: 10s
++    stop_signal: SIGINT
++    environment:
++      NEXT_PUBLIC_DEPLOYMENT_URL: http://127.0.0.1:38050
++    ports:
++      - "127.0.0.1:38052:6791"
++    depends_on:
++      convex-backend:
++        condition: service_healthy
++    healthcheck:
++      test: ["CMD", "curl", "-f", "http://localhost:6791/"]
++      interval: 10s
++      timeout: 3s
++      retries: 3
++      start_period: 30s
++    restart: unless-stopped
++
++volumes:
++  convex_data_rehearsal:
++    name: clan-world-rehearsal_convex_data
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 8ddf448f..5503b773 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -5,7 +5,7 @@
+ #
+ #   - #345 agents/Dockerfile (Phase 1.2)
+ #   - #347 self-hosted Convex deploy (Phase 1.4)
+-#   - #348 host caddy snippet + Caddyfile (Phase 1.5)
++#   - #348 dockerized Caddy routing for app.clan-world.com (Phase 1.5)
+ #   - #349 elder-N service template (Phase 1.6) — these stubs will be
+ #     overwritten by the generated docker-compose.elders.yml
+ #   - #355 agents/Makefile (Phase 1.12)
+@@ -16,9 +16,9 @@
+ #   --profile dev   anvil-fork + bind-mount agents/  (local iteration)
+ #   --profile prod  real Base Sepolia RPC, image-baked agents/  (VPS deploy)
+ #
+-# Caddy is NOT a compose service — host caddy stays authoritative (decision D
+-# in the plan). The clan-world stack reverse-proxies through the host caddy via
+-# CADDY_HOST_PORT.
++# Caddy is a compose service for ClanWorld-only routing. Host cloudflared sends
++# app.clan-world.com directly to the docker-published loopback CADDY_HOST_PORT;
++# host Caddy continues serving unrelated hostnames on its own port.
+ #
+ # Validation:
+ #   docker compose --profile dev config
+@@ -245,6 +245,33 @@ services:
+     restart: on-failure:5
+     profiles: [dev, prod]
+ 
++  # ---------------------------------------------------------------------------
++  # Dockerized Caddy — ClanWorld-only router. The host cloudflared ingress maps
++  # app.clan-world.com -> 127.0.0.1:${CADDY_HOST_PORT:-58731}; Caddy then routes
++  # to Docker-internal services by name.
++  # ---------------------------------------------------------------------------
++  caddy:
++    image: caddy:2-alpine
++    restart: unless-stopped
++    networks: [clan-world-internal]
++    ports:
++      - "127.0.0.1:${CADDY_HOST_PORT:-58731}:80"
++    extra_hosts:
++      # Lets local dev point CLAN_WORLD_WEB_UPSTREAM at a host-run Vite server,
++      # e.g. http://host.docker.internal:58740, on Linux Docker.
++      - "host.docker.internal:host-gateway"
++    volumes:
++      - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
++    environment:
++      CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
++    healthcheck:
++      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
++      interval: 10s
++      timeout: 3s
++      retries: 3
++      start_period: 5s
++    profiles: [dev, prod]
++
+   # ---------------------------------------------------------------------------
+   # Elder containers (4 in v1 — scaling to 12 is a config change). Each Elder
+   # runs three processes under tini: ttyd (port 7681) + tmux server + the
+diff --git a/docs/plans/dockerize-elder-infra-v1.md b/docs/plans/dockerize-elder-infra-v1.md
+index 7da30344..ba96c783 100644
+--- a/docs/plans/dockerize-elder-infra-v1.md
++++ b/docs/plans/dockerize-elder-infra-v1.md
+@@ -90,7 +90,7 @@ graph TD
+ 
+ ### Locked decisions (from round 4 + earlier rounds)
+ 
+-1. **Parallel-coexist cutover (NOT big-bang).** Stand up the compose stack in parallel with the current VPS layout on different ports. Legacy systemd units stay ENABLED AND RUNNING through Phase 2 internal smoke + Caddy cutover + a 30-minute observation window. ONLY after the 30-min coexist window validates all 10 smoke-test acceptance criteria do we disable legacy. This is the locked cutover policy — Phase 2 implements it in this order: (1) compose up on alternate ports, (2) Convex import, (3) internal smoke, (4) Caddy snippet add (additive, host caddy still routes legacy too), (5) 30-min coexist observation, (6) full smoke acceptance gate, (7) disable legacy systemd, (8) archive legacy state. If any step fails, legacy stays live and rollback is "remove the additive Caddy snippet + `docker compose down`". See Phase 2 for exact commands and the validation gate before step 7.
++1. **Parallel-coexist cutover (NOT big-bang).** Stand up the compose stack in parallel with the current VPS layout on different ports. Legacy systemd units stay ENABLED AND RUNNING through Phase 2 internal smoke + Caddy cutover + a 30-minute observation window. ONLY after the 30-min coexist window validates all 10 smoke-test acceptance criteria do we disable legacy. This is the locked cutover policy — Phase 2 implements it in this order: (1) compose up on alternate ports, (2) Convex import, (3) internal smoke, (4) cloudflared routes `app.clan-world.com` directly to the Docker Caddy loopback port, (5) 30-min coexist observation, (6) full smoke acceptance gate, (7) disable legacy systemd, (8) archive legacy state. If any step fails, legacy stays live and rollback is "remove the additive cloudflared ingress entry + `docker compose down`". See Phase 2 for exact commands and the validation gate before step 7.
+ 2. **Self-hosted Convex** in a separate container (backend + dashboard + SQLite). Image pin: `ghcr.io/get-convex/convex-backend:<commit-sha>` (not `:latest`), dashboard `ghcr.io/get-convex/convex-dashboard:<commit-sha>`. Admin key persisted via env var, not auto-regen.
+ 3. **Anvil-fork container for dev RPC** — `dev` compose profile only. Prod profile points at real Base Sepolia.
+ 4. **One container per Elder.** v1 spins up 4 Elders. Service definition is parameterized so 12-Elder mode is a config change (the compose file uses templated YAML or a small `gen-compose.sh` that emits per-Elder service blocks from a list).
+@@ -103,7 +103,7 @@ graph TD
+ 9. **ANCIENT_WISDOM.md** auto-injected via `SessionStart` hook from per-Elder workspace.
+ 10. **No network egress** except an explicit allowlist (resolves Finding 4):
+     - **Outbound TCP/443 allowed to:** `api.anthropic.com`, `claude.ai`, `accounts.anthropic.com`. (Codex API hosts added later under separate issue.)
+-    - **Internal Docker network allowed:** the `clan-world-internal` bridge subnet (resolved at container init via `ip route | awk '/eth0/{print $1}'`). This permits container-to-container traffic to `convex-backend:3210`, `anvil-fork:8545`, `caddy:8080`, `heartbeat`, etc. without enumerating service IPs.
++    - **Internal Docker network allowed:** the `clan-world-internal` bridge subnet (resolved at container init via `ip route | awk '/eth0/{print $1}'`). This permits container-to-container traffic to `convex-backend:3210`, `anvil-fork:8545`, `caddy:80`, `heartbeat`, etc. without enumerating service IPs.
+     - **Docker DNS allowed:** UDP/TCP 53 to `127.0.0.11` (Docker embedded DNS).
+     - **Public DNS allowed:** UDP 53 to whatever resolver `/etc/resolv.conf` lists (needed for the Anthropic hostnames). The init script reads `/etc/resolv.conf` at startup and adds explicit rules per nameserver.
+     - **DENIED by default:** GitHub, npm registry, Google, generic IPv4 internet. Image build is the ONLY time `npm install`/`apt-get` runs; runtime egress is locked down. If an agent needs npm/GitHub at runtime, file a follow-up issue (Phase 1.6 acceptance must include a test confirming this is blocked).
+@@ -147,7 +147,7 @@ Trade-off: shared-base updates propagate on next container init (`make restart-e
+ 
+ #### D. Caddy in container vs host caddy
+ 
+-**Decision: keep host caddy authoritative, route ONLY the `${CLAN_WORLD_DOMAIN}` (i.e., `clan-world.com`) hostname to the docker Caddy.** The host caddy currently fronts pm-dobot, gstack, narrator, and other unrelated tunnels through cloudflared — we do not break those. We add ONE new server block to the host caddy that reverse-proxies `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` → `127.0.0.1:${COMPOSE_CADDY_PORT}` (we'll allocate a unique port via `port-for clan-world-docker-caddy`). Inside the container, the docker caddy handles the subroute fan-out (`/`, `/map`, `/elder-N`). Host caddy stays as the single TLS terminator + cloudflared peer; docker caddy is path-routing-only on plain HTTP inside the compose network. This minimizes the blast radius if the docker stack misbehaves: nothing about pm-dobot or narrator goes through the docker Caddy.
++**Decision: keep host caddy authoritative for unrelated shared-host routes, but route `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` directly from cloudflared to Docker Caddy.** The host caddy currently fronts pm-dobot, gstack, narrator, and other unrelated tunnels through cloudflared — we do not break those. We add ONE new cloudflared ingress entry for `${TLD_APP_SUBDOMAIN}.${CLAN_WORLD_DOMAIN}` → `http://127.0.0.1:${CADDY_HOST_PORT:-58731}`. Inside the container, Docker Caddy handles the subroute fan-out (`/`, `/map`, `/elder-N`). This avoids editing host Caddy for ClanWorld app routing while keeping the blast radius narrow if the docker stack misbehaves.
+ 
+ #### E. `settings.local.json` writable by Elders?
+ 
+@@ -288,77 +288,50 @@ Each sub-issue below is sized for one PR. Filed sequentially as GH issues #339 t
+ 
+ ### Phase 1.5 — Caddy container with subroute config
+ 
+-**Scope.** Define the `caddy` compose service running `caddy:2-alpine`. Caddyfile provides the path-routing fan-out: `/elder-N` → `elder-N:7681` (ttyd, with WS upgrade), `/map` → frontend container (wired in Phase 1.11), `/` → frontend (cockpit), `/convex-admin/` → `convex-dashboard:6791` with basic-auth. Caddy listens on internal `:8080` (HTTP); host caddy terminates TLS upstream and reverse-proxies plain HTTP into the container. Allocate the host-side port via `port-for clan-world-docker-caddy` (NOT hardcoded).
++**Scope.** Define the `caddy` compose service running `caddy:2-alpine`. Caddyfile provides the path-routing fan-out: `/elder-N` → `elder-N:7681` (ttyd, with WS upgrade), `/map` → `CLAN_WORLD_WEB_UPSTREAM`, and `/` → `CLAN_WORLD_WEB_UPSTREAM`. Docker Caddy listens on container `:80` and publishes `127.0.0.1:${CADDY_HOST_PORT:-58731}:80`. On the VPS, cloudflared routes `app.clan-world.com` directly to that loopback port; host Caddy is not in the ClanWorld app path.
+ 
+-**WebSocket upgrade for ttyd (Finding 12 fix).** ttyd uses plain HTTP/1.1 WebSocket upgrades — Caddy must explicitly enable WS upgrades and pin transport to HTTP/1.1 for the elder routes. ttyd by default serves from path `/`, so we use Caddy's `handle_path` directive to strip the `/elder-N` prefix before proxying (Finding 13 fix). Required Caddyfile snippet (canonical for `agents/caddy/Caddyfile`):
++**WebSocket upgrade for ttyd (Finding 12 fix).** ttyd uses plain HTTP/1.1 WebSocket upgrades — Caddy pins transport to HTTP/1.1 for the elder routes. ttyd by default serves from path `/`, so we use Caddy's `handle_path` directive to strip the `/elder-N` prefix before proxying (Finding 13 fix). Required Caddyfile snippet (canonical file: `agents/shared/caddy.conf`):
+ 
+ ```caddyfile
+-:8080 {
+-  # WebSocket matcher (any path matching elder routes with Connection: Upgrade)
+-  @ws_elder {
+-    path /elder-1* /elder-2* /elder-3* /elder-4*
+-    header Connection *Upgrade*
+-    header Upgrade websocket
++:80 {
++  handle /healthz {
++    respond "ok" 200
+   }
+ 
+-  # ttyd routes: strip /elder-N prefix, pin transport to HTTP/1.1 (ttyd does NOT speak h2)
++  @bare_elder path /elder-1 /elder-2 /elder-3 /elder-4
++  redir @bare_elder {path}/ 308
++
+   handle_path /elder-1/* {
+     reverse_proxy elder-1:7681 {
+-      transport http { versions h1 }
+-      header_up Host {host}
+-      header_up X-Real-IP {remote_host}
++      transport http { versions 1.1 }
+     }
+   }
++
+   handle_path /elder-2/* {
+-    reverse_proxy elder-2:7681 { transport http { versions h1 } }
++    reverse_proxy elder-2:7681 { transport http { versions 1.1 } }
+   }
+   handle_path /elder-3/* {
+-    reverse_proxy elder-3:7681 { transport http { versions h1 } }
++    reverse_proxy elder-3:7681 { transport http { versions 1.1 } }
+   }
+   handle_path /elder-4/* {
+-    reverse_proxy elder-4:7681 { transport http { versions h1 } }
+-  }
+-  # Also handle the bare /elder-N (no trailing slash) — redirect to /elder-N/
+-  @bare_elder path /elder-1 /elder-2 /elder-3 /elder-4
+-  redir @bare_elder {path}/ 301
+-
+-  # Convex dashboard with basic-auth (Finding 14 fix — see basic-auth lifecycle below)
+-  handle_path /convex-admin/* {
+-    basicauth {
+-      admin {$CONVEX_DASHBOARD_BASIC_AUTH_HASH}
+-    }
+-    reverse_proxy convex-dashboard:6791 {
+-      transport http { versions h1 }
+-    }
++    reverse_proxy elder-4:7681 { transport http { versions 1.1 } }
+   }
+ 
+-  # Frontend fallthrough (wired in Phase 1.11)
+-  handle /map {
+-    reverse_proxy frontend:3000
++  handle /map* {
++    reverse_proxy {$CLAN_WORLD_WEB_UPSTREAM:https://clan-world-game.vercel.app}
+   }
+-  handle / {
+-    reverse_proxy frontend:3000
+-  }
+-  # Long timeouts for ttyd (interactive sessions can idle for hours)
+-  servers {
+-    timeouts {
+-      read_body 30s
+-      read_header 10s
+-      write 0          # 0 = no write timeout (ttyd streams)
+-      idle 1h
+-    }
++  handle {
++    reverse_proxy {$CLAN_WORLD_WEB_UPSTREAM:https://clan-world-game.vercel.app}
+   }
+ }
+ ```
+ 
+-Host caddy snippet at `host/caddy/clan-world-docker.caddy`:
+-```caddyfile
+-app.{$CLAN_WORLD_DOMAIN} {
+-  reverse_proxy 127.0.0.1:{$CADDY_HOST_PORT} {
+-    transport http { versions h1 }
+-    flush_interval -1     # stream ttyd output without buffering
+-  }
+-}
++Cloudflared ingress entry added before the final `http_status:404` catch-all:
++```yaml
++- hostname: app.clan-world.com
++  service: http://127.0.0.1:58731
++  originRequest:
++    httpHostHeader: app.clan-world.com
+ ```
+ 
+ **Basic-auth lifecycle for `/convex-admin` (Finding 14 fix).** Hash NOT committed to repo. Generated via `make bootstrap-convex-dashboard-auth` (Phase 1.12 must include this target):
+@@ -369,16 +342,15 @@ app.{$CLAN_WORLD_DOMAIN} {
+ 5. If the hash file is missing at Caddy startup, Caddy FAILS to start (no fail-open on auth). Acceptance: stop the file, `docker compose up caddy` fails with clear error.
+ 
+ **Files affected.**
+-- `docker-compose.yml` (UPDATE — add caddy service, mount secrets)
+-- `agents/caddy/Caddyfile` (NEW — per snippet above)
+-- `agents/caddy/.gitignore` (NEW — `data/`, `config/`)
+-- `host/caddy/clan-world-docker.caddy` (NEW — snippet per above; **routes only `app.${CLAN_WORLD_DOMAIN}`** (Finding 15 fix — wording normalized) — NOT the bare root domain)
+-- `scripts/bootstrap-convex-dashboard-auth.sh` (NEW)
+-- `docs/runbooks/caddy-coexistence.md` (NEW — explains host vs docker caddy responsibilities + WS upgrade gotchas)
++- `docker-compose.yml` (UPDATE — add caddy service)
++- `agents/shared/caddy.conf` (NEW — per snippet above)
++- `agents/shared/README-caddy.md` (NEW — explains Docker Caddy, cloudflared ingress, local dev, and smoke checks)
++- `docs/runbooks/dockerize-migration-v1.md` (UPDATE — Step 8 cloudflared cutover)
++- `.env.template` (UPDATE — `CADDY_HOST_PORT`, `CLAN_WORLD_WEB_UPSTREAM` docs if needed)
+ 
+ **Dependencies.** Phase 1.1.
+ 
+-**Complexity.** Medium (the host caddy snippet must integrate cleanly without disturbing pm-dobot / narrator routes; WS path-strip + h1 pin is easy to get wrong).
++**Complexity.** Medium (cloudflared cutover must preserve other tunnel entries; WS path-strip + h1 pin is easy to get wrong).
+ 
+ **Acceptance.**
+ - `make up` brings caddy healthy (with elder/frontend upstreams down, expect 502 on those paths, NOT Caddy crash)
+@@ -390,7 +362,7 @@ app.{$CLAN_WORLD_DOMAIN} {
+ - **Path-strip test:** static asset request `GET /elder-1/static/index.css` returns the ttyd asset (proves `handle_path` strips `/elder-1` correctly).
+ - `/convex-admin` returns 401 without basic-auth header; returns 200 with correct credentials.
+ - `/convex-admin` fails-closed if hash file missing.
+-- Host caddy snippet placed via the deploy-host-caddy-snippet runbook does NOT break any existing tunnel (verify by hitting pm-dobot, narrator, etc. — explicit hostname-by-hostname test).
++- Cloudflared ingress added for `app.clan-world.com` does NOT break any existing tunnel (verify by hitting cockpit and one unrelated tunnel after restart).
+ 
+ ---
+ 
+@@ -845,7 +817,7 @@ Define the `dev` vs `prod` compose profile semantics in `docker-compose.dev.yml`
+ 3. Stand up self-hosted (`make up PROFILE=prod`), confirm backend healthy, schema deploys cleanly.
+ 4. Hosted→self-hosted import via `npx convex import --replace-all`. Compare schema fingerprints (before vs after). If diverged, abort and run targeted migration script (none expected for v1; document the migration-script slot for future use).
+ 5. Swap deploy targets in `apps/web/.env`, redeploy Vercel for the `web` app.
+-6. Deploy host Caddy snippet (additive, with pre-edit backup).
++6. Add cloudflared ingress for `app.clan-world.com` → Docker Caddy loopback port.
+ 7. 30-min coexist observation.
+ 8. Validation gate (`make smoke-test`).
+ 9. Disable legacy systemd + cron.
+@@ -933,20 +905,23 @@ Schema migration: v2.8.4 hosted → self-hosted backend at pinned commit SHA —
+ 
+ Run the 10-criterion smoke acceptance list below against the compose stack via its alternate-port URLs (e.g., `http://localhost:${CADDY_HOST_PORT}/`). Legacy is still live on its own routes; do NOT touch host caddy yet. If any criterion fails, fix in-place; legacy is unaffected.
+ 
+-### Step 4 — Add additive host-caddy snippet (legacy STILL routed too)
++### Step 4 — Add additive cloudflared ingress (legacy STILL routed too)
+ 
+ ```bash
+-# Back up the existing /etc/caddy/Caddyfile before any edit (Finding 45 fix)
+-sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-dockerize-$(date +%Y%m%d-%H%M%S)
+-sudo caddy validate --config /etc/caddy/Caddyfile
+-
+-# Add the docker-caddy reverse-proxy snippet (DOES NOT touch existing blocks)
+-sudo cp host/caddy/clan-world-docker.caddy /etc/caddy/snippets/
+-sudo cat host/caddy/clan-world-docker.caddy | sudo tee -a /etc/caddy/Caddyfile  # OR include via import directive
+-sudo caddy validate --config /etc/caddy/Caddyfile
+-sudo caddy reload --config /etc/caddy/Caddyfile
+-
+-# Verify pm-dobot, narrator, gstack still resolve
++# Back up the existing cloudflared config before any edit.
++sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m%d%H%M%S)
++
++# Insert the app.clan-world.com ingress BEFORE the final http_status:404 catch-all:
++# - hostname: app.clan-world.com
++#   service: http://127.0.0.1:58731
++#   originRequest:
++#     httpHostHeader: app.clan-world.com
++sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
++sudo systemctl restart cloudflared
++curl -fsS https://app.clan-world.com/healthz | grep -q '^ok$' || { echo 'ERROR: healthz did not return ok'; exit 1; }
++curl -fsS -o /dev/null https://cockpit.clan-world.com
++
++# Verify unrelated tunnels still resolve
+ for tunnel in pm-dobot narrator gstack; do
+   curl -sf "https://${tunnel}.${BASE_DOMAIN}/health" > /dev/null && echo "$tunnel OK" || echo "$tunnel FAIL"
+ done
+@@ -961,7 +936,7 @@ For 30 minutes, observe BOTH stacks. Operator may use `https://app.clan-world.co
+ Coexist observation gate (all must hold for full 30 min):
+ - New stack `make status` shows all containers healthy throughout
+ - New stack `tickClock.tick` in self-hosted Convex advances each time legacy heartbeat fires (via the new webhook — proves Convex is mirroring)
+-- No new tunnel/route errors in `/var/log/caddy/access.log` for non-clan-world hosts
++- No new tunnel/route errors in cloudflared logs for non-clan-world hosts
+ - `curl https://app.clan-world.com/map` and `/elder-1` work (WS upgrade verified per Finding 12)
+ 
+ ### Step 6 — Validation gate (explicit pass/fail before step 7)
+@@ -1021,11 +996,11 @@ make down                                                     # only the new sta
+ # No host state changed yet. Legacy frontend still points at hosted Convex via Vercel env. Investigate import error.
+ # To wipe and retry: docker compose down -v && make up && retry import
+ 
+-# If step 4 (Caddy snippet add) fails:
+-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile
+-sudo caddy validate --config /etc/caddy/Caddyfile
+-sudo caddy reload --config /etc/caddy/Caddyfile
+-# pm-dobot, narrator, gstack now back on pre-snippet config.
++# If step 4 (cloudflared ingress add) fails:
++sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml
++sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
++sudo systemctl restart cloudflared
++# pm-dobot, narrator, gstack now back on pre-ingress config.
+ 
+ # If step 5 (coexist) reveals interference:
+ make pause                                                     # pause all new-stack runners + heartbeat
+@@ -1056,9 +1031,9 @@ systemctl --user enable --now clanworld-runner.service
+ for n in 1 2 3 4; do systemctl --user enable --now ttyd-elder-${n}.service; done
+ # Restore legacy heartbeat cron
+ crontab -e   # re-add: */1 * * * * /home/claude/bin/start-heartbeat-loop.sh
+-# Restore host Caddy
+-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile
+-sudo caddy reload --config /etc/caddy/Caddyfile
++# Restore cloudflared config
++sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml
++sudo systemctl restart cloudflared
+ # Stop new stack
+ make down
+ ```
+@@ -1070,7 +1045,7 @@ These are executed programmatically by `make smoke-test` (Phase 1.12). The valid
+ 1. **All four Elder containers alive.** `docker compose ps` shows `elder-1` ... `elder-4` in `healthy` state. Each container hosts 3 processes (ttyd + tmux + supervisor) — verified by `docker compose exec elder-N pgrep -fa <name>`. Healthchecks (Finding 47 fix) are explicit in compose:
+    - elders: `healthcheck.test: ["CMD-SHELL", "tmux has-session -t elder-${N} && pgrep -f /opt/elder-runtime/main.js"]`
+    - convex-backend: `healthcheck.test: ["CMD", "curl", "-f", "http://localhost:3210/health"]`
+-   - caddy: `healthcheck.test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]`
++   - caddy: `healthcheck.test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]`
+    - heartbeat: derived from last successful webhook timestamp via a small `healthcheck.sh`
+ 2. **Heartbeat ticking AND single-caller.** `tickClock.tick` in self-hosted Convex advances by 1 every ~60s; legacy heartbeat cron is absent (Finding 29 fix — preflight). Verified by `make logs SERVICE=heartbeat` showing single-caller preflight passing and chain-network assertion green.
+ 3. **Convex receiving events with correct payload.** Inserting a manual `enqueueCommand` from the dashboard or CLI (with `BUS_OPERATOR_SECRET`) lands in the correct elder's tmux scrollback within 5s. Webhook payload matches the AGENTS.md shape (`{chain, engineAddress, txHash, firedAtTs, source}`; no `tick`).
+@@ -1168,20 +1143,14 @@ Phase 2 cutover requires Liam approval (it touches production-adjacent VPS state
+ 
+ **R3. Caddy coexistence breaks pm-dobot / narrator tunnels.**
+ *Likelihood:* low (the docker caddy is path-scoped to one hostname).
+-*Impact:* high (other agents unreachable, including the orchestrator's own bot).
+-*Mitigation:* Phase 1.5 requires explicit verification that the host caddy reload does NOT change behavior for any other Caddy server block. Test by hitting each non-clan-world endpoint before and after.
+-*Rollback (Finding 45 fix — `/etc/caddy/Caddyfile` is NOT in this repo's git history; corrected procedure):*
++*Impact:* medium (cloudflared restart briefly drops all tunnels).
++*Mitigation:* Phase 1.5 requires explicit verification that the cloudflared restart does NOT strand existing tunnels. Test by hitting `cockpit.clan-world.com` and at least one unrelated endpoint after restart.
++*Rollback:*
+ ```bash
+-# Before any /etc/caddy/Caddyfile edit, create a timestamped backup:
+-sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-dockerize-$(date +%Y%m%d-%H%M%S)
+-sudo caddy validate --config /etc/caddy/Caddyfile
+-
+-# Rollback:
+-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile
+-sudo caddy validate --config /etc/caddy/Caddyfile
+-sudo caddy reload --config /etc/caddy/Caddyfile
++sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml
++sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
++sudo systemctl restart cloudflared
+ ```
+-The host-caddy snippet is in this repo at `host/caddy/clan-world-docker.caddy`, but `/etc/caddy/Caddyfile` itself is NOT — it has host-specific content (other tunnels) that must NOT be reverted via git. Always use the timestamped-backup approach.
+ 
+ **R4. Iptables init bricks the container's outbound to Anthropic.**
+ *Likelihood:* medium (firewall scripts often miss DNS or have ordering bugs).
+@@ -1216,13 +1185,12 @@ cd ~/code/clan-world/clan-world-game
+ make down PROFILE=dev 2>/dev/null || docker compose down -v
+ docker volume ls --format '{{.Name}}' | grep '^clan-world_' | xargs -r docker volume rm
+ 
+-# 2. Remove host caddy snippet if it was deployed
+-sudo cp /etc/caddy/Caddyfile.pre-dockerize-<TIMESTAMP> /etc/caddy/Caddyfile 2>/dev/null || \
+-  echo "no pre-dockerize backup found — manually inspect /etc/caddy/Caddyfile"
+-sudo caddy reload --config /etc/caddy/Caddyfile
++# 2. Remove app.clan-world.com cloudflared ingress if it was deployed
++sudo cp /etc/cloudflared/config.yml.bak-<TIMESTAMP> /etc/cloudflared/config.yml 2>/dev/null || \
++  echo "no cloudflared backup found — manually inspect /etc/cloudflared/config.yml"
++sudo systemctl restart cloudflared
+ 
+-# 3. Remove cloudflared tunnel routes that were added (keep legacy routes intact)
+-# (Only run if app.clan-world.com route was added during testing AND legacy cockpit.clan-world.com is the actual prod route)
++# 3. Remove DNS tunnel routes only if DNS was created during testing
+ # cloudflared tunnel route dns delete app.clan-world.com  # only if needed
+ 
+ # 4. Remove generated secrets that were bootstrapped (these are NOT in git, so safe to remove)
+@@ -1316,18 +1284,16 @@ services:
+   caddy:
+     image: caddy:2-alpine
+     volumes:
+-      - ./agents/shared/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+-      - /etc/clan-world/secrets/convex-dashboard-basicauth.hash:/run/secrets/dashboard-basicauth:ro
+-    environment:
+-      CONVEX_DASHBOARD_BASIC_AUTH_HASH_FILE: /run/secrets/dashboard-basicauth
++      - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
+     ports:
+-      - "${CADDY_HOST_PORT}:8080"
++      - "127.0.0.1:${CADDY_HOST_PORT:-58731}:80"
++    extra_hosts:
++      - "host.docker.internal:host-gateway"
++    environment:
++      CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
+     networks: [clan-world-internal]
+-    depends_on:
+-      convex-dashboard:
+-        condition: service_healthy
+     healthcheck:
+-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
++      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+       interval: 10s
+       timeout: 3s
+       retries: 3
+diff --git a/docs/runbooks/dockerize-migration-v1-rehearsal-transcript.md b/docs/runbooks/dockerize-migration-v1-rehearsal-transcript.md
+new file mode 100644
+index 00000000..451b9fbd
+--- /dev/null
++++ b/docs/runbooks/dockerize-migration-v1-rehearsal-transcript.md
+@@ -0,0 +1,155 @@
++# ClanWorld Dockerize Migration v1 - Rehearsal Transcript
++
++> Operator note: fill this out while running the rehearsal pass from
++> `docs/runbooks/dockerize-migration-v1.md`. The rehearsal stack is isolated
++> by `docker-compose.rehearsal.yml` and should be destroyed with `down -v`
++> after the transcript is complete.
++
++## Metadata
++
++| Field | Value |
++|---|---|
++| Date, Eastern Time | |
++| Operator | |
++| VPS hostname | |
++| Repo commit | |
++| Convex backend image tag | |
++| Convex dashboard image tag | |
++| Convex CLI pin | 1.17.4 |
++| Rehearsal instance secret generated fresh | [ ] yes |
++| Hosted export path | |
++| SDK schema SHA256 | |
++
++## Step 1.a - Stand Up Rehearsal Stack
++
++**Command run:**
++
++```bash
++export CONVEX_REHEARSAL_INSTANCE_SECRET="$(openssl rand -hex 32)"
++docker compose -f docker-compose.rehearsal.yml up -d
++docker compose -f docker-compose.rehearsal.yml ps
++```
++
++**Output:**
++
++```text
++
++```
++
++**Result:** [ ] PASS  [ ] FAIL
++
++## Step 1.b - Generate Rehearsal Admin Key
++
++The backend generates and persists its instance secret inside the rehearsal
++volume. The admin key is derived from the running backend.
++
++**Command run:**
++
++```bash
++mkdir -p agents/secrets
++docker compose -f docker-compose.rehearsal.yml exec -T convex-backend \
++  ./generate_admin_key.sh > agents/secrets/convex-admin.rehearsal.key
++chmod 0600 agents/secrets/convex-admin.rehearsal.key
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
++curl -fsS http://127.0.0.1:38050/api/list_tables \
++  -H "Authorization: Convex ${CONVEX_SELF_HOSTED_ADMIN_KEY}" >/tmp/rehearsal-list-tables.json
++```
++
++**Output:**
++
++```text
++
++```
++
++**Result:** [ ] PASS  [ ] FAIL
++
++## Step 1.c - Capture Hosted Export And Schema Fingerprint
++
++**Command run:**
++
++```bash
++export CONVEX_CLI_PINNED_VERSION=1.17.4
++export HOSTED_EXPORT="agents/backups/convex-hosted-rehearsal-$(date -u +%Y%m%dT%H%M%SZ).zip"
++mkdir -p agents/backups
++npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" export --path "$HOSTED_EXPORT" --include-file-storage
++sha256sum packages/sdk/convex/schema.ts > /tmp/clanworld-sdk-schema.sha256
++```
++
++**Export size and SDK schema fingerprint:**
++
++```text
++
++```
++
++**Result:** [ ] PASS  [ ] FAIL
++
++## Step 1.d - Deploy Schema To Rehearsal
++
++**Command run:**
++
++```bash
++export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:38050
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
++npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" deploy --yes
++```
++
++**Deploy output:**
++
++```text
++
++```
++
++**Result:** [ ] PASS  [ ] FAIL
++
++## Step 1.e - Import Hosted Data Into Rehearsal
++
++**Command run:**
++
++```bash
++export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:38050
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
++npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" import --replace-all --yes "$HOSTED_EXPORT"
++```
++
++**Import output:**
++
++```text
++
++```
++
++**Result:** [ ] PASS  [ ] FAIL
++
++## Step 1.f - Rehearsal Teardown
++
++**Command run:**
++
++```bash
++docker compose -f docker-compose.rehearsal.yml down -v
++rm -f agents/secrets/convex-admin.rehearsal.key
++```
++
++**Output:**
++
++```text
++
++```
++
++**Result:** [ ] PASS  [ ] FAIL
++
++## Issues Encountered
++
++| Step | Issue | Resolution |
++|---|---|---|
++| | | |
++
++## Sign-Off
++
++I have executed the rehearsal pass. The rehearsal backend accepted the hosted
++export, the SDK schema fingerprint was recorded, and the isolated rehearsal
++volume was destroyed.
++
++| Field | Value |
++|---|---|
++| Signed by | |
++| Date, Eastern Time | |
++| Next action | Schedule production cutover with Liam |
+diff --git a/docs/runbooks/dockerize-migration-v1.md b/docs/runbooks/dockerize-migration-v1.md
+new file mode 100644
+index 00000000..b7a20680
+--- /dev/null
++++ b/docs/runbooks/dockerize-migration-v1.md
+@@ -0,0 +1,801 @@
++# ClanWorld Dockerize Migration v1 - Phase 2 Cutover Runbook
++
++**What this migrates:** hosted Convex plus the legacy host-run Elder/heartbeat
++layout to the current docker-compose stack: self-hosted Convex, `heartbeat`,
++`anvil-fork` for dev, and four Elder containers (`elder-1` through `elder-4`)
++running tmux, ttyd, and the `elder-runtime` supervisor in one container per
++Elder.
++
++**Strategy:** parallel coexistence. Bring up and validate the Docker stack
++before disabling legacy services. Public cutover is a cloudflared-only routing
++change to the compose `caddy` service, guarded by the Step 8 health checks.
++
++**When to use:** scheduled Phase 2 migration on the ClanWorld VPS after the
++rehearsal transcript has been signed off.
++
++**When not to use:** ordinary local dev, partial restarts, or one-off Convex
++deploys. For those, use the root `Makefile`, `docker compose`, or the targeted
++runbooks linked at the end.
++
++---
++
++## Tooling Versions
++
++Phase 2 migration commands pin Convex CLI **1.17.4** because of issue #531:
++Convex CLI 1.39.1 requires `CONVEX_DEPLOYMENT` in flows that break the
++isolated rehearsal/import path. The `.env.template` default of
++`CONVEX_CLI_PINNED_VERSION=1.39.1` remains correct for normal production
++operation after migration, but operators must override it during this cutover:
++
++```bash
++export CONVEX_CLI_PINNED_VERSION=1.17.4
++```
++
++Keep this export active before running `make deploy-convex` or
++`make import-convex-schema` in this runbook.
++
++## Current Stack Facts
++
++| Area | Current source of truth |
++|---|---|
++| Compose file | `docker-compose.yml` |
++| Rehearsal compose | `docker-compose.rehearsal.yml` |
++| Root operator targets | `Makefile` |
++| Self-hosted Convex runbook | `docs/runbooks/self-hosted-convex.md` |
++| Canonical Convex schema | `packages/sdk/convex/schema.ts` |
++| Server schema file | `apps/server/convex/schema.ts` re-exports the SDK schema |
++| Elder image | `agents/Dockerfile` |
++| Elder entrypoint | `agents/entrypoint.sh` |
++| Elder runtime supervisor | `packages/elder-runtime/src/main.ts` |
++| Heartbeat container | `agents/heartbeat/Dockerfile` + `agents/heartbeat/entrypoint.sh` |
++
++## Current Services
++
++| Service | Profile | Purpose |
++|---|---|---|
++| `convex-backend` | `dev`, `prod` | Self-hosted Convex backend, internal ports `3210` API and `3211` HTTP actions/site |
++| `convex-dashboard` | `dev`, `prod` | Self-hosted Convex dashboard, internal port `6791` |
++| `convex-backend-dev-port` | `dev` | Host loopback proxy for backend API |
++| `convex-dashboard-dev-port` | `dev` | Host loopback proxy for dashboard |
++| `anvil-fork` | `dev` | Forked Base Sepolia RPC for local/dev rehearsals |
++| `heartbeat` | `dev`, `prod` | Containerized `@clan-world/runner heartbeat` scheduler |
++| `elder-1` to `elder-4` | `dev`, `prod` | One Elder per container: tmux + ttyd + elder-runtime supervisor |
++
++## Existing Make Targets
++
++These root targets exist in this branch for Convex deployment, schema import,
++backups, and broad stack checks:
++
++```bash
++make bootstrap-convex-admin-key PROFILE=dev
++make deploy-convex
++make import-convex-schema
++make backup-convex
++make check-stack-health
++make reset-anvil
++```
++
++The elder infrastructure operator entrypoint is also present at
++`agents/Makefile`. Use it for profile-scoped lifecycle and bootstrap work:
++
++```bash
++make -C agents setup PROFILE=dev|prod
++make -C agents up PROFILE=dev|prod
++make -C agents down
++make -C agents status PROFILE=dev|prod
++make -C agents logs ELDER=elder-2
++make -C agents smoke-test
++make -C agents build PROFILE=dev|prod
++make -C agents bootstrap-convex-admin-key PROFILE=dev|prod
++make -C agents bootstrap-bus-secrets PROFILE=dev|prod
++make -C agents bootstrap-convex-dashboard-auth
++make -C agents oauth-bootstrap
++make -C agents oauth-bootstrap-elder-1
++make -C agents pause
++make -C agents unpause
++make -C agents pause-heartbeat
++make -C agents unpause-heartbeat
++make -C agents reset-elder-3
++make -C agents restart-elder-3
++make -C agents wipe-elder-3 LEVEL=session
++make -C agents reset-anvil PROFILE=dev
++make -C agents link-mounts
++```
++
++Caddy snippet install/check remains outside `agents/Makefile` in this branch.
++
++## Required Environment
++
++Populate `.env` before production cutover because Docker Compose auto-loads
++that file. If you keep local overrides in `.env.local`, pass
++`--env-file .env.local` to every `docker compose` command in this runbook.
++
++| Concept | Current variable or file |
++|---|---|
++| Profile selector | `PROFILE=dev` or `PROFILE=prod` for Make targets |
++| Chain selector | `CHAIN_NETWORK=dev` or `CHAIN_NETWORK=prod` |
++| Prod RPC | `RPC_URL_PRIMARY` |
++| Dev RPC | `DEV_RPC_URL=http://anvil-fork:8545` |
++| Diamond | `CLAN_WORLD_CONTRACT_ADDRESS` |
++| Lens | `CLAN_WORLD_LENS_ADDRESS` |
++| Heartbeat wallet | `RUNNER_PRIVATE_KEY` |
++| Runner/indexer write secret | `INDEXER_SECRET` |
++| Heartbeat webhook target | `CONVEX_WEBHOOK_URL` |
++| Heartbeat webhook secret file | `WEBHOOK_SHARED_SECRET_FILE=agents/secrets/webhook-shared.key` |
++| Convex admin key file | `CONVEX_SELF_HOSTED_ADMIN_KEY_FILE=agents/secrets/convex-admin.key` |
++| Operator command-bus secret file | `BUS_OPERATOR_SECRET_FILE=agents/secrets/bus-operator.key` |
++| Per-Elder bus secret files | `BUS_ELDER_SECRET_FILE_1` through `BUS_ELDER_SECRET_FILE_4` |
++| Web frontend Convex URL | `VITE_CONVEX_URL` |
++
++Set Convex deployment env for command-bus auth after self-hosted deploy:
++
++```bash
++export CONVEX_SELF_HOSTED_URL=<self-hosted-api-url>
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.key)"
++
++npx -y convex@1.17.4 env set BUS_OPERATOR_SECRET "$(cat agents/secrets/bus-operator.key)"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_1 "$(cat "${BUS_ELDER_SECRET_FILE_1:-agents/secrets/bus-elder-1.key}")"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_2 "$(cat "${BUS_ELDER_SECRET_FILE_2:-agents/secrets/bus-elder-2.key}")"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_3 "$(cat "${BUS_ELDER_SECRET_FILE_3:-agents/secrets/bus-elder-3.key}")"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_4 "$(cat "${BUS_ELDER_SECRET_FILE_4:-agents/secrets/bus-elder-4.key}")"
++```
++
++The `agentCommands`, `commandResults`, and `elderHeartbeat` tables are defined
++in `packages/sdk/convex/schema.ts`. The runtime claims commands with
++`queued -> leased -> acked -> completed/failed` state and writes per-Elder
++heartbeats to `elderHeartbeat`.
++
++---
++
++## Step 0 - Pre-Flight Inventory
++
++**Goal:** prove the branch, files, secrets, and legacy rollback path are known
++before starting.
++
++```bash
++git status --short --branch
++docker compose version
++export CONVEX_CLI_PINNED_VERSION=1.17.4
++npx -y convex@1.17.4 --version
++cast --version
++
++test -f docker-compose.yml
++test -f agents/Dockerfile
++test -f agents/entrypoint.sh
++test -f agents/heartbeat/Dockerfile
++test -f packages/sdk/convex/schema.ts
++
++# Capture rollback artifacts before changing runtime state.
++sudo crontab -l > /tmp/sudo-crontab-pre-cutover.txt 2>/dev/null || true
++crontab -l > /tmp/user-crontab-pre-cutover.txt 2>/dev/null || true
++
++# Capture current web Convex env for rollback.
++vercel env pull /tmp/clanworld-web-env-pre-cutover.env \
++  --environment=production \
++  --cwd apps/web
++rg -n '^VITE_CONVEX_URL=' /tmp/clanworld-web-env-pre-cutover.env
++
++# Capture current legacy heartbeat env for rollback.
++if [[ -f ~/.config/clan-world-heartbeat/env ]]; then
++  cp -p ~/.config/clan-world-heartbeat/env /tmp/clanworld-heartbeat-env-pre-cutover
++  cat /tmp/clanworld-heartbeat-env-pre-cutover
++else
++  echo "WARNING: ~/.config/clan-world-heartbeat/env not found; record the legacy heartbeat env path manually before proceeding." >&2
++fi
++```
++
++Record the current hosted Convex URL, current web deployment env, legacy
++systemd units, and heartbeat cron/tmux entries in the operator notes.
++
++**Verify:** every command exits 0 and the current branch is the intended
++integration branch.
++
++**Rollback:** none; this step is read-only.
++
++## Step 1 - Mandatory Rehearsal
++
++**Goal:** rehearse hosted export, schema deploy, and destructive import against
++an isolated self-hosted Convex instance.
++
++```bash
++export CONVEX_REHEARSAL_INSTANCE_SECRET="$(openssl rand -hex 32)"
++docker compose -f docker-compose.rehearsal.yml up -d
++docker compose -f docker-compose.rehearsal.yml ps
++
++mkdir -p agents/secrets agents/backups
++docker compose -f docker-compose.rehearsal.yml exec -T convex-backend \
++  ./generate_admin_key.sh > agents/secrets/convex-admin.rehearsal.key
++chmod 0600 agents/secrets/convex-admin.rehearsal.key
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.rehearsal.key)"
++curl -fsS http://127.0.0.1:38050/api/list_tables \
++  -H "Authorization: Convex ${CONVEX_SELF_HOSTED_ADMIN_KEY}" >/tmp/rehearsal-list-tables.json
++
++export CONVEX_CLI_PINNED_VERSION=1.17.4
++export HOSTED_EXPORT="agents/backups/convex-hosted-rehearsal-$(date -u +%Y%m%dT%H%M%SZ).zip"
++npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" export --path "$HOSTED_EXPORT" --include-file-storage
++sha256sum packages/sdk/convex/schema.ts > /tmp/clanworld-sdk-schema.sha256
++
++export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:38050
++npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" deploy --yes
++npx -y "convex@${CONVEX_CLI_PINNED_VERSION}" import --replace-all --yes "$HOSTED_EXPORT"
++```
++
++`docker-compose.rehearsal.yml` wires
++`INSTANCE_SECRET=${CONVEX_REHEARSAL_INSTANCE_SECRET}` explicitly. It has a
++local-only fallback so `docker compose config` remains parseable, but signed
++rehearsals must export a fresh random value as shown above.
++
++Fill in `docs/runbooks/dockerize-migration-v1-rehearsal-transcript.md`, then
++tear the rehearsal down:
++
++```bash
++docker compose -f docker-compose.rehearsal.yml down -v
++rm -f agents/secrets/convex-admin.rehearsal.key
++```
++
++**Verify:** export exists, schema deploy exits 0, import exits 0, transcript is
++signed off.
++
++**Rollback:** `docker compose -f docker-compose.rehearsal.yml down -v`.
++
++## Step 2 - Production Backup From Hosted Convex
++
++**Goal:** capture the authoritative hosted snapshot and schema fingerprint.
++
++```bash
++mkdir -p agents/backups
++HOSTED_EXPORT="agents/backups/convex-hosted-prod-$(date -u +%Y%m%dT%H%M%SZ).zip"
++npx -y convex@1.17.4 export --path "$HOSTED_EXPORT" --include-file-storage
++chmod 0600 "$HOSTED_EXPORT"
++sha256sum packages/sdk/convex/schema.ts | tee agents/backups/sdk-schema-pre-migration.sha256
++ls -lh "$HOSTED_EXPORT"
++```
++
++**Verify:** backup zip size is non-zero and the SDK schema hash is recorded.
++
++**Rollback:** none; this step is read-only.
++
++## Step 3 - Start Self-Hosted Convex
++
++**Goal:** bring up production self-hosted Convex and generate the admin key from
++the running backend.
++
++```bash
++docker compose --profile prod up -d convex-backend convex-dashboard
++docker compose --profile prod ps convex-backend convex-dashboard
++
++export CONVEX_CLI_PINNED_VERSION=1.17.4
++make bootstrap-convex-admin-key PROFILE=prod
++make deploy-convex
++```
++
++For prod, ensure `CONVEX_CLOUD_ORIGIN`, `CONVEX_SITE_ORIGIN`, and
++`CONVEX_DASHBOARD_DEPLOYMENT_URL` are routed, browser-reachable URLs. The
++deploy script rejects localhost/internal prod origins.
++
++**Verify:**
++
++```bash
++test -s agents/secrets/convex-admin.key
++docker compose --profile prod exec -T convex-backend curl -fsS http://localhost:3210/version
++```
++
++**Rollback:**
++
++```bash
++docker compose --profile prod down
++```
++
++Do not remove `clan-world_convex_data` unless a backup exists and Liam approves
++destroying the self-hosted instance state.
++
++## Step 4 - Import Hosted Data Into Self-Hosted Convex
++
++**Goal:** import the hosted export into the fresh self-hosted deployment.
++
++```bash
++export HOSTED_CONVEX_EXPORT_ZIP="$HOSTED_EXPORT"
++export CONFIRM_EXPORT_HAS_FILE_STORAGE=1
++export FRESH_SELF_HOSTED=1
++export CONFIRM_TARGET_URL="${CONVEX_SELF_HOSTED_URL:?set this to the production self-hosted API URL}"
++export CONVEX_CLI_PINNED_VERSION=1.17.4
++make import-convex-schema
++```
++
++The import script checks the local SDK schema fingerprint and requires explicit
++confirmation before `--replace-all`.
++
++**Verify:** import exits 0. Then open the Convex dashboard through the routed
++admin URL and spot-check expected tables, including `agentCommands`,
++`elderHeartbeat`, `commandResults`, `runnerStatus`, `tickClock`, and
++`worldSnapshot`.
++
++**Rollback:**
++
++```bash
++docker compose --profile prod down
++```
++
++This rollback only stops the stack. Imported self-hosted data remains in the
++`clan-world_convex_data` volume. Destructive recovery, including removing that
++volume or replacing imported data, requires explicit Liam approval and a named
++backup/export path.
++
++## Step 5 - Configure Convex Env
++
++**Goal:** set indexer, heartbeat, and command-bus env on the self-hosted Convex
++deployment.
++
++```bash
++export CONVEX_SELF_HOSTED_URL="${CONVEX_SELF_HOSTED_URL:?set self-hosted API URL}"
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.key)"
++
++npx -y convex@1.17.4 env set CLANWORLD_USE_REAL_INDEXER true
++npx -y convex@1.17.4 env set INDEXER_START_BLOCK <block-at-cutover>
++npx -y convex@1.17.4 env set INDEXER_SECRET "$INDEXER_SECRET"
++npx -y convex@1.17.4 env set RPC_URL_PRIMARY "$RPC_URL_PRIMARY"
++npx -y convex@1.17.4 env set CLAN_WORLD_CONTRACT_ADDRESS "$CLAN_WORLD_CONTRACT_ADDRESS"
++npx -y convex@1.17.4 env set CLAN_WORLD_LENS_ADDRESS "$CLAN_WORLD_LENS_ADDRESS"
++npx -y convex@1.17.4 env set WEBHOOK_SHARED_SECRET "$(cat agents/secrets/webhook-shared.key)"
++npx -y convex@1.17.4 env set BUS_OPERATOR_SECRET "$(cat agents/secrets/bus-operator.key)"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_1 "$(cat "${BUS_ELDER_SECRET_FILE_1:-agents/secrets/bus-elder-1.key}")"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_2 "$(cat "${BUS_ELDER_SECRET_FILE_2:-agents/secrets/bus-elder-2.key}")"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_3 "$(cat "${BUS_ELDER_SECRET_FILE_3:-agents/secrets/bus-elder-3.key}")"
++npx -y convex@1.17.4 env set BUS_ELDER_SECRET_4 "$(cat "${BUS_ELDER_SECRET_FILE_4:-agents/secrets/bus-elder-4.key}")"
++```
++
++**Verify:** `npx -y convex@1.17.4 env list` shows the expected keys. Do not
++paste secret values into issue comments or PR logs.
++
++**Rollback:** restore the web app and legacy heartbeat env captured in Step 0.
++Leave the self-hosted Convex env in place for inspection.
++
++```bash
++HOSTED_VITE_CONVEX_URL="$(
++  rg -N '^VITE_CONVEX_URL=' /tmp/clanworld-web-env-pre-cutover.env | head -1 | cut -d= -f2-
++)"
++test -n "$HOSTED_VITE_CONVEX_URL"
++
++vercel env rm VITE_CONVEX_URL production --yes --cwd apps/web || true
++printf '%s\n' "$HOSTED_VITE_CONVEX_URL" \
++  | vercel env add VITE_CONVEX_URL production --cwd apps/web
++vercel deploy --prod --cwd apps/web
++
++if [[ -f /tmp/clanworld-heartbeat-env-pre-cutover ]]; then
++  mkdir -p ~/.config/clan-world-heartbeat
++  install -m 600 /tmp/clanworld-heartbeat-env-pre-cutover ~/.config/clan-world-heartbeat/env
++fi
++```
++
++## Step 6 - Start Heartbeat And Elder Containers
++
++**Goal:** mask the legacy runner first, then run the Docker heartbeat and
++Elder fleet. Mask legacy runner FIRST so only the new Docker heartbeat fires
++on-chain transactions.
++
++```bash
++sudo systemctl stop clanworld-runner.service
++sudo systemctl disable clanworld-runner.service
++systemctl status clanworld-runner.service --no-pager || true
++
++docker compose --profile prod up -d heartbeat elder-1 elder-2 elder-3 elder-4
++docker compose --profile prod ps heartbeat elder-1 elder-2 elder-3 elder-4
++docker compose --profile prod logs --tail=100 heartbeat
++```
++
++Each Elder container starts:
++
++- a named tmux session (`elder-N`) running `agents/shared/run.sh`,
++- ttyd on container port `7681`, attached to that tmux session,
++- `tsx /opt/elder-runtime/src/main.ts`, the command-bus supervisor.
++
++The supervisor claims commands from Convex, writes command results, maintains
++`elderHeartbeat`, and uses the tmux sink hot-fix path that pipes content into
++`tmux load-buffer` via stdin before pasting.
++
++**Verify:**
++
++```bash
++docker compose --profile prod exec -T elder-1 tmux has-session -t elder-1
++docker compose --profile prod exec -T elder-1 pgrep -f 'ttyd'
++docker compose --profile prod exec -T elder-1 pgrep -f 'tsx.*main.ts'
++docker compose --profile prod exec -T elder-1 test -f /workspace/.runtime/elder-runtime.ready
++```
++
++Repeat for `elder-2`, `elder-3`, and `elder-4`.
++
++**Rollback:**
++
++```bash
++docker compose --profile prod stop heartbeat elder-1 elder-2 elder-3 elder-4
++sudo systemctl enable --now clanworld-runner.service
++sudo crontab /tmp/sudo-crontab-pre-cutover.txt
++crontab /tmp/user-crontab-pre-cutover.txt
++```
++
++## Step 7 - Internal Health Gate
++
++**Goal:** prove the current container stack is healthy before any public
++routing or web env cutover.
++
++```bash
++make check-stack-health PROFILE=prod
++docker compose --profile prod ps
++docker compose --profile prod logs --since=10m heartbeat elder-1 elder-2 elder-3 elder-4
++```
++
++`make check-stack-health` currently checks Convex backend, HTTP actions/site,
++and dashboard reachability. It does not yet replace a full elder command-bus
++smoke test.
++
++Manual command-bus smoke:
++
++```bash
++export CONVEX_SELF_HOSTED_URL="${CONVEX_SELF_HOSTED_URL:?set self-hosted API URL}"
++export CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat agents/secrets/convex-admin.key)"
++npx -y convex@1.17.4 run commandBus:enqueueCommand '{
++  "secret": "'"$(cat agents/secrets/bus-operator.key)"'",
++  "targetAgentId": "elder-1",
++  "kind": "snapshot_request",
++  "payload": {"lines": 80},
++  "source": "migration-runbook"
++}'
++```
++
++Then verify `commandResults` and `elderHeartbeat` update in the dashboard.
++
++**Rollback:**
++
++1. Stop Docker heartbeat and Elders:
++
++   ```bash
++   docker compose --profile prod stop heartbeat elder-1 elder-2 elder-3 elder-4
++   ```
++
++2. Re-enable the legacy runner, reversing Step 6's `stop` + `disable`:
++
++   ```bash
++   sudo systemctl enable --now clanworld-runner.service
++   ```
++
++3. Verify the legacy runner is healthy and consuming heartbeats again before
++   investigating the failed Docker health gate.
++
++## Step 8 - Docker Caddy Public Routing Gate
++
++**Goal:** route `app.clan-world.com` to the Docker Caddy service only after the
++compose stack is healthy internally.
++
++The ClanWorld router is the compose `caddy` service. Host Caddy is not in the
++`app.clan-world.com` path; it continues serving unrelated shared-host routes.
++Warning: restarting cloudflared briefly drops ALL tunnels, usually for about 5
++seconds. Choose an operator-approved time.
++
++Pre-check for duplicate ingress entries:
++
++```bash
++if sudo grep -q "hostname: *app.clan-world.com" /etc/cloudflared/config.yml; then
++  echo "ERROR: app.clan-world.com already exists in cloudflared config -- abort + update existing entry instead of adding"
++  exit 1
++fi
++```
++
++Back up the current config:
++
++```bash
++sudo cp /etc/cloudflared/config.yml /etc/cloudflared/config.yml.bak-$(date +%Y%m%d%H%M%S)
++```
++
++Edit `/etc/cloudflared/config.yml` and add one ingress entry BEFORE the final
++`http_status:404` catch-all rule. Cloudflared does not expand shell variables
++in `config.yml`; this example assumes the default `CADDY_HOST_PORT=58731`.
++The port is literal: if you change `CADDY_HOST_PORT`, update the literal port in
++`/etc/cloudflared/config.yml` to match.
++
++```yaml
++- hostname: app.clan-world.com
++  service: http://127.0.0.1:58731
++  originRequest:
++    httpHostHeader: app.clan-world.com
++```
++
++Validate Docker Caddy locally before restarting cloudflared:
++
++```bash
++docker compose --profile prod up -d caddy
++curl -fsS "http://127.0.0.1:${CADDY_HOST_PORT:-58731}/healthz" | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
++curl -fsS -o /dev/null "http://127.0.0.1:${CADDY_HOST_PORT:-58731}/elder-1/"
++```
++
++Validate the cloudflared config, restart cloudflared, and verify the new route
++plus one existing tunnel:
++
++```bash
++EXPECTED_PORT=${CADDY_HOST_PORT:-58731}
++CURRENT_CLOUDFLARED_PORT=$(sudo grep -A1 'app.clan-world.com' /etc/cloudflared/config.yml | grep -oE 'localhost:[0-9]+|127.0.0.1:[0-9]+' | grep -oE '[0-9]+' | head -1)
++if [ "$EXPECTED_PORT" != "$CURRENT_CLOUDFLARED_PORT" ]; then
++  echo "ERROR: CADDY_HOST_PORT=$EXPECTED_PORT but cloudflared routes to port $CURRENT_CLOUDFLARED_PORT"
++  exit 1
++fi
++sudo cloudflared tunnel --config /etc/cloudflared/config.yml ingress validate
++sudo systemctl restart cloudflared
++curl -fsS https://app.clan-world.com/healthz | grep -q "^ok$" || { echo "ERROR: healthz did not return ok"; exit 1; }
++curl -fsS -o /dev/null https://cockpit.clan-world.com
++```
++
++Then verify:
++
++- `app.clan-world.com` routes to the current web app,
++- `/map` reaches the public map route,
++- `/elder-1/` through `/elder-4/` reach the Docker-internal ttyd services,
++- legacy `cockpit.clan-world.com/elder-N-tty/` still works during coexistence.
++
++**Rollback:** restore the timestamped backup from the first command and restart
++cloudflared:
++
++```bash
++sudo cp /etc/cloudflared/config.yml.bak-YYYYMMDDHHMMSS /etc/cloudflared/config.yml
++sudo systemctl restart cloudflared
++```
++
++Keep the Docker stack running internally for diagnosis if it is healthy.
++
++## Step 9 - Swap Web App Convex URL
++
++**Goal:** point the browser app at self-hosted Convex after internal health and
++public routing are both green.
++
++Set the web deployment's `VITE_CONVEX_URL` to the routed self-hosted Convex API
++origin. Then redeploy the web app through the existing deployment process.
++
++**Verify:** open the live app, check browser network traffic, and confirm
++Convex requests use the self-hosted URL.
++
++**Rollback:** restore `VITE_CONVEX_URL` to the hosted Convex URL and redeploy.
++
++## Step 10 - 30-Minute Coexist Observation
++
++**Goal:** observe the Docker stack after the legacy runner has been masked.
++Legacy state and the captured rollback files remain available, but the legacy
++runner must stay stopped so it does not double-fire heartbeat transactions.
++
++Run in separate terminals:
++
++```bash
++systemctl status clanworld-runner.service --no-pager || true
++docker compose --profile prod logs -f heartbeat elder-1 elder-2 elder-3 elder-4
++```
++
++Observe for at least 30 minutes:
++
++- no unhandled errors in `heartbeat`,
++- `runnerStatus` updates from the heartbeat container,
++- `elderHeartbeat` updates for each Elder,
++- no command-bus lease buildup in `agentCommands`,
++- `clanworld-runner.service` remains inactive.
++
++**Rollback:** stop Docker heartbeat/Elders, re-enable the legacy runner, restore
++saved crontabs, and investigate.
++
++## Step 11 - Confirm Legacy Runner Disabled And Remove Legacy Cron
++
++**Goal:** keep the legacy runner disabled after the coexist observation and
++remove any legacy heartbeat cron entries. The runner was already stopped in
++Step 6 before the Docker heartbeat started.
++
++```bash
++sudo systemctl stop clanworld-runner.service
++sudo systemctl disable clanworld-runner.service
++
++sudo crontab -l | grep -v clanworld-heartbeat | sudo crontab -
++crontab -l | grep -v clanworld-heartbeat | crontab -
++
++pgrep -af clanworld-runner || true
++```
++
++**Verify:** `systemctl status clanworld-runner.service` is inactive and no
++legacy heartbeat cron remains.
++
++**Rollback:**
++
++```bash
++sudo systemctl enable --now clanworld-runner.service
++sudo crontab /tmp/sudo-crontab-pre-cutover.txt
++crontab /tmp/user-crontab-pre-cutover.txt
++```
++
++## Step 12 - 24-Hour Soak
++
++**Goal:** prove the Docker stack can run through normal operation before
++archiving legacy state.
++
++During soak:
++
++```bash
++make check-stack-health PROFILE=prod
++docker compose --profile prod ps
++docker compose --profile prod logs --since=1h heartbeat elder-1 elder-2 elder-3 elder-4
++```
++
++Check Convex dashboard rows for `runnerStatus`, `elderHeartbeat`,
++`agentCommands`, `commandResults`, `tickClock`, and `worldSnapshot`.
++
++**Rollback during soak:** re-enable legacy runner/heartbeat, restore
++`VITE_CONVEX_URL` to hosted Convex, and stop Docker heartbeat/Elders.
++
++## Step 13 - Archive Legacy State
++
++**Goal:** archive, not delete, legacy state after a clean soak.
++
++```bash
++ARCHIVE_DATE=$(date +%Y%m%d)
++mkdir -p ~/.world/archive
++mkdir -p docs/operations
++
++mv ~/code/clan-world/legacy-runner-state \
++  ~/.world/archive/runner-state-pre-dockerize-${ARCHIVE_DATE}
++
++cat >> docs/operations/dockerize-cutover-${ARCHIVE_DATE}.md <<EOF
++# ClanWorld Dockerize Cutover - ${ARCHIVE_DATE}
++
++Legacy runner state archived to:
++  ~/.world/archive/runner-state-pre-dockerize-${ARCHIVE_DATE}
++
++Cutover completed by: <operator>
++Soak period: <start ET> - <end ET>
++All checks passed: yes
++EOF
++```
++
++**Verify:** archive path exists and legacy state has not been silently deleted.
++
++**Rollback:** move the archive back to the original path.
++
++---
++
++## Troubleshooting
++
++### Compose Fails During Config Interpolation
++
++The compose file intentionally requires production values. Populate `.env`
++before `docker compose --profile prod config`, or pass
++`--env-file .env.local` explicitly if using local override files.
++
++Common missing values: `CHAIN_NETWORK`, `RUNNER_PRIVATE_KEY`,
++`CLAN_WORLD_CONTRACT_ADDRESS`, `INDEXER_SECRET`, `CONVEX_WEBHOOK_URL`,
++`CONVEX_CLOUD_ORIGIN`, `CONVEX_SITE_ORIGIN`, and
++`CONVEX_DASHBOARD_DEPLOYMENT_URL`.
++
++### Self-Hosted Convex Is Unhealthy
++
++```bash
++docker compose --profile prod logs convex-backend --tail=100
++docker compose --profile prod exec -T convex-backend curl -fsS http://localhost:3210/version
++```
++
++If the admin key file is missing, regenerate it from the running backend:
++
++```bash
++make bootstrap-convex-admin-key PROFILE=prod FORCE=1
++```
++
++### Import Is Refused
++
++`make import-convex-schema` refuses destructive imports unless the confirmation
++env vars are set. For a fresh self-hosted target, set:
++
++```bash
++FRESH_SELF_HOSTED=1
++CONFIRM_TARGET_URL=<exact self-hosted URL>
++HOSTED_CONVEX_EXPORT_ZIP=<export zip>
++CONFIRM_EXPORT_HAS_FILE_STORAGE=1
++```
++
++### Agent Containers Cannot Reach Convex
++
++Inside an Elder container:
++
++```bash
++docker compose --profile prod exec -T elder-1 curl -fsS http://convex-backend:3210/version
++```
++
++Then verify `CONVEX_DEPLOY_URL=http://convex-backend:3210` and
++`BUS_ELDER_SECRET_FILE=/run/secrets/bus-elder-N` in the service definition.
++
++### Elder Runtime Restart Loop
++
++```bash
++docker compose --profile prod logs elder-1 --tail=120
++docker compose --profile prod exec -T elder-1 ls -l /workspace/.runtime
++```
++
++Common causes:
++
++- missing `ELDER_N`,
++- missing per-Elder `.env`,
++- unreadable bus secret file,
++- stale `/workspace/.runtime/supervisor.lock`,
++- Claude OAuth token missing from `agents/elder-N/.env`.
++
++### Heartbeat Container Fails
++
++```bash
++docker compose --profile prod logs heartbeat --tail=150
++```
++
++Confirm `CHAIN_NETWORK`, selected RPC URL, `RUNNER_PRIVATE_KEY`,
++`CLAN_WORLD_CONTRACT_ADDRESS`, `INDEXER_SECRET`, `CONVEX_URL`,
++`CONVEX_DEPLOY_URL`, and `CONVEX_WEBHOOK_URL`.
++
++## Pager Quick Reference
++
++Stop the new Docker heartbeat and Elder fleet:
++
++```bash
++docker compose --profile prod stop heartbeat elder-1 elder-2 elder-3 elder-4
++```
++
++Inspect stack health:
++
++```bash
++make check-stack-health PROFILE=prod
++docker compose --profile prod ps
++```
++
++Restart one Elder:
++
++```bash
++docker compose --profile prod restart elder-1
++docker compose --profile prod logs --tail=100 elder-1
++```
++
++Tail heartbeat and Elder logs:
++
++```bash
++docker compose --profile prod logs -f heartbeat
++docker compose --profile prod logs -f elder-1 elder-2 elder-3 elder-4
++```
++
++Restore legacy runner service:
++
++```bash
++sudo systemctl enable --now clanworld-runner.service
++```
++
++Restore saved crontabs:
++
++```bash
++sudo crontab /tmp/sudo-crontab-pre-cutover.txt
++crontab /tmp/user-crontab-pre-cutover.txt
++```
++
++Key Convex URLs:
++
++| Purpose | URL |
++|---|---|
++| Docker-internal API | `http://convex-backend:3210` |
++| Docker-internal HTTP actions/site | `http://convex-backend:3211` |
++| Dev host API loopback | `http://127.0.0.1:${CONVEX_BACKEND_HOST_PORT:-3210}` |
++| Dev dashboard loopback | `http://127.0.0.1:${CONVEX_DASHBOARD_HOST_PORT:-6791}` |
++
++Key Convex tables to inspect:
++
++| Table | Meaning |
++|---|---|
++| `runnerStatus` | Heartbeat caller liveness and last fire result |
++| `elderHeartbeat` | Per-Elder runtime liveness |
++| `agentCommands` | Command-bus queue and lease state |
++| `commandResults` | Command-bus completion/failure output |
++| `tickClock` | Current tick clock |
++| `worldSnapshot` | Latest indexed game snapshot |
++
++## Cross-Links
++
++- `docs/runbooks/self-hosted-convex.md`
++- `docs/plans/dockerize-elder-infra-v1.md`
++- `docs/plans/dockerize-v1-revision-notes.md`
++- `agents/heartbeat/README.md`
++- `agents/README.md`
++- `docker-compose.yml`
++- `docker-compose.rehearsal.yml`
++- `docs/runbooks/dockerize-migration-v1-rehearsal-transcript.md`
+diff --git a/packages/elder-runtime/src/config.ts b/packages/elder-runtime/src/config.ts
+index e9f54d80..85737e45 100644
+--- a/packages/elder-runtime/src/config.ts
++++ b/packages/elder-runtime/src/config.ts
+@@ -40,12 +40,14 @@ export function loadConfig(): ElderRuntimeConfig {
+     heartbeatIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_HEARTBEAT_MS"], 30000, "ELDER_RUNTIME_HEARTBEAT_MS"),
+     noncePollIntervalMs: parsePositiveInt(process.env["ELDER_RUNTIME_NONCE_POLL_MS"], 2000, "ELDER_RUNTIME_NONCE_POLL_MS"),
+     // Default 240_000 (4 min) is strictly less than the command-bus LEASE_MS
+-    // of 5 min so the supervisor's nonce-wait expires + failCommand fires
+-    // BEFORE the Convex sweepStaleDelivered cron requeues the command. Without
+-    // this margin, the sweeper re-leases the same command while the supervisor
+-    // is still polling → duplicate tmux paste delivered to Claude (super-swarm
+-    // R+1 finding, PR #543). If you raise this env, also raise LEASE_MS in
+-    // commandBus.ts and the sweeper interval in convex/crons.ts.
++    // of 6 min so the supervisor's nonce-wait expires + failCommand fires
++    // BEFORE the Convex sweepStaleDelivered cron requeues the command. The
++    // sweeper also applies COMPLETION_GRACE_MS = 30s, so the default effective
++    // safety window is 360_000 + 30_000 - 240_000 = 150_000 ms (2.5 min).
++    // Without this margin, the sweeper re-leases the same command while the
++    // supervisor is still polling → duplicate tmux paste delivered to Claude
++    // (super-swarm R+1 finding, PR #543). If you raise this env, also raise
++    // LEASE_MS in commandBus.ts and account for the sweeper grace there.
+     nonceTimeoutMs: parsePositiveInt(process.env["ELDER_RUNTIME_NONCE_TIMEOUT_MS"], 240000, "ELDER_RUNTIME_NONCE_TIMEOUT_MS"),
+     runScriptPath: process.env["ELDER_RUN_SCRIPT_PATH"] ?? "/opt/clan-world/shared/run.sh",
+   };

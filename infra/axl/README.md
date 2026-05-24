@@ -35,13 +35,13 @@ The setup script reads each node's public key from `GET /topology` (`our_public_
 writes them to `.env`.
 
 The test script constructs an `AxlEnvelope` (the same JSON shape used by `AxlPeerInbox` in
-`packages/runner/src/axlPeerInbox.ts`) and sends it via `POST /send` on axl-1, addressed to
+`packages/heartbeat/src/axlPeerInbox.ts`) and sends it via `POST /send` on axl-1, addressed to
 clan-2's peer ID. It then polls `GET /recv` on axl-2 to confirm delivery and validates every
 envelope field.
 
 **AxlPeerInbox vs FilePeerInbox:** The runner selects `AxlPeerInbox` when both `AXL_API_KEY`
 and `AXL_NETWORK_ID` are set. `test-whisper.sh` sets both, confirming the AXL transport path.
-See `packages/runner/src/axlPeerInbox.ts:511` (`createPeerInbox`).
+See `packages/heartbeat/src/axlPeerInbox.ts:511` (`createPeerInbox`).
 
 ## Volumes
 

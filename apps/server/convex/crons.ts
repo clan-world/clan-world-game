@@ -39,9 +39,4 @@ crons.hourly(
   {},
 );
 
-// Issue #351: command-bus stale-delivered sweeper. Reclaims leases on
-// `leased`/`acked` rows whose `leaseExpiresAt < now()` so retry/fail paths
-// can advance even if the elder runtime crashed mid-delivery.
-crons.interval("bus-sweep-stale-delivered", { seconds: 60 }, internal.commandBus.sweepStaleDelivered, {});
-
 export default crons;

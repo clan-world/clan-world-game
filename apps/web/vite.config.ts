@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
+import { adminApiPlugin } from './server/admin/middleware';
 
 // Canonical port resolved from port-for registry (clan-world slot 587, env=dev).
 // Falls back to FALLBACK_PORT (canonical value from .world/ports.yml) when port-for is
@@ -104,7 +105,7 @@ const APP_VERSION = process.env.VITE_APP_VERSION ?? 'dev';
 // Without this, VITE_* values are undefined at build time and the prod bundle
 // has no Convex URL or demo-mode configuration baked in.
 export default defineConfig({
-  plugins: [react(), mapBgPreloadPlugin()],
+  plugins: [react(), mapBgPreloadPlugin(), adminApiPlugin()],
   envDir: path.resolve(__dirname, '../..'),
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(APP_VERSION),

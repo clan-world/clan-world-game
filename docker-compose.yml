@@ -193,7 +193,7 @@ services:
     profiles: [dev]
 
   # ---------------------------------------------------------------------------
-  # Heartbeat — runs the existing @clan-world/runner heartbeat loop in a
+  # Heartbeat — runs the existing @clan-world/heartbeat heartbeat loop in a
   # container. Pre-flight assertions land in #353 (Phase 1.10).
   # ---------------------------------------------------------------------------
   heartbeat:
@@ -318,7 +318,7 @@ services:
       # Verifies tmux session, ttyd process, and elder-runtime supervisor (tsx) — all three
       # required for Phase 1.9 (#352). Hardcoded elder-1 literal because compose-time
       # ${ELDER_N} was empty at compose-config time (super-swarm R2 finding f0a55977).
-      test: ["CMD-SHELL", "tmux has-session -t elder-1 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-1 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -342,7 +342,7 @@ services:
       - elder-2-home:/home/elder/.claude
       - elder-2-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-2 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-2 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -366,7 +366,7 @@ services:
       - elder-3-home:/home/elder/.claude
       - elder-3-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-3 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-3 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -390,7 +390,7 @@ services:
       - elder-4-home:/home/elder/.claude
       - elder-4-workspace:/workspace
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-4 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-4 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s
       timeout: 5s
       retries: 3

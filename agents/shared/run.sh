@@ -12,6 +12,8 @@
 #      settings.json + CLAUDE.md + skills/ resolve to the host-authored versions.
 #   3. Detect whether a previous CC conversation exists for this CWD.
 #   4. Exec `claude` with --continue when prior history exists, fresh otherwise.
+#      The runner may override auto-detection with CLAN_WORLD_CLAUDE_CONTINUE:
+#      `always`, `never`, or `auto` (default).
 #      Always append the shared system prompt via --append-system-prompt-file.
 #
 # Per-elder env vars are injected by docker compose's `env_file:` directive
@@ -119,7 +121,14 @@ APPEND_PROMPT="/opt/clan-world/shared/APPENDED_SYSTEM_PROMPT.md"
 
 # --- launch ----------------------------------------------------------------
 
-if compgen -G "$SESSIONS_DIR/*.jsonl" > /dev/null 2>&1; then
+CONTINUE_MODE="${CLAN_WORLD_CLAUDE_CONTINUE:-auto}"
+if [ "$CONTINUE_MODE" = "always" ]; then
+  echo "[run.sh] runner requested --continue"
+  exec claude --continue --append-system-prompt-file "$APPEND_PROMPT"
+elif [ "$CONTINUE_MODE" = "never" ]; then
+  echo "[run.sh] runner requested fresh session"
+  exec claude --append-system-prompt-file "$APPEND_PROMPT"
+elif compgen -G "$SESSIONS_DIR/*.jsonl" > /dev/null 2>&1; then
   echo "[run.sh] previous conversation found at $SESSIONS_DIR, resuming with --continue"
   exec claude --continue --append-system-prompt-file "$APPEND_PROMPT"
 else

@@ -6,6 +6,7 @@ import { VaultTab } from './tabs/VaultTab';
 import { ClansmanTab } from './tabs/ClansmanTab';
 import { ZeroGTab } from './tabs/ZeroGTab';
 import { CommsTab } from './tabs/CommsTab';
+import { AdminMessageTab } from './tabs/AdminMessageTab';
 
 interface Props {
   elder: ElderDef;
@@ -65,6 +66,7 @@ export function MiniCockpit({ elder, initialTab = 'terminal' }: Props) {
         {active === 'clansman' && <ClansmanTab elder={elder} testIdPrefix={testIdPrefix} />}
         {active === '0g'       && <ZeroGTab    elder={elder} testIdPrefix={testIdPrefix} />}
         {active === 'comms'    && <CommsTab    elder={elder} testIdPrefix={testIdPrefix} />}
+        {active === 'admin'    && <AdminMessageTab elder={elder} testIdPrefix={testIdPrefix} />}
       </div>
     </section>
   );
