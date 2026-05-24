@@ -3,6 +3,7 @@ import type { TmuxSink } from "../src/tmuxSink.js";
 import {
   postPasteSubmitted,
   prePasteReady,
+  POST_PASTE_INITIAL_SETTLE_MS,
   READY_PROBE_INTERVAL_MS,
   READY_PROBE_TIMEOUT_MS,
   STUCK_INPUT_MAX_RETRIES,
@@ -71,7 +72,8 @@ describe("paste verification", () => {
     ]);
 
     const promise = postPasteSubmitted(tmux);
-    await vi.advanceTimersByTimeAsync(STUCK_INPUT_RETRY_DELAY_MS);
+    // Skip past the initial-settle sleep + one retry sleep.
+    await vi.advanceTimersByTimeAsync(POST_PASTE_INITIAL_SETTLE_MS + STUCK_INPUT_RETRY_DELAY_MS);
 
     await expect(promise).resolves.toBe(true);
     expect(tmux.sendKeys).toHaveBeenCalledTimes(1);
@@ -86,11 +88,28 @@ describe("paste verification", () => {
     ]);
 
     const promise = postPasteSubmitted(tmux);
-    await vi.advanceTimersByTimeAsync(STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES);
+    await vi.advanceTimersByTimeAsync(
+      POST_PASTE_INITIAL_SETTLE_MS + STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES,
+    );
 
     await expect(promise).resolves.toBe(false);
     expect(tmux.sendKeys).toHaveBeenCalledTimes(STUCK_INPUT_MAX_RETRIES);
     expect(tmux.capturePane).toHaveBeenCalledTimes(STUCK_INPUT_MAX_RETRIES + 1);
+  });
+
+  it("post-paste returns false when no prompt is visible (gemini R1 MED \u2014 defends crashed pane)", async () => {
+    vi.useFakeTimers();
+    // No input-box-prompt line at all (TUI crashed / blank pane).
+    const tmux = mockTmux([
+      pane("(some garbled output)", "no recognizable prompt here"),
+    ]);
+
+    const promise = postPasteSubmitted(tmux);
+    await vi.advanceTimersByTimeAsync(
+      POST_PASTE_INITIAL_SETTLE_MS + STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES,
+    );
+
+    await expect(promise).resolves.toBe(false);
   });
 });
 
