@@ -6,6 +6,56 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.15.0] — 2026-05-24
+
+**Bundle 4 — Simplified communications architecture.** Six sub-PRs replace the command-bus FSM + supervisor pattern with a per-elder runner + two-phase commit + pendingMessages queue. Net effect: simpler runtime model, explicit confirmation accounting, per-elder auth surface on every Convex function the runner touches, Python UserPromptSubmit hook handles receipt logging, and a Clerk-authed admin inject path replaces writable ttyd. Plus three super-swarm-driven fix rounds (R1 polish + R2 cross-tier HIGHs + R3 cloud-reviewer findings).
+
+### Added
+
+- **Per-elder runner (`packages/runner/`)** — entirely new package replacing `elder-runtime/`. State machine: 5-case restart decision (A no-op / B fresh send / C re-send / D wipe-gap reset / E fast-forward) + two-phase commit (`tickSendLog` → tmux paste → Python hook → `tickReceiveLog` → confirm) + wipe-marker recovery + `flockGuard` singleton + paste verification (`prePasteReady` + `postPasteSubmitted`). 145 runner tests (was 56 in v2.14.0).
+- **`packages/heartbeat/`** — rename target of the old multi-elder per-tick heartbeat package. v2.15.0 runs heartbeat-only here; per-elder runner lives in the new `runner` package.
+- **Python `UserPromptSubmit` hook** (`agents/shared/home-claude/hooks/user_prompt_submit.py`) — parses `tick:` / `whisper:` / `special-msg:` prefixes on every Claude prompt, writes a receipt row to Convex `tickReceiveLog` via the per-elder `requireBusElderSecret` auth path. Reads `BUS_ELDER_SECRET_FILE` from the Docker secret mount + falls back to `BUS_ELDER_SECRET` raw env. 11 prompt templates under `agents/shared/runner/prompts/`.
+- **`tickReceiveLog` Convex table + recordReceive mutation** — receipt-side of the two-phase commit. Indexed `by_elder_tick`. Replaces command-bus-era `commandResults` table.
+- **`pendingMessages` Convex table** — admin/operator message queue. Runner polls + consumes via `getRunnerAuxiliary` query + `consumePendingMessages` mutation; both now authenticated via `requireBusElderSecret(elderId, secret)` with cross-elder ownership checks on consume + completeResetEvent (R2 super-swarm fix-round).
+- **`/api/admin/inject-message`** — operator endpoint for injecting whisper/special-msg into a specific elder's queue. Clerk session + allowlist + `BUS_OPERATOR_SECRET` defense-in-depth. `ttyd --writable` removed in favor of this path. Vite middleware lifecycle; a production handler is the v2.16 follow-up.
+- **Cockpit reset overlay + admin message panel** (`apps/web` Bundle 4 PR5/#574 + PR6/#576): post-wipe banner with terminal-frame status tracking; admin panel for inject-message.
+
+### Changed
+
+- **Auth surface widened to per-elder secret on every runner Convex function**: `getRunnerStartupState`, `getRunnerAuxiliary`, `hasTickReceive`, `isThematicUidTaken`, `hasMessageUidReceive` (now scoped by `elderId`), `recordTickSend`, `consumePendingMessages`, `recordResetEvent`, `completeResetEvent`, `recordRunnerEvent`. Symmetric with R1's `tickReceiveLog:recordReceive` fix. `RunnerConvexClient` threads `config.busSecret` through every mutation + the live `watchAuxiliary` subscription. (R2 super-swarm fix-round at 58da466.)
+- **Confirmation flag propagation**: `runResetFlow` returns `{confirmed: boolean}`; `handleAuxiliaryUpdate` for scheduled-wipe ticks no longer optimistically returns `confirmed: true` — propagates the actual delivery result. `handleStartupDecision` returns `{confirmed: boolean}` to let `main.ts` cursor init guard against unconfirmed startup ticks. (R2 fix.)
+- **`restartDecision` wipeMarker check** narrowed from `>=` to `>` — closes the edge case where a runner crashing in the ~5ms window between successful delivery and `clearWipeMarker` would re-wipe Claude on next startup. (R2 fix, originally flagged by gemini-3.1-pro.)
+
+### Fixed
+
+- **R1 polish round** (commit fd84477): `tickReceiveLog:recordReceive` authenticated via `BUS_OPERATOR_SECRET` (later widened to per-elder in R2); `latestReceivedTick` rewritten to use `by_elder_tick` index instead of `by_elder_received` 200-row filter (closes whisper-flood infinite-reset bug — gemini cross-tier HIGH); `ttyd --writable` removed in favor of `/api/admin/inject-message` (codex 5.5 HIGH).
+- **R2 super-swarm fix-round** (commit 58da466 — 6-model dispatch synthesized manually after orchestrator subagent died mid-synthesis): the 4 cross-tier HIGHs above (runner control-plane auth completion, scheduled-wipe confirmed propagation, startup-decision confirmed propagation, wipeMarker `>` fix), plus 2 SHOULD items (`ADMIN_INJECT_ENABLED` startup warning in entrypoint.sh + wipeMarker comment update). Full synthesis at `docs/reviews/pr579-synthesis.md`; per-model reviews at `docs/reviews/pr579-codereview-*.md`.
+- **R3 cloud-reviewer fix-round** (commits d811f69 + e69e90d): 4 P2 findings from Copilot + cloud codex — `pathOf()` uses fixed `http://127.0.0.1` base + try/catch (no crash on invalid Host header); `.env.template` ADMIN_AUTH_BYPASS comment aligned with positive `NODE_ENV === "development"` check; `KNOWN_ELDER_IDS` dead-code removed from `tickReceiveLog.ts` (already covered by `requireBusElderSecret` regex); `hasMessageUidReceive` scoped per-elder via `by_elder_received` index so one elder's receipt cannot satisfy another's delivery confirmation. Cleanup commit e69e90d removed node_modules symlinks accidentally committed by `git add -A` (gitignore `node_modules/` doesn't match symlinks-to-dirs).
+- **Hook precedence** for secret reads: `BUS_ELDER_SECRET_FILE` (Docker secret mount) wins over raw `BUS_ELDER_SECRET` env. Stale `BUS_ELDER_SECRET=` in `agents/elder-N/.env.template` is blank and won't shadow the mounted file.
+
+### Removed
+
+- **Command-bus FSM** (`apps/server/convex/commandBus.ts` + the `agentCommands` / `commandResults` tables) — Bundle 2's queued→leased→delivered→completed pattern is replaced by the simpler `pendingMessages` + `tickReceiveLog` pair.
+- **`sweepStaleDelivered` cron** — no longer needed without the FSM.
+- **`packages/elder-runtime/`** — superseded by `packages/runner/` (new code, not a rename). Old supervisor pattern removed.
+
+### Operational
+
+- **R3 added a startup WARNING in `entrypoint.sh`**: if `ADMIN_INJECT_ENABLED` is not set, the elder boots with read-only ttyd AND no admin-inject endpoint reachable, meaning operators have no input channel. The warning is non-blocking — production wiring of the `/api/admin/inject-message` handler is the v2.16 follow-up.
+- **Schema migration is destructive on first deploy**: `agentCommands`, `elderHeartbeat`, `commandResults` tables dropped; `pendingMessages`, `resetEventLog`, `tickSendLog`, `tickReceiveLog`, `runnerEvents` added. Convex `deploy` pushes schema + functions atomically. Container rebuilds (entrypoint.sh + runner package) must follow the Convex deploy.
+
+### Follow-ups filed for v2.16
+
+- **Tracker `#599`** — Phase B test-improvement experiment (overnight dispatch of 30 parallel test-writing sub-agents across 6 monorepo slices). 18 of 30 returned (Claude variants); the 12 codex variants silently failed due to a heredoc-in-`run_in_background` stdin-hang bug (memory entry filed; skill updates applied). 18 draft PRs (`#581-#598`) + 8 child fix issues (`#600-#607`) covering 4 real bugs (HIGH: ClanAgentNFT.transferFrom usageAuthorizations leak; HIGH: monolithic ClanWorld OTC bypasses world-pause; MED: hook parser `tick: N <body>` int() drop; LOW: `resourceAmount()` regex double-escape) + 3 latent/test-pinned issues + 4 defense gaps + 1 infra gap (apps/web needs jsdom + RTL).
+- **Issue #580** — 6 DEFER items from PR #579 super-swarm synthesis (admin slug phantom, heartbeatIntervalSeconds drift guard, constant-time secret compare, watchAuxiliary queue coalescing, dead heartbeat start script, cosmetic dedup) + the prod admin-inject endpoint deployment.
+
+### Process notes
+
+- Bundle 4 shipped via the 4-level branching convention: 6 feature branches → `dev-phase-4-simplified-comms` → `dev` (PR #576) → `main` (PR #579). R1/R2/R3 fix rounds landed directly on `dev` as fast-forward commits which auto-updated PR #579 in place.
+- Super-swarm orchestrator subagent died mid-synthesis at 02:30 ET 2026-05-24 (sister failure to the cluster of new failure modes documented this morning); orchestrator manually synthesized from the 6 reviewer files on disk per `feedback_super_swarm_orchestrator_early_exit.md`. The successful pattern is now codified.
+
+---
+
 ## [2.14.0] — 2026-05-24
 
 **Phase 1 — Dockerize elder infra.** Three bundles ship the full containerization of the elder + heartbeat stack: services foundation (Bundle 1), per-elder agent containers + agents-shared layout (Bundle 2), command-bus polish + agents/Makefile operator entrypoint + Phase 2 migration runbook (Bundle 3). Plus dockerized Caddy router (PR #348 v3) replaces the host-Caddy snippet approach. Net effect: elders run in reproducible Linux containers with egress lockdown, ttyd read-only access, supervisor-managed lifecycle, Docker-secret-mounted bus secrets, single `make agents-up` entrypoint, and a stack-wide compose profile.
