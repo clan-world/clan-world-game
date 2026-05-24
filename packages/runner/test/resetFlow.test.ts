@@ -30,6 +30,7 @@ describe("runResetFlow", () => {
       async launchClaude(opts: { continue: boolean }) { calls.push(`claude:${opts.continue}`); },
       async sendSlashCommand(cmd: string) { calls.push(cmd); },
       async pasteMessage(text: string) { calls.push(`paste:${text.split("\n")[0]}`); },
+      async capturePane() { return "\u2502 > "; },
     } as any;
     const convex = {
       async recordResetEvent() { calls.push("reset-start"); return "resetEventLog:1"; },
