@@ -68,6 +68,11 @@ function inputRegion(pane: string): string[] {
 
 function inputPromptText(line: string): string | null {
   const withoutCursor = line.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
-  const match = /^\s*(?:[\u2502\u2503|]\s*)?>\s*(.*?)\s*$/.exec(withoutCursor);
+  // Claude TUI 2.x renders the prompt indicator as `\u276f` (U+276F) instead of
+  // ASCII `>`. Accept both so the runner stays compatible across versions.
+  // Without this, prePasteReady never matches and the runner emits
+  // `ready_probe_timeout` every tick. Validated 2026-05-24 self-hosted cutover
+  // (Phase 2 tick-delivery blocker).
+  const match = /^\s*(?:[\u2502\u2503|]\s*)?[>\u276f]\s*(.*?)\s*$/.exec(withoutCursor);
   return match?.[1] ?? null;
 }
