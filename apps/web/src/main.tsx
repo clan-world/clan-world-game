@@ -40,8 +40,9 @@ const Provider = ConvexProvider as React.ComponentType<{
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
 
-// `/cockpit` is a standalone judge view — always render it, even if Convex
-// env is missing. The Phase-A panels are pure placeholders; the embedded
+// The cockpit (now at `/`), `/map`, `/cockpit`, `/owner`, and `/agents/:id`
+// are standalone surfaces — always render them, even if Convex env is
+// missing. The Phase-A panels are pure placeholders; the embedded
 // WorldMap consumes Convex via useQuery which returns undefined when no
 // data is available, so a stub client is enough to satisfy the provider.
 //
@@ -53,13 +54,18 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 const pathname =
   typeof window !== 'undefined' ? window.location.pathname : '';
 // Match the actual route shapes defined in App.tsx:
-//   /cockpit          → isCockpitRoute (startsWith '/cockpit')
+//   /                 → Cockpit
+//   /map              → MainApp / WorldMap
+//   /cockpit          → legacy alias → redirect to /
 //   /owner            → isOwnerRoute   (startsWith '/owner')
 //   /agents/:digits   → parseAgentRoute (regex /^\/agents\/(\d+)\/?$/)
 // Bare `/agents` is NOT a real route in App.tsx — it falls through to
 // MainApp (the WorldMap), which DOES need Convex. So `/agents` must only
 // be treated as standalone when followed by a digit segment.
 const isStandalonePath =
+  pathname === '/' ||
+  pathname === '/map' ||
+  pathname.startsWith('/map/') ||
   pathname === '/cockpit' ||
   pathname.startsWith('/cockpit/') ||
   pathname === '/owner' ||

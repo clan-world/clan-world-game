@@ -14,7 +14,7 @@ plugins {
 // APKs — every project-specific URL should be set explicitly per environment.
 //
 // Local devs can keep these in `~/.gradle/gradle.properties`:
-//   clanWorldMapUrl=https://app.clan-world.com
+//   clanWorldMapUrl=https://app.clan-world.com/map
 //   clanWorldTerminalBaseUrl=https://cockpit.clan-world.com
 //   clanWorldConvexUrl=https://valuable-kudu-985.convex.cloud
 // ─────────────────────────────────────────────────────────────────────────

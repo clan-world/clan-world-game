@@ -1,0 +1,12 @@
+# Runtime state — mutable per-elder writes (CC harness output, transcripts, credentials)
+runtime/
+
+# Per-elder env files (real secrets — only .env.template is committed)
+.env
+elder-*/.env
+
+# Docker-compose helper-container snapshot dir (populated by `make link-mounts`).
+# The directory is checked in (via .gitkeep) so operators see it without
+# needing to run link-mounts first, but all snapshot contents are gitignored.
+.docker-mounts/*
+!.docker-mounts/.gitkeep

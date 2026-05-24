@@ -8,7 +8,6 @@ import type { IConvexClient } from '@clan-world/shared/adapters';
 import { composeSituationBlock, isContextResetTick } from './composeSituationBlock';
 import { pollChainTick } from './pollChainTick';
 import { settleWindow } from './settleWindow';
-import type { SettleLatch } from './settleLatch';
 import { ELDER_IDS, type ElderId, type RunnerConfig } from './types';
 
 export interface PerElderDeps {
@@ -25,8 +24,6 @@ export interface TickLoopDeps {
   signal: AbortSignal;
   /** Logger — defaults to console. Tests pass a recorder. */
   log?: Logger;
-  /** Optional shared latch — Cycle A waits for Cycle B to call markSettled(tick). */
-  settleLatch?: SettleLatch;
 }
 
 export interface Logger {
@@ -52,7 +49,6 @@ const consoleLogger: Logger = {
  *         status = inbox.deliverSituationBlock(chainTick, update)
  *       wait settleWindow
  *       if reset tick: wait for ack-clear, then /clear + bootstrap Elders
- *       settleLatch.markSettled(chainTick)
  *       lastProcessedTick = chainTick
  *     sleep pollIntervalMs
  *
@@ -187,7 +183,6 @@ export async function tickLoop(deps: TickLoopDeps): Promise<void> {
         }
       }
 
-      deps.settleLatch?.markSettled(chainTick);
       lastProcessedTick = chainTick;
     }
 

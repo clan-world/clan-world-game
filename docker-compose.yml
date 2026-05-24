@@ -1,0 +1,398 @@
+# ClanWorld Elder Infrastructure — docker-compose stack
+#
+# Phase 1.1 scaffold (issue #344). Establishes the topology only — concrete
+# image builds, Caddyfiles, runbooks, and the Makefile arrive in later phases:
+#
+#   - #345 agents/Dockerfile (Phase 1.2)
+#   - #347 self-hosted Convex deploy (Phase 1.4)
+#   - #348 dockerized Caddy routing for app.clan-world.com (Phase 1.5)
+#   - #349 elder-N service template (Phase 1.6) — these stubs will be
+#     overwritten by the generated docker-compose.elders.yml
+#   - #355 agents/Makefile (Phase 1.12)
+#   - #356 migration runbook (Phase 1.13)
+#
+# Profiles (per locked decision in docs/plans/dockerize-elder-infra-v1.md):
+#
+#   --profile dev   anvil-fork + bind-mount agents/  (local iteration)
+#   --profile prod  real Base Sepolia RPC, image-baked agents/  (VPS deploy)
+#
+# Caddy is a compose service for ClanWorld-only routing. Host cloudflared sends
+# app.clan-world.com directly to the docker-published loopback CADDY_HOST_PORT;
+# host Caddy continues serving unrelated hostnames on its own port.
+#
+# Validation:
+#   docker compose --profile dev config
+#   docker compose --profile prod config
+
+name: clan-world
+
+networks:
+  clan-world-internal:
+    driver: bridge
+
+volumes:
+  # Self-hosted Convex SQLite — wired up in #347
+  convex_data: {}
+  # anvil-fork persisted fork state (dev profile only) — wired up in #346
+  anvil_data: {}
+  # Per-Elder R/W volumes — wired up in #349. Declared here so `docker compose
+  # config` can resolve mount references early.
+  elder-1-home: {}
+  elder-1-workspace: {}
+  elder-2-home: {}
+  elder-2-workspace: {}
+  elder-3-home: {}
+  elder-3-workspace: {}
+  elder-4-home: {}
+  elder-4-workspace: {}
+
+secrets:
+  # Webhook HMAC shared secret for heartbeat → Convex webhook (Finding 30 fix).
+  webhook-shared:
+    file: ${WEBHOOK_SHARED_SECRET_FILE:-./agents/secrets/webhook-shared.key}
+  # Per-Elder bus secrets (Finding 22 fix — per-elder, not shared).
+  bus-elder-1:
+    file: ${BUS_ELDER_SECRET_FILE_1:-./agents/secrets/bus-elder-1.key}
+  bus-elder-2:
+    file: ${BUS_ELDER_SECRET_FILE_2:-./agents/secrets/bus-elder-2.key}
+  bus-elder-3:
+    file: ${BUS_ELDER_SECRET_FILE_3:-./agents/secrets/bus-elder-3.key}
+  bus-elder-4:
+    file: ${BUS_ELDER_SECRET_FILE_4:-./agents/secrets/bus-elder-4.key}
+  # Operator secret for enqueueing commands into the Convex bus.
+  bus-operator:
+    file: ${BUS_OPERATOR_SECRET_FILE:-./agents/secrets/bus-operator.key}
+
+# Shared building blocks (YAML anchors, NOT compose services).
+# Profiles let us reuse the same elder service block in both dev and prod with
+# only the agents-mount strategy and image tag differing.
+x-elder-common: &elder-common
+  # ELDER_IMAGE_TAG defaults to `dev` for local iteration; prod profile MUST
+  # override to a SHA-pinned tag (e.g. `prod-<commit>`). #345 ships the
+  # Dockerfile + build script. Profile-specific overrides applied via
+  # docker-compose.{dev,prod}.yml overlays — coming in #349.
+  image: clanworld/agents:${ELDER_IMAGE_TAG:-dev}
+  restart: unless-stopped
+  networks: [clan-world-internal]
+  cap_add:
+    - NET_ADMIN  # Required by agents/shared/init-firewall.sh (#345).
+  depends_on:
+    convex-backend:
+      condition: service_healthy
+
+services:
+  # ---------------------------------------------------------------------------
+  # Self-hosted Convex backend + dashboard.
+  #
+  # The backend persists its SQLite database and generated instance secret in
+  # convex_data. `make bootstrap-convex-admin-key` reads a derived admin key
+  # from the running backend; the backend does not consume an admin-key secret.
+  # ---------------------------------------------------------------------------
+  convex-backend:
+    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    environment:
+      INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:?CONVEX_CLOUD_ORIGIN required; set browser-reachable API origin explicitly}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:?CONVEX_SITE_ORIGIN required; set HTTP actions origin explicitly}
+      DISABLE_BEACON: ${DISABLE_BEACON:-true}
+      DISABLE_METRICS_ENDPOINT: ${DISABLE_METRICS_ENDPOINT:-true}
+      DO_NOT_REQUIRE_SSL: ${DO_NOT_REQUIRE_SSL:-true}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - convex_data:/convex/data
+    networks: [clan-world-internal]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    profiles: [dev, prod]
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    environment:
+      # In dev, operators open the dashboard through localhost. In prod this
+      # should be overridden to a routed internal/admin URL or left unexposed.
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_DASHBOARD_DEPLOYMENT_URL:?CONVEX_DASHBOARD_DEPLOYMENT_URL required; set browser-reachable dashboard deployment URL explicitly}
+    networks: [clan-world-internal]
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    healthcheck:
+      # Verified 2026-05-21: ghcr.io/get-convex/convex-dashboard:latest includes /usr/bin/curl.
+      test: ["CMD", "curl", "-f", "http://localhost:6791/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    profiles: [dev, prod]
+
+  # Dev-only loopback access for host-run CLI/dashboard. Compose cannot make
+  # a single service's `ports:` conditional on profile, so these tiny proxies
+  # keep prod's canonical services Docker-internal.
+  convex-backend-dev-port:
+    image: alpine/socat:1.7.4.4
+    command: ["TCP-LISTEN:3210,fork,reuseaddr", "TCP:convex-backend:3210"]
+    ports:
+      - "127.0.0.1:${CONVEX_BACKEND_HOST_PORT:-3210}:3210"
+    networks: [clan-world-internal]
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [dev]
+
+  convex-dashboard-dev-port:
+    image: alpine/socat:1.7.4.4
+    command: ["TCP-LISTEN:6791,fork,reuseaddr", "TCP:convex-dashboard:6791"]
+    ports:
+      - "127.0.0.1:${CONVEX_DASHBOARD_HOST_PORT:-6791}:6791"
+    networks: [clan-world-internal]
+    depends_on:
+      convex-dashboard:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [dev]
+
+  # ---------------------------------------------------------------------------
+  # anvil-fork — dev profile ONLY. Forks Base Sepolia at FORK_BLOCK_NUMBER and
+  # impersonates the diamond owner so dev iteration burns zero real RPC credits.
+  # Implementation details (state intervals, auto-impersonate flags) land in
+  # #346 (Phase 1.3).
+  # ---------------------------------------------------------------------------
+  anvil-fork:
+    image: ghcr.io/foundry-rs/foundry:v1.2.0
+    entrypoint: anvil
+    command:
+      - --host=0.0.0.0
+      - --fork-url=${RPC_URL_PRIMARY:?RPC_URL_PRIMARY required for fork seed}
+      - --fork-block-number=${FORK_BLOCK_NUMBER:-0}
+      - --state=/data/anvil-state.json
+      - --state-interval=60
+      - --chain-id=84532
+      - --gas-price=0
+      - --block-time=2
+      - --auto-impersonate
+    volumes:
+      - anvil_data:/data
+    networks: [clan-world-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "cast chain-id --rpc-url http://localhost:8545 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    profiles: [dev]
+
+  # ---------------------------------------------------------------------------
+  # Heartbeat — runs the existing @clan-world/runner heartbeat loop in a
+  # container. Pre-flight assertions land in #353 (Phase 1.10).
+  # ---------------------------------------------------------------------------
+  heartbeat:
+    build:
+      context: .
+      dockerfile: agents/heartbeat/Dockerfile
+    init: true
+    environment:
+      CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      # Profile-specific overlay sets exactly ONE of these (Finding 9 + 48 fix
+      # — no cross-env fallback). Entrypoint picks based on CHAIN_NETWORK and
+      # aborts if the selected URL is empty.
+      DEV_RPC_URL: ${DEV_RPC_URL:-}
+      # PROD_RPC_URL reuses RPC_URL_PRIMARY per .env.template. Empty string
+      # passes through compose-parse; the heartbeat entrypoint fails loudly
+      # at container start if the selected RPC URL is empty (entrypoint.sh:30),
+      # so missing values surface at `docker compose up`, not earlier at
+      # `docker compose config`.
+      PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      RUNNER_PRIVATE_KEY: ${RUNNER_PRIVATE_KEY:?RUNNER_PRIVATE_KEY required (dedicated heartbeat wallet)}
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for runnerStatus writes}
+      # createConvexClient() reads CONVEX_URL for runnerStatus writes.
+      CONVEX_URL: http://convex-backend:3210
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      # Self-hosted Convex cannot be auto-derived from CONVEX_DEPLOY_URL.
+      # .env.template documents the canonical value: http://convex-backend:3211
+      # (the convex-backend service's HTTP actions / site port on the internal
+      # network). Fail-loud rather than silently defaulting — keeps prod overrides
+      # explicit.
+      CONVEX_WEBHOOK_URL: ${CONVEX_WEBHOOK_URL:?CONVEX_WEBHOOK_URL required (e.g. http://convex-backend:3211 for self-hosted Convex)}
+      CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
+      WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
+      HEARTBEAT_HEALTH_THRESHOLD_S: ${HEARTBEAT_HEALTH_THRESHOLD_S:-180}
+      RUNNER_ID: heartbeat-${CHAIN_NETWORK}
+    secrets:
+      - webhook-shared
+    networks: [clan-world-internal]
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    healthcheck:
+      # Webhook timestamp file is touched on every successful heartbeat tick.
+      test: ["CMD-SHELL", "test -f /tmp/last-heartbeat-success && [ $$(($$(date +%s) - $$(cat /tmp/last-heartbeat-success))) -lt $$HEARTBEAT_HEALTH_THRESHOLD_S ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 2
+      start_period: 60s
+    # Retry transient preflight/runtime failures, then leave repeated failures visible.
+    restart: on-failure:5
+    profiles: [dev, prod]
+
+  # ---------------------------------------------------------------------------
+  # Dockerized Caddy — ClanWorld-only router. The host cloudflared ingress maps
+  # app.clan-world.com -> 127.0.0.1:${CADDY_HOST_PORT:-58731}; Caddy then routes
+  # to Docker-internal services by name.
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    networks: [clan-world-internal]
+    ports:
+      - "127.0.0.1:${CADDY_HOST_PORT:-58731}:80"
+    extra_hosts:
+      # Lets local dev point CLAN_WORLD_WEB_UPSTREAM at a host-run Vite server,
+      # e.g. http://host.docker.internal:58740, on Linux Docker.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./agents/shared/caddy.conf:/etc/caddy/Caddyfile:ro
+    environment:
+      CLAN_WORLD_WEB_UPSTREAM: ${CLAN_WORLD_WEB_UPSTREAM:-https://clan-world-game.vercel.app}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    profiles: [dev, prod]
+
+  # ---------------------------------------------------------------------------
+  # Elder containers (4 in v1 — scaling to 12 is a config change). Each Elder
+  # runs three processes under tini: ttyd (port 7681) + tmux server + the
+  # elder-runtime supervisor (Node, in #354). Locked to ONE container per
+  # Elder (Finding 24 fix — sibling containers can't share tmux sockets).
+  #
+  # Volume mounts differ by profile (Finding 1.6 — agents/ bind-mount in dev
+  # for fast iteration, image-baked in prod for immutability). The dev/prod
+  # split is expressed via separate service blocks rather than YAML overlays
+  # so `docker compose --profile {dev,prod} config` resolves cleanly without
+  # external overlay files.
+  # ---------------------------------------------------------------------------
+  elder-1:
+    <<: *elder-common
+    container_name: clan-world-elder-1
+    # Per-elder OAuth token + clan identity loaded from agents/elder-1/.env
+    # (gitignored; templated by agents/elder-1/.env.template). The .env file is
+    # NOT bind-mounted into the container — only injected as env vars at start,
+    # so the elder's Bash tool cannot `cat /agent/.env`. `required: false` keeps
+    # `docker compose config` parseable in CI before operators run
+    # `make bootstrap-elder-envs`; the elder container will fail loudly at startup
+    # if CLAUDE_CODE_OAUTH_TOKEN is empty (run.sh / claude CLI auth refusal).
+    env_file:
+      - path: ./agents/elder-1/.env
+        required: false
+    environment:
+      ELDER_N: "1"
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
+    secrets:
+      - bus-elder-1
+    volumes:
+      # Shared bind-mount — entrypoint.sh execs /opt/clan-world/shared/run.sh
+      # from this tree, and run.sh symlinks home-claude/{settings.json,CLAUDE.md}
+      # + skills/ into the per-elder /home/elder/.claude/ on container start.
+      # Read-only because shared content is authored on the host (no rebuild on
+      # shared-file edit; symlink target updates pick up changes on restart).
+      - ./agents/shared:/opt/clan-world/shared:ro
+      # Per-Elder R/W runtime state — survives container restart. run.sh
+      # bootstraps the shared symlinks here on first start (or if missing).
+      - elder-1-home:/home/elder/.claude
+      - elder-1-workspace:/workspace
+    healthcheck:
+      # Verifies tmux session, ttyd process, and elder-runtime supervisor (tsx) — all three
+      # required for Phase 1.9 (#352). Hardcoded elder-1 literal because compose-time
+      # ${ELDER_N} was empty at compose-config time (super-swarm R2 finding f0a55977).
+      test: ["CMD-SHELL", "tmux has-session -t elder-1 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]
+
+  elder-2:
+    <<: *elder-common
+    container_name: clan-world-elder-2
+    env_file:
+      - path: ./agents/elder-2/.env
+        required: false
+    environment:
+      ELDER_N: "2"
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
+    secrets:
+      - bus-elder-2
+    volumes:
+      - ./agents/shared:/opt/clan-world/shared:ro
+      - elder-2-home:/home/elder/.claude
+      - elder-2-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-2 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]
+
+  elder-3:
+    <<: *elder-common
+    container_name: clan-world-elder-3
+    env_file:
+      - path: ./agents/elder-3/.env
+        required: false
+    environment:
+      ELDER_N: "3"
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
+    secrets:
+      - bus-elder-3
+    volumes:
+      - ./agents/shared:/opt/clan-world/shared:ro
+      - elder-3-home:/home/elder/.claude
+      - elder-3-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-3 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]
+
+  elder-4:
+    <<: *elder-common
+    container_name: clan-world-elder-4
+    env_file:
+      - path: ./agents/elder-4/.env
+        required: false
+    environment:
+      ELDER_N: "4"
+      CONVEX_DEPLOY_URL: http://convex-backend:3210
+      BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
+    secrets:
+      - bus-elder-4
+    volumes:
+      - ./agents/shared:/opt/clan-world/shared:ro
+      - elder-4-home:/home/elder/.claude
+      - elder-4-workspace:/workspace
+    healthcheck:
+      test: ["CMD-SHELL", "tmux has-session -t elder-4 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    profiles: [dev, prod]

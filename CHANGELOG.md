@@ -6,6 +6,49 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.14.0] — 2026-05-24
+
+**Phase 1 — Dockerize elder infra.** Three bundles ship the full containerization of the elder + heartbeat stack: services foundation (Bundle 1), per-elder agent containers + agents-shared layout (Bundle 2), command-bus polish + agents/Makefile operator entrypoint + Phase 2 migration runbook (Bundle 3). Plus dockerized Caddy router (PR #348 v3) replaces the host-Caddy snippet approach. Net effect: elders run in reproducible Linux containers with egress lockdown, ttyd read-only access, supervisor-managed lifecycle, Docker-secret-mounted bus secrets, single `make agents-up` entrypoint, and a stack-wide compose profile.
+
+### Added
+
+- **Heartbeat container** (PR #525 / Bundle 1): containerizes the existing TS runner not a thin shell wrapper. Multi-stage Dockerfile with cast + pnpm-layer-cache; entrypoint preflight checks (chain-id verification, anvil-rejection in production, required-secret presence); restart `on-failure:5`; atomic temp+rename readiness file. Replaces the host-launched runner; production deploys can scale per-container.
+- **Per-elder agent containers** (Bundle 2 — PR #533/#534/#542/#543/#545): `agents/Dockerfile` builds `clan-world/agent:dev` (Node 24 slim, ttyd, tmux, sudo-gated init-firewall.sh). Per-elder service template at `agents/elder-N/`. `agents/shared/` bind-mounted R/O overlay (CLAUDE.md, run.sh, settings.json). `packages/elder-runtime/` supervises tmux + claude lifecycle with 8 control verbs, observable health derivation, singleton atomic lock, readiness-file boot order, two-layer recovery, sync-vs-async fix on tmuxSink (`execFile.input` → `spawn` + stdin pipe).
+- **Phase 2 migration runbook + agents/Makefile** (Bundle 3 — PR #547/#548): 14-step migration runbook with rehearsal compose + transcript at `docs/runbooks/dockerize-migration-v1.md`. 330-line `agents/Makefile` provides lifecycle + bootstrap targets (`bootstrap-bus-secrets`, `bootstrap-convex-admin-key`, `bootstrap-vault-secret`, `agents-up`, `agents-down`, `agents-reset`, `agents-restart`, `agents-pause-heartbeat`, etc.) with `PROFILE=dev|prod` propagation, SHA-512-crypt dashboard auth bcrypt-compatible, OAuth token mounts.
+- **Convex command bus + per-elder bus secrets** (PR #542 + #549 + #551): new tables (`agentCommands`, `commandResults`, `elderHeartbeat`) with FSM (queued → leased → delivered → ackd → completed/failed) + claim/lease/sweep semantics. Per-elder Docker-secret mounts at `/run/secrets/bus-elder-{1..4}`. settings.json deny additions block 13 secret-exfil verbs (`/run/secrets` reads + bash strings/set/declare/export/perl-e/bash-c inline-script env-dump).
+- **Dockerized Caddy router** (PR #554 / issue #348 v3): dedicated `caddy:2-alpine` compose service bound to `127.0.0.1:58731:80`, talks to elders by Docker DNS service-name, one-line cloudflared ingress edit. Replaces the host-Caddy snippet approach (PR #546) which had 2 CRITICALs: no-auth public RCE, top-level site block not routing through cloudflared's loopback. ttyd `--writable` removed.
+- **Self-hosted Convex backend** (PR #526 / Bundle 1): 4 bash bootstrap scripts + root Makefile + runbook for `convex-backend` Docker image with socat loopback proxies, chicken-and-egg admin-key bootstrap, CONVEX_DATA volume preservation warnings, SDK + server CLI version alignment.
+- **Anvil-fork dev RPC** (PR #410 / Bundle 1): docker-compose service profile for local Anvil with fork of Base Sepolia; `make agents-up PROFILE=dev` brings up the full stack including anvil.
+
+### Changed
+
+- **`packages/runner/` is now the heartbeat-only package**, hardened with self-hosted Convex compatibility checks + on-chain interval reading (carried over from v2.13.0 PR #503).
+- **AGENTS.md + per-repo guidance refreshed** to point at the new `agents/Makefile` operator entrypoint + dockerize migration runbook (no more bare `tmux` commands in the day-1 onboarding).
+
+### Fixed
+
+- **Cloud-review pass** (PRs #557/#558/#559 — Copilot batch on Bundle 1/2/3): singleton lock race on SIGTERM in elder-runtime/main.ts; UTF-8 MAX_BYTES using string.length not Buffer.byteLength in snapshotRequest.ts; Caddy Host header `{upstream_hostport}` placeholder breaking Vercel routing; agents/Makefile status display + dashboard-auth bcrypt vs SHA512-crypt; heartbeat doc/code mismatch + Convex version docs.
+- **Bundle 3 merge-order recovery** (PR #561): PR #553 merged Bundle 3 to `dev-containerize-agents` 16 seconds after PR #552 already merged that branch to `dev`, leaving 11 commits stranded. Recovery PR #561 (`dev-containerize-agents → dev`) re-merged them, with R1 fix-round adding `failCommand` + `ackCommand` grace alignment, settings.json deny-list expansion, Makefile `--profile $(PROFILE)` propagation to mutating targets.
+- **tmuxSink execFile.input silent failure** (PR #545): `execFile`'s `input` option is sync-variant only; async silently ignored. tmux got empty buffer. Switched to `spawn` + stdin pipe. Caught post-merge by Bundle 3 exploration sweep; the swarm-blind-to-mocked-boundaries failure mode is documented in `feedback_swarm_blind_to_mocked_boundaries_2026_05_22.md`.
+
+### Operational
+
+- **`make agents-up PROFILE=dev`** is the canonical operator entrypoint — replaces the bare tmux + manual claude attach pattern. See `docs/runbooks/dockerize-migration-v1.md` for the full Phase 2 cutover sequence.
+- **Compose profiles** gate non-default services: `dev` adds anvil + convex-backend; `prod` skips anvil and assumes external Convex deployment.
+- **Bus secrets bootstrap** via `make bootstrap-bus-secrets` writes per-elder + operator secrets to `/etc/clan-world/secrets/` as Docker secret files; never embedded in env vars.
+
+### Removed
+
+- **Host-Caddy snippet path** (PR #546): superseded by dockerized Caddy v3 (PR #554). Removed from operator workflow.
+
+### Process notes
+
+- Phase 1 dockerize shipped through the 4-level branching convention (`feat/* → dev-bundle-<N> → dev → main`) per ADR 0018. Bundle 3 recovery PR #561 illustrates the merge-order safety: when sub-branches merge to the bundle branch out-of-order vs the bundle branch's own merge to dev, the bundle-PR pattern surfaces it cleanly.
+- Two follow-up issues filed for v2.15.0 Bundle 4 scope: live-TUI capture-pane fixtures for paste verification regex tuning (#575); deliverPendingOnly multi-message confirm semantic (#577).
+- Bundle 4 (simplified communications architecture) lives on `dev-phase-4-simplified-comms` integration branch; ships in next release.
+
+---
+
 ## [2.13.0] — 2026-05-20
 
 **Phase 0 — Convex bandwidth optimization.** Six sub-PRs reshape the server's read path away from polling-and-pushing the whole world every 5 seconds into an event-driven model with on-chain governance of heartbeat cadence. Net effect: ~70% reduction in Convex bandwidth on a quiet chain, sub-second event surface latency on a busy chain, and the heartbeat interval is now an on-chain value the runner reads each loop (no redeploy required to change cadence).

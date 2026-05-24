@@ -7,6 +7,8 @@
     "dev": "echo 'run: pnpm convex dev'",
     "build": "tsc -b",
     "codegen": "convex codegen --typecheck disable",
+    "convex:codegen": "npx -y convex@${CONVEX_CLI_PINNED_VERSION:-1.39.1} codegen --typecheck disable",
+    "convex:deploy": "npx -y convex@${CONVEX_CLI_PINNED_VERSION:-1.39.1} deploy --yes",
     "typecheck": "tsc --noEmit",
     "test": "vitest run convex/*.test.ts",
     "lint": "echo 'lint stub'",

@@ -1,3 +1,7 @@
+> **DEPRECATED**: This package is superseded by `packages/elder-runtime/` (Phase 1.9, issue #352).
+> It will be removed in Phase 2. The elder-runtime supervisor runs inside each elder container
+> and replaces the centralized multi-elder runner daemon.
+
 # @clan-world/runner
 
 ClanWorld runner daemon — drives 4 Elder Claude Code sessions through the
@@ -13,7 +17,6 @@ loop:
       update = composeSituationBlock(elder, chainTick)
       tmux send-keys -t elder-N -l "$update" + Enter
     settle window (~90s) — Elders read, reason, submit orders
-    heartbeat() on-chain (rate-limit aware, Cycle A)
     lastProcessedTick = chainTick
   sleep pollInterval
 ```
@@ -38,9 +41,6 @@ Heartbeat cadence comes from the diamond's owner-configured
 
 The scheduler reads `heartbeatIntervalSeconds()` once at boot, then schedules
 each fire from `getWorldState().nextHeartbeatAtTs` with a 500 ms jitter buffer.
-When the full Elder runner is active, Cycle A still waits for Cycle B to settle
-before firing, so a heartbeat can intentionally land after the next-allowed
-timestamp if Elders are still in their settle window.
 
 ## Alerts and status
 

@@ -39,7 +39,7 @@ The full reasoning is in `/home/claude/.claude/plans/my-purpose-here-is-delightf
 # From the worktree root:
 cd apps/clan-world-mobile
 ANDROID_HOME=/opt/android-sdk \
-  CLAN_WORLD_MAP_URL=https://app.clan-world.com \
+  CLAN_WORLD_MAP_URL=https://app.clan-world.com/map \
   CLAN_WORLD_TERMINAL_BASE_URL=https://cockpit.clan-world.com \
   CLAN_WORLD_VERSION_NAME=2.3.3 \
   CLAN_WORLD_VERSION_CODE=2003003 \

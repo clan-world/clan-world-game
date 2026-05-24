@@ -63,3 +63,8 @@ purposes:
     type: backend
     env: scratch
     canonical: 38793
+
+  - name: clan-world-docker-caddy
+    type: frontend
+    env: prod
+    canonical: 58731   # cloudflared routes app.clan-world.com -> 127.0.0.1:58731 -> docker caddy (Phase 1.5 #348)

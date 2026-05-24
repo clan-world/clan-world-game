@@ -14,6 +14,7 @@ import {
   HeartbeatRateLimitedError,
   type IHeartbeatCaller,
 } from '@clan-world/agents/seams';
+import { writeHeartbeatSuccessFile } from './heartbeatSuccessFile';
 
 export interface RunnerHeartbeatConfig {
   /** Hex-encoded 64-char private key, optionally 0x-prefixed. */
@@ -140,6 +141,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         txHash: hash,
         blockNumber: receipt.blockNumber,
       });
+      writeHeartbeatSuccessFile();
       return { txHash: hash };
     } catch (err) {
       // Already a rate-limit error — rethrow immediately; no second RPC read.
