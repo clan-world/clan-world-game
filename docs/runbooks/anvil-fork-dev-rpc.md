@@ -126,7 +126,110 @@ When NOT to reset:
 
 - You just want to roll back one tx — use `anvil_setBalance` / `anvil_setStorageAt` cheatcodes or restart the elders, both are cheaper.
 
-## 5. Troubleshooting
+## 5. Bootstrapping a fork from a paused live diamond
+
+`fresh-vps-bootstrap.md` and `full-game-reset.md` both assume a freshly-deployed diamond. When the fork inherits state from a live Base Sepolia diamond, you may also inherit operational state — most importantly, `worldPaused=true`.
+
+Symptom (validated 2026-05-24 during the v2.15.0 self-hosted Convex cutover):
+
+```
+[heartbeat] heartbeat attempt N failed (revert):
+The contract function "heartbeat" reverted with the following reason:
+ClanWorld: world paused
+```
+
+Investigation:
+
+```bash
+# from a sibling container on clan-world-internal
+DIAMOND=0x<your-diamond>
+RPC=http://anvil-fork:8545
+
+cast call $DIAMOND "owner()(address)" --rpc-url $RPC
+cast call $DIAMOND "getClanIds()(uint32[])" --rpc-url $RPC   # if non-empty, fork inherited active clans
+cast call $DIAMOND "getWorldState()" --rpc-url $RPC          # `worldPaused` is one of the fields
+```
+
+If `getClanIds()` returns clans (e.g. `[1, 2, 3, 4]`), do NOT mint new ones — the fork already has them.
+
+Fix: call `unpauseWorld()` from the owner. The fork has `--auto-impersonate` enabled, so you don't need the real owner key.
+
+```bash
+OWNER=$(cast call $DIAMOND "owner()(address)" --rpc-url $RPC)
+
+# fund the impersonated owner (anvil keeps 0 ETH for forked accounts)
+docker compose --profile dev exec -T heartbeat \
+  cast rpc anvil_setBalance "$OWNER" 0x56BC75E2D63100000 --rpc-url http://anvil-fork:8545
+
+# impersonate + unpause
+docker compose --profile dev exec -T heartbeat \
+  cast rpc anvil_impersonateAccount "$OWNER" --rpc-url http://anvil-fork:8545
+docker compose --profile dev exec -T heartbeat \
+  cast send "$DIAMOND" "unpauseWorld()" --rpc-url http://anvil-fork:8545 --unlocked --from "$OWNER"
+```
+
+After unpause, the heartbeat container auto-retries through the 60s rate-limit window and starts ticking. Watch:
+
+```bash
+docker logs -f clan-world-heartbeat-1 | grep -E 'heartbeat tx confirmed|rate-limited|world paused'
+```
+
+You should see `heartbeat tx confirmed: 0x…` within ~1-2 minutes.
+
+### Pausing the fork mid-test
+
+The inverse operation is `pauseWorld()` — useful when you want to freeze the chain side of the stack while inspecting elder state, debugging a Convex query, or pausing autonomous tx flow before destructive admin operations.
+
+```bash
+DIAMOND=0x<your-diamond>
+OWNER=$(docker compose --profile dev exec -T heartbeat \
+  cast call $DIAMOND "owner()(address)" --rpc-url http://anvil-fork:8545)
+
+# auto-impersonate is already enabled on the fork; no key needed
+docker compose --profile dev exec -T heartbeat \
+  cast rpc anvil_impersonateAccount "$OWNER" --rpc-url http://anvil-fork:8545
+docker compose --profile dev exec -T heartbeat \
+  cast send "$DIAMOND" "pauseWorld()" --rpc-url http://anvil-fork:8545 --unlocked --from "$OWNER"
+```
+
+Verify:
+
+```bash
+docker logs --tail 5 clan-world-heartbeat-1 2>&1 | grep -E 'world paused'
+# should appear within one heartbeat retry interval
+```
+
+To resume, call `unpauseWorld()` as above.
+
+Both `pauseWorld()` and `unpauseWorld()` are owner-only — `LibGameRules` checks `s.world.worldPaused` on every gameplay function, so pausing immediately halts all elder writes too, not just the heartbeat. Cron-based Convex writers (`indexer:*`) keep polling, so the dashboard will show frozen ticks rather than errors.
+
+### Caveat: elder-to-clan ownership mapping
+
+`fresh-vps-bootstrap.md` step 8 mints clans 1-4 to elder addresses 1-4 in order. A forked live diamond may have its clan IDs assigned to elder wallets in a different order (e.g. the 2026-05-24 fork had clan 4 owned by elder-2's address, clan 2 owned by elder-3's, etc.).
+
+This matters because the elder runner currently uses `ELDER_N` directly as the clanId for peer-inbox lookups and clan submissions (see `packages/agents/src/cli.ts` and issue #94). Generate per-elder `.env` `CLAN_ID` values from on-chain ownership, not from the elder index:
+
+```bash
+# for each elder, find which clan they own on-chain
+for n in 1 2 3 4; do
+  addr=$(jq -r ".elders[] | select(.index==$n) | .address" ~/.secrets/clanworld-elder-wallets.json)
+  for clan_id in $(docker compose --profile dev exec -T heartbeat \
+    cast call $DIAMOND "getClanIds()(uint32[])" --rpc-url http://anvil-fork:8545 \
+    | tr -d '[]' | tr ',' ' '); do
+    owner=$(docker compose --profile dev exec -T heartbeat \
+      cast call $DIAMOND "getClan(uint32)" $clan_id --rpc-url http://anvil-fork:8545 \
+      | sed -n 's/.*\(0x[0-9a-fA-F]\{40\}\).*/\1/p' | head -1)
+    if [[ "${owner,,}" == "${addr,,}" ]]; then
+      echo "elder-$n owns clan $clan_id"
+      break
+    fi
+  done
+done
+```
+
+Use the discovered clanId in the elder's `CLAN_ID` env var.
+
+## 6. Troubleshooting
 
 ### `unhealthy` status on `docker compose ps`
 
