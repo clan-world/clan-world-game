@@ -4,6 +4,7 @@ import { mutation } from "./_generated/server";
 
 const KNOWN_ELDER_IDS = new Set(["elder-1", "elder-2", "elder-3", "elder-4"]);
 const MESSAGE_PREVIEW_MAX = 100;
+const UID_MAX = 200;
 
 export const recordReceive = mutation({
   args: {
@@ -46,9 +47,13 @@ export const recordReceive = mutation({
     }
 
     const messagePreview = args.messagePreview.slice(0, MESSAGE_PREVIEW_MAX);
+    const whisperUid = args.whisperUid?.slice(0, UID_MAX);
+    const specialMsgUid = args.specialMsgUid?.slice(0, UID_MAX);
 
     return await ctx.db.insert("tickReceiveLog", {
       ...args,
+      whisperUid,
+      specialMsgUid,
       messagePreview,
       receivedAt: Date.now(),
     });

@@ -27,12 +27,32 @@ def read_prompt() -> str:
     except json.JSONDecodeError:
         return raw
 
+    # json.loads can return non-dict (None / bool / int / list / str); guard
+    # before .get() or AttributeError on those edge cases would leak past the
+    # JSONDecodeError catch.
+    if not isinstance(payload, dict):
+        return ""
+
     prompt = payload.get("prompt")
     return prompt if isinstance(prompt, str) else ""
 
 
 def first_line(prompt: str) -> str:
-    return prompt.splitlines()[0] if prompt else ""
+    """Return the first non-blank line, after stripping leading whitespace.
+
+    A leading blank line or all-whitespace first line should not cause us
+    to skip the receipt — runner-composed messages occasionally have a
+    leading newline from string interpolation. We still only inspect the
+    FIRST non-blank line; if it doesn't match the prefix allowlist, the
+    caller drops the prompt.
+    """
+    if not prompt:
+        return ""
+    for line in prompt.splitlines():
+        stripped = line.lstrip()
+        if stripped:
+            return stripped
+    return ""
 
 
 def preview(prompt: str) -> str:
