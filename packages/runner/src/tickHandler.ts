@@ -18,15 +18,14 @@ export interface TickHandlerDeps {
 export async function handleStartupDecision(
   deps: TickHandlerDeps,
   decision: RestartDecision,
-): Promise<void> {
-  if (decision.kind === "wait") return;
+): Promise<TickDeliveryResult> {
+  if (decision.kind === "wait") return { confirmed: true };
   const aux = await deps.convex.getAuxiliary(deps.signal);
   await assertNoSettingsDrift(deps, aux);
   if (decision.kind === "reset") {
-    await runResetFlow({ ...deps, aux, reason: decision.reason });
-    return;
+    return await runResetFlow({ ...deps, aux, reason: decision.reason });
   }
-  await deliverCurrentTick(deps, aux, decision.kind === "fast-forward"
+  return await deliverCurrentTick(deps, aux, decision.kind === "fast-forward"
     ? `Fast-forwarding from tick ${decision.fromTick} to tick ${decision.toTick}.`
     : undefined);
 }
@@ -46,17 +45,8 @@ export async function handleAuxiliaryUpdate(
       deps.cachedSettings.memoryWipeTickInterval,
     )
   ) {
-    // runResetFlow internally clears the wipe marker + resetEventLog
-    // completedAt only when delivery.confirmed (resetFlow.ts:48). If the
-    // first-tick wasn't received, the marker persists and the next
-    // startup's restartDecision catches it via the wipeMarker rescue.
-    // Returning confirmed:true here is "advance optimistically" — even
-    // if first-tick wasn't received, the loop will see the marker on next
-    // wakeup and retry the whole reset. Acceptable: scheduled-wipe ticks
-    // are rare enough that re-resetting is cheap and the marker keeps
-    // state consistent.
-    await runResetFlow({ ...deps, aux, reason: "scheduled" });
-    return { confirmed: true };
+    const result = await runResetFlow({ ...deps, aux, reason: "scheduled" });
+    return { confirmed: result.confirmed };
   }
   const delivery = await deliverCurrentTick(deps, aux);
   return { confirmed: delivery.confirmed };

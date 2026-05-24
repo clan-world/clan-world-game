@@ -24,6 +24,7 @@ export class RunnerConvexClient {
   constructor(
     private readonly url: string,
     private readonly elderId: ElderN,
+    private readonly secret: string,
   ) {
     this.http = new ConvexHttpClient(url);
     this.live = new ConvexClient(url);
@@ -31,17 +32,24 @@ export class RunnerConvexClient {
 
   async getStartupState(signal?: AbortSignal): Promise<RunnerStartupState> {
     return await this.call("getRunnerStartupState", () =>
-      this.http.query(api.runner.getRunnerStartupState, { elderId: this.elderId }) as Promise<RunnerStartupState>, signal);
+      this.http.query(api.runner.getRunnerStartupState, {
+        elderId: this.elderId,
+        secret: this.secret,
+      }) as Promise<RunnerStartupState>, signal);
   }
 
   async getAuxiliary(signal?: AbortSignal): Promise<RunnerAuxiliary> {
     return await this.call("getRunnerAuxiliary", () =>
-      this.http.query(api.runner.getRunnerAuxiliary, { elderId: this.elderId }) as Promise<RunnerAuxiliary>, signal);
+      this.http.query(api.runner.getRunnerAuxiliary, {
+        elderId: this.elderId,
+        secret: this.secret,
+      }) as Promise<RunnerAuxiliary>, signal);
   }
 
   watchAuxiliary(signal: AbortSignal): AsyncIterable<RunnerAuxiliary> {
     const live = this.live as any;
     const elderId = this.elderId;
+    const secret = this.secret;
     const self = this;
     return {
       async *[Symbol.asyncIterator]() {
@@ -59,7 +67,7 @@ export class RunnerConvexClient {
         signal.addEventListener("abort", wakeOnAbort, { once: true });
         const unsubscribe = live.onUpdate(
           api.runner.getRunnerAuxiliary,
-          { elderId },
+          { elderId, secret },
           (value: RunnerAuxiliary) => push(value),
           (err: Error) => push(err),
         );
@@ -87,17 +95,29 @@ export class RunnerConvexClient {
 
   async hasTickReceive(tickNumber: number, signal?: AbortSignal): Promise<boolean> {
     return await this.call("hasTickReceive", () =>
-      this.http.query(api.runner.hasTickReceive, { elderId: this.elderId, tickNumber }) as Promise<boolean>, signal);
+      this.http.query(api.runner.hasTickReceive, {
+        elderId: this.elderId,
+        secret: this.secret,
+        tickNumber,
+      }) as Promise<boolean>, signal);
   }
 
   async isThematicUidTaken(uid: string, signal?: AbortSignal): Promise<boolean> {
     return await this.call("isThematicUidTaken", () =>
-      this.http.query(api.runner.isThematicUidTaken, { uid }) as Promise<boolean>, signal);
+      this.http.query(api.runner.isThematicUidTaken, {
+        elderId: this.elderId,
+        secret: this.secret,
+        uid,
+      }) as Promise<boolean>, signal);
   }
 
   async hasMessageUidReceive(uid: string, signal?: AbortSignal): Promise<boolean> {
     return await this.call("hasMessageUidReceive", () =>
-      this.http.query(api.runner.hasMessageUidReceive, { uid }) as Promise<boolean>, signal);
+      this.http.query(api.runner.hasMessageUidReceive, {
+        elderId: this.elderId,
+        secret: this.secret,
+        uid,
+      }) as Promise<boolean>, signal);
   }
 
   async recordTickSend(
@@ -109,6 +129,7 @@ export class RunnerConvexClient {
     const sendLogId = await this.call("recordTickSend", () =>
       this.http.mutation(api.runner.recordTickSend, {
         elderId: this.elderId,
+        secret: this.secret,
         tickNumber,
         messageHash,
         ...(resetMetadata ? { resetMetadata } : {}),
@@ -119,13 +140,19 @@ export class RunnerConvexClient {
   async consumePendingMessages(messageIds: string[], consumedAt: number, signal?: AbortSignal): Promise<void> {
     if (messageIds.length === 0) return;
     await this.call("consumePendingMessages", () =>
-      this.http.mutation(api.runner.consumePendingMessages, { messageIds, consumedAt }) as Promise<void>, signal);
+      this.http.mutation(api.runner.consumePendingMessages, {
+        elderId: this.elderId,
+        secret: this.secret,
+        messageIds,
+        consumedAt,
+      }) as Promise<void>, signal);
   }
 
   async recordResetEvent(resetTick: number, reason: ResetReason, signal?: AbortSignal): Promise<string> {
     return await this.call("recordResetEvent", () =>
       this.http.mutation(api.runner.recordResetEvent, {
         elderId: this.elderId,
+        secret: this.secret,
         resetTick,
         reason,
       }) as Promise<string>, signal);
@@ -133,13 +160,18 @@ export class RunnerConvexClient {
 
   async completeResetEvent(resetEventId: string, signal?: AbortSignal): Promise<void> {
     await this.call("completeResetEvent", () =>
-      this.http.mutation(api.runner.completeResetEvent, { resetEventId }) as Promise<void>, signal);
+      this.http.mutation(api.runner.completeResetEvent, {
+        elderId: this.elderId,
+        secret: this.secret,
+        resetEventId,
+      }) as Promise<void>, signal);
   }
 
   async recordRunnerEvent(kind: RunnerEventKind, message: string, signal?: AbortSignal): Promise<void> {
     await this.call("recordRunnerEvent", () =>
       this.http.mutation(api.runner.recordRunnerEvent, {
         elderId: this.elderId,
+        secret: this.secret,
         kind,
         message,
       }) as Promise<void>, signal);
@@ -161,6 +193,7 @@ export class RunnerConvexClient {
     try {
       await this.http.mutation(api.runner.recordRunnerEvent, {
         elderId: this.elderId,
+        secret: this.secret,
         kind,
         message,
       });

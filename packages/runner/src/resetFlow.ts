@@ -15,7 +15,11 @@ export interface ResetFlowInput {
   signal?: AbortSignal;
 }
 
-export async function runResetFlow(input: ResetFlowInput): Promise<void> {
+export interface ResetFlowResult {
+  confirmed: boolean;
+}
+
+export async function runResetFlow(input: ResetFlowInput): Promise<ResetFlowResult> {
   const resetTick = input.aux.tickClock.tick;
   writeWipeMarker(input.config.wipeMarkerPath, resetTick);
   const resetEventId = await input.convex.recordResetEvent(resetTick, input.reason, input.signal);
@@ -45,10 +49,11 @@ export async function runResetFlow(input: ResetFlowInput): Promise<void> {
     maxAttempts: input.config.maxPasteAttempts,
     signal: input.signal,
   });
-  if (!delivery.confirmed) return;
+  if (!delivery.confirmed) return { confirmed: false };
 
   await input.convex.completeResetEvent(resetEventId, input.signal);
   clearWipeMarker(input.config.wipeMarkerPath);
+  return { confirmed: true };
 }
 
 export async function brandElder(input: Pick<ResetFlowInput, "config" | "tmux">): Promise<void> {

@@ -99,33 +99,33 @@ def parse_receipt(prompt: str) -> dict[str, Any] | None:
     }
 
 
-def _read_bus_operator_secret() -> str | None:
-    """Read the bus operator secret either from BUS_OPERATOR_SECRET (raw env)
-    or BUS_OPERATOR_SECRET_FILE (Docker secret mount path). The runner container
-    typically uses the file path convention; supporting both keeps the hook
-    portable across local dev + container runtimes.
+def _read_bus_elder_secret() -> str | None:
+    """Read this elder's bus secret from BUS_ELDER_SECRET_FILE first, then
+    optional BUS_ELDER_SECRET raw env. The file mount is canonical in compose;
+    keeping it first avoids stale raw env values shadowing the real secret.
 
     Added in Bundle 4 R1 polish — super-swarm flagged the prior unauthenticated
     public mutation as a HIGH (forged tick receipts → false delivery confirmation).
     """
-    raw = os.environ.get("BUS_OPERATOR_SECRET")
+    path = os.environ.get("BUS_ELDER_SECRET_FILE")
+    if path:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                secret = f.read().strip()
+                if secret:
+                    return secret
+        except OSError as exc:
+            log(f"failed to read BUS_ELDER_SECRET_FILE={path}: {exc}")
+    raw = os.environ.get("BUS_ELDER_SECRET")
     if raw:
         return raw
-    path = os.environ.get("BUS_OPERATOR_SECRET_FILE")
-    if not path:
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except OSError as exc:
-        log(f"failed to read BUS_OPERATOR_SECRET_FILE={path}: {exc}")
-        return None
+    return None
 
 
 def record_receipt(args: dict[str, Any]) -> None:
     elder_id = os.environ.get("ELDER_ID")
     convex_url = os.environ.get("CONVEX_DEPLOY_URL")
-    secret = _read_bus_operator_secret()
+    secret = _read_bus_elder_secret()
     if not elder_id:
         log("ELDER_ID is not set; skipping receive log")
         return
@@ -134,7 +134,7 @@ def record_receipt(args: dict[str, Any]) -> None:
         return
     if not secret:
         log(
-            "BUS_OPERATOR_SECRET (or _FILE) is not set; skipping receive log. "
+            "BUS_ELDER_SECRET_FILE (or BUS_ELDER_SECRET) is not set; skipping receive log. "
             "The runner's resend cap will eventually surface a HOOK_FAILURE."
         )
         return

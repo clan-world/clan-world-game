@@ -34,6 +34,24 @@ describe("decideRestart", () => {
     })).toEqual({ kind: "reset", caseName: "D", reason: "memory_wipe_gap" });
   });
 
+  it("case D resets when a wipe marker is ahead of the last received tick", () => {
+    expect(decideRestart({
+      ...base,
+      currentTick: 51,
+      lastReceivedTick: 50,
+      wipeMarkerTick: 51,
+    })).toEqual({ kind: "reset", caseName: "D", reason: "memory_wipe_gap" });
+  });
+
+  it("does not reset when the wipe marker equals the last received tick", () => {
+    expect(decideRestart({
+      ...base,
+      currentTick: 50,
+      lastReceivedTick: 50,
+      wipeMarkerTick: 50,
+    })).toEqual({ kind: "wait", caseName: "A" });
+  });
+
   it("case D late-joins when no receive log exists", () => {
     expect(decideRestart({ ...base, lastReceivedTick: null })).toEqual({
       kind: "reset",

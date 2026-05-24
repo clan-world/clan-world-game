@@ -45,7 +45,7 @@ describe("runResetFlow", () => {
       async recordRunnerEvent() {},
     } as any;
 
-    await runResetFlow({
+    const result = await runResetFlow({
       config,
       convex,
       tmux,
@@ -53,6 +53,7 @@ describe("runResetFlow", () => {
       reason: "scheduled",
     });
 
+    expect(result.confirmed).toBe(true);
     expect(calls).toContain("kill");
     expect(calls).toContain("new");
     expect(calls).toContain("claude:false");
@@ -61,6 +62,49 @@ describe("runResetFlow", () => {
     expect(calls).toContain("send:scheduled");
     expect(calls).toContain("reset-complete");
     expect(fs.existsSync(config.wipeMarkerPath)).toBe(false);
+  });
+
+  it("leaves the marker and returns unconfirmed when delivery is not received", async () => {
+    const promptDir = path.join(process.cwd(), "test/fixtures/prompts");
+    const elderConfigPath = path.join(dir, "elder-config.json");
+    fs.writeFileSync(elderConfigPath, JSON.stringify({
+      "elder-1": { displayName: "Storm Riders", color: "blue", glyph: "*" },
+    }));
+    const config = makeConfig(promptDir, elderConfigPath);
+    const calls: string[] = [];
+    const tmux = {
+      async killSession() { calls.push("kill"); },
+      async newSession() { calls.push("new"); },
+      async launchClaude(opts: { continue: boolean }) { calls.push(`claude:${opts.continue}`); },
+      async sendSlashCommand(cmd: string) { calls.push(cmd); },
+      async pasteMessage(text: string) { calls.push(`paste:${text.split("\n")[0]}`); },
+      async capturePane() { return "\u2502 > "; },
+    } as any;
+    const convex = {
+      async recordResetEvent() { calls.push("reset-start"); return "resetEventLog:1"; },
+      async recordTickSend() {
+        calls.push("send");
+        return { sendLogId: "tickSendLog:1" };
+      },
+      async hasTickReceive() { return false; },
+      async consumePendingMessages() {},
+      async completeResetEvent() { calls.push("reset-complete"); },
+      async isThematicUidTaken() { return false; },
+      async recordRunnerEvent(kind: string) { calls.push(`event:${kind}`); },
+    } as any;
+
+    const result = await runResetFlow({
+      config,
+      convex,
+      tmux,
+      aux: makeAux(50),
+      reason: "scheduled",
+    });
+
+    expect(result.confirmed).toBe(false);
+    expect(calls).toContain("event:hook_failure");
+    expect(calls).not.toContain("reset-complete");
+    expect(fs.readFileSync(config.wipeMarkerPath, "utf8")).toBe("50\n");
   });
 });
 

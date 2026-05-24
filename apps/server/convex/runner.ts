@@ -7,6 +7,7 @@ import {
   WINTER_PERIOD_TICKS,
   WINTER_START_TICK,
 } from "@clan-world/shared/generated/constants";
+import { requireBusElderSecret } from "./authShared";
 
 const VALID_ELDER_IDS = ["elder-1", "elder-2", "elder-3", "elder-4"] as const;
 const EVENT_FETCH_LIMIT = 50;
@@ -99,9 +100,10 @@ async function latestReceivedTick(ctx: { db: any }, elderId: string): Promise<nu
 }
 
 export const getRunnerStartupState = query({
-  args: { elderId: elderIdValidator },
-  handler: async (ctx, { elderId }) => {
+  args: { elderId: elderIdValidator, secret: v.string() },
+  handler: async (ctx, { elderId, secret }) => {
     assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     const clock = await latestClock(ctx);
     const lastReceivedTick = await latestReceivedTick(ctx, elderId);
     const sentForCurrentTick =
@@ -122,9 +124,10 @@ export const getRunnerStartupState = query({
 });
 
 export const getRunnerAuxiliary = query({
-  args: { elderId: elderIdValidator },
-  handler: async (ctx, { elderId }) => {
+  args: { elderId: elderIdValidator, secret: v.string() },
+  handler: async (ctx, { elderId, secret }) => {
     assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     const clock = await latestClock(ctx);
     const snapshot = await ctx.db.query("worldSnapshot").order("desc").first();
     const activeBanditId =
@@ -165,9 +168,10 @@ export const getRunnerAuxiliary = query({
 });
 
 export const hasTickReceive = query({
-  args: { elderId: elderIdValidator, tickNumber: v.number() },
-  handler: async (ctx, { elderId, tickNumber }) => {
+  args: { elderId: elderIdValidator, secret: v.string(), tickNumber: v.number() },
+  handler: async (ctx, { elderId, secret, tickNumber }) => {
     assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     return (
       (await ctx.db
         .query("tickReceiveLog")
@@ -180,16 +184,20 @@ export const hasTickReceive = query({
 });
 
 export const isThematicUidTaken = query({
-  args: { uid: v.string() },
-  handler: async (ctx, { uid }) => {
+  args: { elderId: elderIdValidator, secret: v.string(), uid: v.string() },
+  handler: async (ctx, { elderId, secret, uid }) => {
+    assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     const rows = await ctx.db.query("tickReceiveLog").order("desc").take(UID_SCAN_LIMIT);
     return rows.some((row) => row.whisperUid === uid || row.specialMsgUid === uid);
   },
 });
 
 export const hasMessageUidReceive = query({
-  args: { uid: v.string() },
-  handler: async (ctx, { uid }) => {
+  args: { elderId: elderIdValidator, secret: v.string(), uid: v.string() },
+  handler: async (ctx, { elderId, secret, uid }) => {
+    assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     const rows = await ctx.db.query("tickReceiveLog").order("desc").take(UID_SCAN_LIMIT);
     return rows.some((row) => row.whisperUid === uid || row.specialMsgUid === uid);
   },
@@ -198,6 +206,7 @@ export const hasMessageUidReceive = query({
 export const recordTickSend = mutation({
   args: {
     elderId: elderIdValidator,
+    secret: v.string(),
     tickNumber: v.number(),
     messageHash: v.string(),
     resetMetadata: v.optional(v.object({
@@ -208,6 +217,7 @@ export const recordTickSend = mutation({
   },
   handler: async (ctx, args) => {
     assertKnownElder(args.elderId);
+    requireBusElderSecret(args.elderId, args.secret);
     return await ctx.db.insert("tickSendLog", {
       elderId: args.elderId,
       tickNumber: args.tickNumber,
@@ -220,11 +230,26 @@ export const recordTickSend = mutation({
 
 export const consumePendingMessages = mutation({
   args: {
+    elderId: elderIdValidator,
+    secret: v.string(),
     messageIds: v.array(v.id("pendingMessages")),
     consumedAt: v.number(),
   },
-  handler: async (ctx, { messageIds, consumedAt }) => {
+  handler: async (ctx, { elderId, secret, messageIds, consumedAt }) => {
+    assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
+    const ownedMessageIds: typeof messageIds = [];
     for (const id of messageIds) {
+      const row = await ctx.db.get(id);
+      if (!row) {
+        throw new Error(`pending message not found: ${id}`);
+      }
+      if (row.targetElderId !== elderId) {
+        throw new Error(`pending message ${id} does not belong to ${elderId}`);
+      }
+      ownedMessageIds.push(id);
+    }
+    for (const id of ownedMessageIds) {
       await ctx.db.patch(id, { consumedAt });
     }
   },
@@ -233,11 +258,13 @@ export const consumePendingMessages = mutation({
 export const recordResetEvent = mutation({
   args: {
     elderId: elderIdValidator,
+    secret: v.string(),
     resetTick: v.number(),
     reason: resetReasonValidator,
   },
-  handler: async (ctx, { elderId, resetTick, reason }) => {
+  handler: async (ctx, { elderId, secret, resetTick, reason }) => {
     assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     return await ctx.db.insert("resetEventLog", {
       elderId,
       resetTick,
@@ -248,8 +275,17 @@ export const recordResetEvent = mutation({
 });
 
 export const completeResetEvent = mutation({
-  args: { resetEventId: v.id("resetEventLog") },
-  handler: async (ctx, { resetEventId }) => {
+  args: { elderId: elderIdValidator, secret: v.string(), resetEventId: v.id("resetEventLog") },
+  handler: async (ctx, { elderId, secret, resetEventId }) => {
+    assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
+    const resetEvent = await ctx.db.get(resetEventId);
+    if (!resetEvent) {
+      throw new Error(`reset event not found: ${resetEventId}`);
+    }
+    if (resetEvent.elderId !== elderId) {
+      throw new Error(`reset event ${resetEventId} does not belong to ${elderId}`);
+    }
     await ctx.db.patch(resetEventId, { completedAt: Date.now() });
   },
 });
@@ -257,11 +293,13 @@ export const completeResetEvent = mutation({
 export const recordRunnerEvent = mutation({
   args: {
     elderId: elderIdValidator,
+    secret: v.string(),
     kind: runnerEventKindValidator,
     message: v.string(),
   },
-  handler: async (ctx, { elderId, kind, message }) => {
+  handler: async (ctx, { elderId, secret, kind, message }) => {
     assertKnownElder(elderId);
+    requireBusElderSecret(elderId, secret);
     await ctx.db.insert("runnerEvents", {
       elderId,
       kind,

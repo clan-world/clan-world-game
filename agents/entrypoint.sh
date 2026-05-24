@@ -69,6 +69,9 @@ fi
 # logged. Allowing direct terminal input would bypass tickSendLog/tickReceiveLog
 # accounting and break the runner's delivery confirmation. Super-swarm R1 codex
 # 5.5 HIGH — see docs/reviews/pr576-synthesis.md.
+if [[ "${ADMIN_INJECT_ENABLED:-0}" != "1" ]]; then
+  echo "[entrypoint] WARNING: ttyd is read-only and ADMIN_INJECT_ENABLED!=1. Operator input has NO channel. Set ADMIN_INJECT_ENABLED=1 once /api/admin/inject-message is deployed to prod." >&2
+fi
 ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
 TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"

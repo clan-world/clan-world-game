@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { requireBusOperatorSecret } from "./authShared";
+import { requireBusElderSecret } from "./authShared";
 import { mutation } from "./_generated/server";
 
 const KNOWN_ELDER_IDS = new Set(["elder-1", "elder-2", "elder-3", "elder-4"]);
@@ -9,11 +9,10 @@ const UID_MAX = 200;
 
 export const recordReceive = mutation({
   args: {
-    // Bus operator secret: super-swarm R1 HIGH (3/5 cross-tier). Public mutation
+    // Per-elder bus secret: super-swarm R1/R2 HIGH. Public mutation
     // let any caller with the Convex URL forge tick receipts, advancing the
-    // runner past undelivered ticks. The Python hook reads BUS_OPERATOR_SECRET
-    // from its container env (mounted via Docker secret) and passes it here.
-    // Matches the auth pattern PR6's adminMessages established.
+    // runner past undelivered ticks. The Python hook reads this elder's mounted
+    // BUS_ELDER_SECRET_FILE and passes it here.
     secret: v.string(),
     elderId: v.string(),
     prefix: v.union(v.literal("tick"), v.literal("whisper"), v.literal("special-msg")),
@@ -23,7 +22,7 @@ export const recordReceive = mutation({
     messagePreview: v.string(),
   },
   handler: async (ctx, args) => {
-    requireBusOperatorSecret(args.secret);
+    requireBusElderSecret(args.elderId, args.secret);
 
     if (!KNOWN_ELDER_IDS.has(args.elderId)) {
       throw new Error(`unknown elderId: ${args.elderId}`);

@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   console.log(`[elder-runner] elder=${config.elderId} convex=${config.convexUrl}`);
 
-  const convex = new RunnerConvexClient(config.convexUrl, config.elderId);
+  const convex = new RunnerConvexClient(config.convexUrl, config.elderId, config.busSecret);
   const tmux = new TmuxSink(config.elderId);
   const ac = new AbortController();
   process.on("SIGTERM", () => ac.abort());
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
 
   const started = await startup(config, convex, tmux, ac.signal);
   try {
-    await handleStartupDecision({
+    const startupResult = await handleStartupDecision({
       config,
       convex,
       tmux,
@@ -25,9 +25,11 @@ async function main(): Promise<void> {
       signal: ac.signal,
     }, started.decision);
 
-    let lastTickDelivered = started.decision.kind === "wait"
-      ? (started.startupState.lastReceivedTick ?? -1)
-      : started.startupState.tickClock.tick;
+    let lastTickDelivered = (started.decision.kind === "wait" || startupResult.confirmed)
+      ? (started.decision.kind === "wait"
+        ? (started.startupState.lastReceivedTick ?? -1)
+        : started.startupState.tickClock.tick)
+      : (started.startupState.lastReceivedTick ?? started.startupState.tickClock.tick - 1);
     for await (const aux of convex.watchAuxiliary(ac.signal)) {
       if (ac.signal.aborted) break;
       const deps = {
