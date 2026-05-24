@@ -85,6 +85,15 @@ COPY --chown=root:root packages/runner/ /opt/elder-runtime/
 RUN cd /opt/elder-runtime && npm install --omit=dev \
     && chown -R elder:elder /opt/elder-runtime
 
+# Python hook deps. We own this container's Python environment, so
+# --break-system-packages is acceptable as the Debian PEP 668 workaround.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 \
+      python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+COPY agents/shared/home-claude/hooks/requirements.txt /tmp/hook-requirements.txt
+RUN pip install --no-cache-dir --require-hashes --break-system-packages -r /tmp/hook-requirements.txt
+
 USER elder
 WORKDIR /workspace
 

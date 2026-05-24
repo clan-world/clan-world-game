@@ -35,6 +35,7 @@ import type * as ops from "../ops.js";
 import type * as resetLock from "../resetLock.js";
 import type * as retention from "../retention.js";
 import type * as runnerStatus from "../runnerStatus.js";
+import type * as tickReceiveLog from "../tickReceiveLog.js";
 import type * as vault from "../vault.js";
 
 /**
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   resetLock: typeof resetLock;
   retention: typeof retention;
   runnerStatus: typeof runnerStatus;
+  tickReceiveLog: typeof tickReceiveLog;
   vault: typeof vault;
 }>;
 export declare const api: FilterApi<
