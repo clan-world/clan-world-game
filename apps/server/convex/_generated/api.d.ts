@@ -34,6 +34,7 @@ import type * as mock from "../mock.js";
 import type * as ops from "../ops.js";
 import type * as resetLock from "../resetLock.js";
 import type * as retention from "../retention.js";
+import type * as runner from "../runner.js";
 import type * as runnerStatus from "../runnerStatus.js";
 import type * as vault from "../vault.js";
 
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   ops: typeof ops;
   resetLock: typeof resetLock;
   retention: typeof retention;
+  runner: typeof runner;
   runnerStatus: typeof runnerStatus;
   vault: typeof vault;
 }>;

@@ -5,9 +5,10 @@
 #
 # Runs as the `elder` non-root user (UID 1000). Calls the iptables egress
 # lockdown via sudo (which is allowed only for /opt/clan-world/init-firewall.sh
-# via /etc/sudoers.d/elder-firewall), creates a named tmux session, starts
-# ttyd against it, starts the elder-runtime supervisor, then runs a foreground
-# monitor loop that exits the container if any process dies.
+# via /etc/sudoers.d/elder-firewall), starts the runner, then runs a foreground
+# monitor loop that exits the container if any process dies. The runner owns
+# tmux + claude launch so it can enforce memory-wipe recovery before any
+# `claude --continue` happens.
 
 set -euo pipefail
 
@@ -35,38 +36,37 @@ else
   exit 3
 fi
 
-# 1. Create named tmux session running run.sh (detached, working dir /workspace)
-tmux new-session -d -s "${SESSION_NAME}" -c /workspace "/opt/clan-world/shared/run.sh"
-echo "[entrypoint] tmux session ${SESSION_NAME} created"
+# Clear any session inherited from a previous entrypoint invocation in the same
+# container. The runner will recreate it after its local invariants are checked.
+tmux kill-session -t "${SESSION_NAME}" 2>/dev/null || true
 
-# 2. Start ttyd attached to that session (background)
-ttyd --port "${TTYD_PORT}" --writable tmux attach-session -t "${SESSION_NAME}" &
-TTYD_PID=$!
-echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
-
-# 3. Start elder-runtime supervisor (background)
-# Readiness file lives in the per-elder state dir (writable by UID 1000)
-READY_FILE="${CLAN_WORLD_RUNNER_STATE_DIR:-/workspace/.runtime}/elder-runtime.ready"
+# 1. Start elder-runner (background). It creates tmux and launches claude.
+READY_FILE="${CLAN_WORLD_RUNNER_STATE_DIR:-/home/elder/.runner-state}/elder-runtime.ready"
 RUNTIME_PID=""
 if command -v tsx &>/dev/null && [[ -f /opt/elder-runtime/src/main.ts ]]; then
-  rm -f "${READY_FILE}"   # clear any stale ready file from previous run
+  rm -f "${READY_FILE}"
   tsx /opt/elder-runtime/src/main.ts &
   RUNTIME_PID=$!
-  # Wait up to 30s for readiness file written by supervisor after startup
-  for i in $(seq 1 30); do
+  for i in $(seq 1 45); do
     sleep 1
     if [[ -f "${READY_FILE}" ]]; then
-      echo "[entrypoint] elder-runtime ready (file=${READY_FILE})"
+      echo "[entrypoint] elder-runner ready (file=${READY_FILE})"
       break
     fi
-    if [[ $i -eq 30 ]]; then
-      echo "[entrypoint] ERROR: elder-runtime did not become ready in 30s — aborting" >&2
+    if [[ $i -eq 45 ]]; then
+      echo "[entrypoint] ERROR: elder-runner did not become ready in 45s — aborting" >&2
       exit 1
     fi
   done
 else
-  echo "[entrypoint] WARNING: elder-runtime not found — running without supervisor" >&2
+  echo "[entrypoint] FATAL: elder-runner not found at /opt/elder-runtime/src/main.ts" >&2
+  exit 1
 fi
+
+# 2. Start ttyd attached to the runner-created tmux session (background)
+ttyd --port "${TTYD_PORT}" --writable tmux attach-session -t "${SESSION_NAME}" &
+TTYD_PID=$!
+echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 
 # 4. Foreground monitor loop — exit container if any process dies.
 # compose restart: on-failure will restart the whole container.
@@ -80,7 +80,7 @@ while true; do
     exit 1
   fi
   if [[ -n "${RUNTIME_PID}" ]] && ! kill -0 "${RUNTIME_PID}" 2>/dev/null; then
-    echo "[entrypoint] elder-runtime (PID ${RUNTIME_PID}) died — exiting container" >&2
+    echo "[entrypoint] elder-runner (PID ${RUNTIME_PID}) died — exiting container" >&2
     exit 1
   fi
   sleep 5

@@ -64,7 +64,7 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 RUN userdel -r node 2>/dev/null || true \
     && groupadd -g ${ELDER_GID} elder \
     && useradd -m -u ${ELDER_UID} -g ${ELDER_GID} -s /bin/bash elder \
-    && mkdir -p /home/elder/.claude /workspace /opt/clan-world \
+    && mkdir -p /home/elder/.claude /home/elder/.runner-state /workspace /opt/clan-world \
     && chown -R elder:elder /home/elder /workspace
 
 # Entrypoint scripts. init-firewall.sh requires CAP_NET_ADMIN; it runs via

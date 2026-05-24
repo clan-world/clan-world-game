@@ -1,4 +1,7 @@
 import { execFile, spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -8,6 +11,19 @@ export class TmuxSink {
 
   constructor(sessionName: string) {
     this.session = sessionName;
+  }
+
+  target(): string {
+    return this.session;
+  }
+
+  async hasSession(): Promise<boolean> {
+    try {
+      await execFileAsync("tmux", ["has-session", "-t", this.session]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async sendKeys(key: string): Promise<void> {
@@ -53,7 +69,49 @@ export class TmuxSink {
     }
   }
 
-  async newSession(runScript: string): Promise<void> {
+  async newSession(runScriptOrCwd = "/workspace"): Promise<void> {
+    const args = ["new-session", "-d", "-s", this.session];
+    if (runScriptOrCwd.startsWith("/")) {
+      args.push("-c", runScriptOrCwd);
+    } else {
+      args.push(runScriptOrCwd);
+    }
+    await execFileAsync("tmux", args);
+  }
+
+  async launchClaude(opts: { continue: boolean; runScriptPath: string }): Promise<void> {
+    const mode = opts.continue ? "always" : "never";
+    const command = `CLAN_WORLD_CLAUDE_CONTINUE=${mode} ${shellQuote(opts.runScriptPath)}`;
+    await this.sendLiteral(command);
+    await this.sendKeys("Enter");
+  }
+
+  async sendSlashCommand(command: string): Promise<void> {
+    await this.sendLiteral(command);
+    await this.sendKeys("Enter");
+    await delay(250);
+    await this.sendKeys("Enter");
+  }
+
+  async sendLiteral(content: string): Promise<void> {
+    await execFileAsync("tmux", ["send-keys", "-t", this.session, "-l", content]);
+  }
+
+  async pasteMessage(content: string): Promise<void> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "elder-runner-paste-"));
+    const file = path.join(dir, "message.txt");
+    const bufferName = `elder-input-${process.pid}`;
+    try {
+      await fs.writeFile(file, content, "utf8");
+      await execFileAsync("tmux", ["load-buffer", "-b", bufferName, file]);
+      await this.pasteBuffer(bufferName, this.session, { bracketed: true });
+      await this.sendKeys("Enter");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async newSessionWithCommand(runScript: string): Promise<void> {
     await execFileAsync("tmux", [
       "new-session", "-d", "-s", this.session, runScript,
     ]);
@@ -64,4 +122,12 @@ export class TmuxSink {
     // ttyd stays attached to the session; the pane gets a fresh process.
     await execFileAsync("tmux", ["respawn-pane", "-k", "-t", `${this.session}:0.0`]);
   }
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms));
 }
