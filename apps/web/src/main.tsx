@@ -1,5 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// Clerk's published types ship ComponentClass<Props> with React-18 refs
+// that don't satisfy this app's stricter @types/react JSX element constraint.
+// The component works at runtime; the type-only cast avoids the JSX mismatch
+// without disabling strict mode elsewhere.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import { ClerkProvider as ClerkProviderRaw } from '@clerk/clerk-react';
+const ClerkProvider: any = ClerkProviderRaw;
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { App } from './App';
 import './styles/viewport.css';
@@ -31,6 +38,7 @@ if (tg) {
 }
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
 // Cast required: convex's React.FC type conflicts with @types/react@18.3 ReactNode (bigint addition)
 const Provider = ConvexProvider as React.ComponentType<{
@@ -118,11 +126,16 @@ if (!convexUrl && !isStandalonePath) {
   // VITE_CONVEX_URL also falls back. `??` only handles null/undefined and
   // would let `''` through, breaking ConvexReactClient construction.
   const convex = new ConvexReactClient(convexUrl || 'https://203.0.113.1');
+  const app = (
+    <Provider client={convex}>
+      <App />
+    </Provider>
+  );
   root.render(
     <React.StrictMode>
-      <Provider client={convex}>
-        <App />
-      </Provider>
+      {clerkPublishableKey ? (
+        <ClerkProvider publishableKey={clerkPublishableKey}>{app}</ClerkProvider>
+      ) : app}
     </React.StrictMode>,
   );
 }

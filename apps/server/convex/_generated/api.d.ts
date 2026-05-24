@@ -13,6 +13,7 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as adminMessages from "../adminMessages.js";
 import type * as agentLogs from "../agentLogs.js";
 import type * as authShared from "../authShared.js";
 import type * as bulletins from "../bulletins.js";
@@ -48,6 +49,7 @@ import type * as vault from "../vault.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  adminMessages: typeof adminMessages;
   agentLogs: typeof agentLogs;
   authShared: typeof authShared;
   bulletins: typeof bulletins;
