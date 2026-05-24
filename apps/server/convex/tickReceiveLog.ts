@@ -3,7 +3,6 @@ import { v } from "convex/values";
 import { requireBusElderSecret } from "./authShared";
 import { mutation } from "./_generated/server";
 
-const KNOWN_ELDER_IDS = new Set(["elder-1", "elder-2", "elder-3", "elder-4"]);
 const MESSAGE_PREVIEW_MAX = 100;
 const UID_MAX = 200;
 
@@ -23,10 +22,6 @@ export const recordReceive = mutation({
   },
   handler: async (ctx, args) => {
     requireBusElderSecret(args.elderId, args.secret);
-
-    if (!KNOWN_ELDER_IDS.has(args.elderId)) {
-      throw new Error(`unknown elderId: ${args.elderId}`);
-    }
 
     // Exactly one id field must match the prefix; others must be absent.
     if (args.prefix === "tick") {

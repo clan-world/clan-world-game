@@ -4,9 +4,12 @@ import { handleInjectMessage } from "./injectMessage";
 
 type Next = (err?: unknown) => void;
 
-function pathOf(req: IncomingMessage): string {
-  const host = req.headers.host ?? "127.0.0.1";
-  return new URL(req.url ?? "/", `http://${host}`).pathname;
+function pathOf(req: IncomingMessage): string | null {
+  try {
+    return new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+  } catch {
+    return null;
+  }
 }
 
 async function handleAdminApi(req: IncomingMessage, res: ServerResponse, next: Next): Promise<void> {

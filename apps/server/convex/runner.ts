@@ -198,7 +198,11 @@ export const hasMessageUidReceive = query({
   handler: async (ctx, { elderId, secret, uid }) => {
     assertKnownElder(elderId);
     requireBusElderSecret(elderId, secret);
-    const rows = await ctx.db.query("tickReceiveLog").order("desc").take(UID_SCAN_LIMIT);
+    const rows = await ctx.db
+      .query("tickReceiveLog")
+      .withIndex("by_elder_received", (q) => q.eq("elderId", elderId))
+      .order("desc")
+      .take(UID_SCAN_LIMIT);
     return rows.some((row) => row.whisperUid === uid || row.specialMsgUid === uid);
   },
 });

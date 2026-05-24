@@ -4,6 +4,7 @@ import {
   consumePendingMessages,
   getRunnerAuxiliary,
   getRunnerStartupState,
+  hasMessageUidReceive,
   hasTickReceive,
   recordRunnerEvent,
   recordResetEvent,
@@ -154,6 +155,26 @@ describe("convex runner functions", () => {
       consumedAt: 123,
     });
     expect(tables.pendingMessages?.[0]?.consumedAt).toBe(123);
+  });
+
+  it("scopes message uid receipt checks to the requesting elder", async () => {
+    const db = createDb({
+      tickReceiveLog: [
+        { _id: "tickReceiveLog:1", _creationTime: 1, elderId: "elder-2", receivedAt: 1, prefix: "whisper", whisperUid: "same-uid", messagePreview: "" },
+        { _id: "tickReceiveLog:2", _creationTime: 2, elderId: "elder-1", receivedAt: 2, prefix: "special-msg", specialMsgUid: "own-uid", messagePreview: "" },
+      ],
+    });
+
+    expect(await call(hasMessageUidReceive, db, {
+      elderId: "elder-1",
+      secret: "secret-1",
+      uid: "same-uid",
+    })).toBe(false);
+    expect(await call(hasMessageUidReceive, db, {
+      elderId: "elder-1",
+      secret: "secret-1",
+      uid: "own-uid",
+    })).toBe(true);
   });
 
   it("does not consume or complete rows owned by another elder", async () => {
