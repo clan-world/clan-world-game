@@ -75,7 +75,11 @@ export function TerminalTab({ elder, testIdPrefix }: Props) {
 
     setDisconnectedAt(null);
     if (!resetConfirmed) {
-      setResetExiting(false);
+      // Either we never confirmed a reset (no exit state to clear) OR the
+      // exit-transition is already in flight (started by the previous run
+      // that flipped resetConfirmed true→false). Don't touch resetExiting
+      // here — the fade-out timer owns it. Without this guard, the effect
+      // re-runs after we set resetConfirmed=false and cancels its own fade.
       return;
     }
 
