@@ -29,13 +29,16 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 # --- Flush existing rules and chains ----------------------------------------
-log "flushing existing rules"
+# Only flush the `filter` table. Docker's embedded DNS at 127.0.0.11 is
+# implemented as a DNAT rule (`DOCKER_OUTPUT` in the `nat` OUTPUT chain) that
+# Docker installs at container start. Flushing `nat` or `mangle` removes that
+# rule and breaks all DNS resolution from inside the container — including
+# the `getent ahostsv4` calls a few lines below that try to resolve
+# ALLOWED_HOSTS. That bug crashed every elder container with ECONNREFUSED to
+# api.anthropic.com during the 2026-05-24 self-hosted cutover.
+log "flushing existing rules (filter table only)"
 iptables -F
 iptables -X
-iptables -t nat -F
-iptables -t nat -X
-iptables -t mangle -F
-iptables -t mangle -X
 
 # --- Default policy: DROP ----------------------------------------------------
 log "setting default policy DROP"
