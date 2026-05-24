@@ -6,139 +6,46 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [2.14.0] — 2026-05-23
+## [2.14.0] — 2026-05-24
 
-**Phase 1 — Elder infrastructure dockerization.** Three integration bundles ship the migration from "elder agents living in ad-hoc tmux sessions on the dev VPS" to "elder agents running as containerized services managed by docker-compose, talking to a centralized Convex command bus, with a self-hosted Convex backend." Net effect: any operator with the runbook can stand up the entire ClanWorld stack — self-hosted Convex + heartbeat runner + four containerized elder agents + dockerized Caddy reverse-proxy — on a fresh VPS in under an hour. The legacy host-tmux path remains operational for the current dev VPS but is deprecated.
+**Phase 1 — Dockerize elder infra.** Three bundles ship the full containerization of the elder + heartbeat stack: services foundation (Bundle 1), per-elder agent containers + agents-shared layout (Bundle 2), command-bus polish + agents/Makefile operator entrypoint + Phase 2 migration runbook (Bundle 3). Plus dockerized Caddy router (PR #348 v3) replaces the host-Caddy snippet approach. Net effect: elders run in reproducible Linux containers with egress lockdown, ttyd read-only access, supervisor-managed lifecycle, Docker-secret-mounted bus secrets, single `make agents-up` entrypoint, and a stack-wide compose profile.
 
-### Bundle 1 — containerize-services
+### Added
 
-Self-hosted Convex backend + heartbeat container + docker-compose scaffold.
-
-#### Added
-
-- **`docker-compose.yml` scaffold + `.env.template`** (PR #527, issue #344): name `clan-world`, internal bridge network, named volumes for `convex_data` + `anvil_data` + `elder-N-home`. Profiles `dev` (anvil-fork + bind-mount) and `prod` (Base Sepolia RPC + image-baked agents). Caddy stays host-authoritative in this bundle; dockerized in Bundle 3.
-- **Self-hosted Convex backend** (PR #526, issue #347): SQLite-backed `getconvex/convex-backend` container at `127.0.0.1:3210`. Companion dashboard container at `127.0.0.1:6791` with HTPasswd basic-auth (bcrypt). Deploy + import scripts at `bin/deploy-convex.sh`, `bin/import-convex-schema.sh`, `bin/backup-convex.sh`. Schema-import path uses canonical Convex CLI (1.17.4 — pinned to avoid the 1.39.x codegen breakage). Backup script chmods exports to `0600` so dashboard exports match the operator backup convention.
-- **Heartbeat runner container** (PR #525, issue #353): containerized `@clan-world/runner` with Alpine + Node 22 + non-root user. Wraps the existing on-chain heartbeat scheduler. Healthcheck writes a marker file after each successful heartbeat fire; restart policy `unless-stopped`. Restart loop hardened against transient RPC errors via runner's existing exponential backoff.
-- **Anvil-fork RPC runbook** (PR #527, issue #346): `docs/runbooks/anvil-fork-dev-rpc.md` covers the dev profile's Base Sepolia fork at `127.0.0.1:8545`, persisted at `anvil_data`. Documents `RPC_URL_PRIMARY` vs `RPC_URL_FALLBACK` semantics.
-- **`refactor(runner): extract heartbeatSuccessFile to standalone module`** (PR #559 cloud-fix on #532): healthcheck file writer split out of `runnerCastHeartbeat.ts` so heartbeat-scheduler consumers don't pull the entire Viem client stack via transitive import. Tests updated to mock at the new path.
-
-#### Fixed
-
-- **`fix(runner): is_local_origin globs + latest-tag default rejection`** (PR #532 R1 super-swarm MUST-FIX): the security check that admits only local-loopback Convex deploy origins was glob-based and admitted `localhost.evil.com`. Now anchored URL parse via `new URL()` + hostname-equality check. Latest-tag CI default rejected for prod via `require_pinned_convex_tags` (was silently using `latest` in production).
-- **`fix(runner): CHAIN_NETWORK=production rejected at preflight`** (PR #532 R3): runner refused to boot if env declares the unsupported `CHAIN_NETWORK=production`. Case-insensitive match per swarm R2.
-- **`fix(runner): close ?/# + userinfo URL-bypass paths`** (PR #532 R2): URL parser was strip-fragmenting before scheme check, opening `javascript:x?#evil.com` parse-bypass. Reordered + tightened.
-- **`fix(heartbeat): doc-vs-code mismatch on success-marker write path`** (PR #559): README claimed the marker was written after webhook POST success; actual code writes after the on-chain heartbeat transaction settles. Doc corrected to match the actual semantics (webhook is now best-effort, decoupled).
-- **`fix(runbook): anvil-fork-dev-rpc.md references root Makefile`** (PR #559): runbook claimed `make -C agents reset-anvil` but Bundle 1 doesn't have `agents/Makefile` yet (that's Bundle 3). Corrected to `make reset-anvil PROFILE=dev` with a forward-reference note.
-- **`fix(self-hosted-convex): Makefile race + port skew`** (PR #530): cloud-review followup on PR #526. `bin/deploy-convex.sh` Makefile race resolved; port-mapping drift between docs and compose corrected.
-- **`fix(self-hosted-convex): chmod 0600 hosted-export zip`** (PR #526 R2): aligns export-from-dashboard flow with `backup-convex.sh` zero-six-hundred convention so operator backups don't leak via `world-readable`.
-- **`fix(self-hosted-convex): bootstrap safety + import file-storage + CLI consistency`** (PR #526 R1): super-swarm round 1 — bootstrap script no longer wipes existing data on import; file-storage flag honored; CLI version checks aligned across `bin/*.sh`.
-- **`fix(heartbeat): non-root user + healthcheck timeout-success + least-privilege env`** (PR #525 R1): super-swarm round 1 — container runs as non-root user; healthcheck honors the writer's timeout; only the env vars actually needed by the runner are forwarded.
-- **`fix(heartbeat): test race + RPC startup race`** (PR #525 R3): gemini super-swarm HIGHs — heartbeatScheduler test had a race against the RPC startup timeout; runner's RPC client now waits for connection before scheduling first heartbeat.
-
-### Bundle 2 — containerize-agents
-
-Elder container image + Node supervisor + URL scheme rename.
-
-#### Added
-
-- **Elder container image** (PR #533, issue #345): `agents/Dockerfile` builds a tmux + ttyd + Claude Code image with `init-firewall.sh` IPv4+IPv6 egress lockdown (PATH includes `/usr/sbin` so iptables binaries resolve; default-DROP ip6tables fixes the IPv4-only bypass via AAAA-record discovery). `entrypoint.sh` boots tmux + ttyd + Node supervisor; ttyd no longer launches with `--writable` (closes the post-image-build RCE surface flagged in #533 R2).
-- **`agents/shared/` layout** (PR #533, issue #350): canonical bootstrap files shared across all elder containers — `APPENDED_SYSTEM_PROMPT.md`, `elder-bootstrap/` (workspace-ANCIENT_WISDOM.md, workspace-CLAUDE.md, workspace-README.md), `home-claude/` (CLAUDE.md, `settings.json` with `Bash(elder *)` + `date` allowlist, lean-tick + research-mindset skills). One-time copy at first boot; subsequent boots see the elder's accumulated state in the per-Elder home volume.
-- **Per-Elder service definitions** (PR #533, issue #349): four `elder-{1..4}` compose services each mounting `elder-N-home` (R/W persistence) + shared bootstrap as a read-only template at first-boot. Bound to `127.0.0.1` ttyd ports for host-Caddy reverse-proxy. `BUS_ELDER_SECRET_N` mounted as a Docker secret (not an env var) so it doesn't appear in `docker inspect`.
-- **Node supervisor (`@clan-world/elder-runtime`)** (PR #543, issue #352): standalone Node process inside each elder container that polls the Convex command bus, claims commands with a lease, dispatches them into the tmux pane via the `tmux send-keys` bracketed-paste protocol, and acks/completes back to Convex. Supports six command kinds: `user_message`, `system_message`, `snapshot_request`, `reset`, `freeze`, `unfreeze`. Singleton lock via PID file + stale-PID detection. Healthcheck writes readiness file + verifies tmux + ttyd + Claude Code process tree.
-- **Bracketed-paste nonce protocol** (PR #543 super-swarm R2): every command dispatched into the tmux pane is wrapped in `BEGIN_NONCE_<uuid>` / `END_NONCE_<uuid>` markers; the supervisor verifies the nonce echoes back before considering the command delivered. Closes the silent-no-op failure mode where tmux dropped a paste mid-flight.
-- **URL scheme rename: cockpit → root, map → /map** (PR #534, issue #354): the web app's cockpit shell moved from `/cockpit` to the root path (`/`). The world map moved from `/` to an explicit `/map`. Fallback Android route updated; landing iframes updated to the new paths.
-
-#### Fixed
-
-- **`fix(elder-runtime): tmuxSink.loadBuffer execFile input option is sync-only`** (PR #545, fixes #543 production-breaker): `tmuxSink.loadBuffer` was calling `execFileAsync(..., { input: content } as any)` — Node's `input` option is `execFileSync`-only. The async variant silently ignores it. tmux load-buffer received zero bytes; supervisor delivered empty pastes to Claude Code. Switched to `spawn` + `child.stdin.write` + `child.stdin.end`. 4 swarm rounds + an 18-test Tier 1 pass had MISSED this because tests mocked `execFile` and verified caller behavior, not actual buffer delivery. Healthcheck now probes the actual tmux paste path, not just process existence. Lessons captured in memory `feedback_swarm_blind_to_mocked_boundaries_2026_05_22.md`.
-- **`fix(elder-runtime): freeze deadlock + lease/nonce timeout + line-anchored marker`** (PR #539, R+1 fix-round on #532 R1): freeze command was blocking on its own ack path (self-deadlock). Lease-expiry sweep + nonce-verify both gain explicit timeouts. End-marker regex anchored to line start to avoid partial-match false positives.
-- **`fix(elder-runtime): R3 — FAIL marker seeded in prompt + narrow singleton-lock catch`** (PR #543 R3 super-swarm): supervisor inserted the FAIL bracketed-paste marker into the system prompt at boot so the first Claude Code response always includes it (was missing on the very first command after boot, breaking nonce verification). Singleton-lock catch narrowed to the actual `EBUSY` / `EACCES` exceptions instead of swallowing all errors.
-- **`fix(elder-runtime): healthcheck literals + writable readiness + nonce occurrence-count`** (PR #543 R2): healthcheck used pattern matching that false-positived against process names; switched to literal binary checks. Readiness file moved to a writable directory. Nonce verification now requires both BEGIN + END to appear in the same capture cycle (was matching across stale captures).
-- **`fix(elder-runtime): bracketed-paste nonce + releaseLease freeze + readiness file + timeout`** (PR #543 R2): four-finding fix-round covering the protocol + lifecycle hardening.
-- **`fix(elder-runtime): tmux+ttyd boot + nonce protocol + workspace dep`** (PR #543 R1): boot ordering corrected so tmux is up before ttyd attaches; nonce protocol introduced; workspace package dep correctly declared.
-- **`fix(elder-runtime): claimNext returns full doc + snapshot cap + heartbeat guard + config hardening`** (PR #543 follow-up): Convex `claimNext` returns the complete agent-command doc instead of an ID-only pointer; supervisor caps snapshot payload size; heartbeat write guarded against double-claim race; config schema validation rejects unknown fields with named errors.
-- **`fix(elder-runtime): freeze blocks user_message+system_message with failCommand reason=frozen`** (PR #543, issue #352): when an elder is in `frozen` state, the supervisor explicitly fails incoming `user_message` + `system_message` commands with `reason="frozen"` so the operator queue surfaces the rejection — was silently dropping commands.
-- **`fix(elder-runtime): UTF-8 MAX_BYTES via Buffer.byteLength`** (PR #558 cloud-fix on #552): `snapshotRequest.ts` was capping snapshot payloads by `string.length` (UTF-16 code units), allowing multibyte emoji + non-ASCII content to exceed the byte cap. Switched to `Buffer.byteLength(s, "utf8")`.
-- **`fix(elder-runtime): singleton lock race on SIGTERM`** (PR #558 cloud-fix on #552): SIGTERM handler called `cleanupLock()` immediately, leaving a window where the lock file was gone but the poll loop was still running + writing to Convex. A restart in that window started a NEW supervisor that saw no lock and ran concurrently. Fixed: SIGTERM sets shutdown flag, lock cleanup happens at the end of `main()` after the poll loop exits.
-- **`fix(agents): symlink-vs-copy, firewall override semantics, image healthcheck`** (PR #533 R2 super-swarm): bootstrap layout copies templates (was symlinks that broke when host paths changed). Firewall override now requires explicit operator flag (was permissive default). Image healthcheck verifies tmux + ttyd + Claude Code, not just `pgrep` self-match.
-- **`fix(agents): bind-mount, auth, fail-closed firewall`** (PR #533 R1 super-swarm): bind-mount semantics corrected for the `dev` profile so live edits work; auth tokens passed through Docker secrets; firewall fails closed if `init-firewall.sh` exits non-zero (was failing open).
-- **`fix(settings): use //path double-slash for absolute filesystem paths`** (PR #533 R1 cloud-review HIGH): `home-claude/settings.json` absolute paths needed `//foo/bar` double-slash form per CC convention; single-slash variant was being interpreted as project-relative.
-- **`fix(healthcheck): pgrep -f self-match false-positive`** (PR #533 R3): healthcheck's `pgrep -f` was matching the healthcheck process itself, returning a false positive. Switched to `pgrep -x` for the actual binary.
-- **`fix(image): PATH includes sbin + IPv6 lockdown via ip6tables`** (PR #533, issue #345): IPv4 iptables-only lockdown was bypassed via AAAA-record discovery. Default-DROP ip6tables; PATH includes `/usr/sbin` so the binaries actually resolve under the container's restricted PATH.
-- **`fix(agents): align Bundle 1 compose with #350 OAuth-only + v1-self-consistent healthcheck`** (PR #533): compose env block + secret mounts brought into alignment with the OAuth-only auth model (`CLAUDE_CODE_OAUTH_TOKEN`, no `ANTHROPIC_API_KEY`).
-- **`fix(compose): elder env_file required:false`** (PR #533): so `docker compose --profile dev config` parses in CI (per-elder `.env` files are gitignored and only present at runtime).
-- **`fix(bundle2): elder-runtime singleton race + UTF-8 MAX_BYTES + doc mismatches`** (PR #558): consolidated cloud-fix on Bundle 2.
-- **`fix(pr534-r1): android-release fallback + landing iframes`** (PR #534 R1): URL rename swarm fix-round; mobile + landing absorbed the path changes.
-
-### Bundle 3 — phase-3-final-polish
-
-Command-bus schema extraction + Makefile + runbook + dockerized Caddy + SettleLatch removal.
-
-#### Added
-
-- **`agentCommands` + `elderHeartbeat` Convex tables** (PR #538, issue #351): formalized the command-bus schema. `agentCommands` carries lease/ack/complete semantics + `payloadVersion` + `broadcastSequence` for fan-out replay safety. Three indexes (`by_target_status`, `by_status_lease`, `by_broadcast_sequence`) cover the supervisor's poll, the sweep job, and broadcast ordering. `elderHeartbeat` records `lastSeenAt` + `lastTickProcessed` + `currentStrategy` + `health` (green/yellow/red) per elder.
-- **`commandBus.ts` Convex module** (PR #538): the operator-side surface for the command bus. Operations: `enqueueCommand`, `enqueueBroadcast`, `claimNext`, `ackCommand`, `completeCommand`, `failCommand`, `sweepExpiredLeases`, `getCommandStatus`. Auth gated by `BUS_OPERATOR_SECRET` (operator) + per-elder `BUS_ELDER_SECRET_N` (elder supervisors). 5-minute lease + 3-retry default. 644-line test suite (`commandBus.test.ts`) covers happy path + lease expiry + retry exhaustion + auth + broadcast ordering.
-- **Migration runbook** (PR #547, issue #356): `docs/runbooks/self-hosted-convex.md` + updates to `fresh-vps-bootstrap.md` + `full-game-reset.md` document the end-to-end migration from host-tmux elders to containerized elders. Includes rollback steps + sequencing constraints (Convex first → heartbeat second → elders third).
-- **`Makefile` bootstrap** (PR #548, issue #355): top-level + `agents/Makefile` provide `make up PROFILE=dev|prod`, `make reset-anvil`, `make logs`, `make status`, `make backup-convex` targets. Wraps `docker compose` invocations + ensures `.env` is sourced + profile flag is passed.
-- **Dockerized Caddy v3** (PR #554, issue #348): replaces the host-Caddy snippet approach. New `caddy` service in compose (image `caddy:2.10-alpine`) bound to `127.0.0.1:58731:80`. Single `:80` site with `handle_path /elder-N/*` reverse-proxying to the per-elder ttyd ports + `Host {upstream_host}` header rewrite for Vercel + a `/healthz` endpoint for the host reverse-proxy.
-- **Removed `SettleLatch`** (PR #523, issue #517): the Cycle A heartbeat waiting for Cycle B (Elder settlement) latch shipped in v2.13.0 PR #503 was never approved by Liam and turned out to be an architectural mistake — heartbeat firing should be schedule-driven, not gated by elder settlement. PRs #523/#517 yanked the latch + restored independent Cycle A scheduling. Memory `feedback_settle_latch_architectural_mistake_2026_05_21.md` captures the lesson.
-
-#### Fixed
-
-- **`fix(caddy): Host header rewrite for ttyd upstream`** (PR #557 cloud-fix on #554): Caddy's default `Host {upstream_hostport}` was sending the literal `elder-1:7681` upstream-hostport string into ttyd's WebSocket validation, breaking the cockpit connection. Switched to `Host {upstream_host}` so ttyd sees only the hostname.
-- **`fix(caddy): depends_on removed; port band documented`** (PR #557): compose `depends_on` on the caddy service was creating a startup-order dependency that didn't add value (Caddy retries upstream automatically). Removed. Documented the per-service port band (58731 reserved for Caddy public-facing, 7681-7684 for ttyd elders).
-- **`fix(compose): env-file convention + elder image tag + secret-file vars`** (PR #533 R2 Copilot): compose env-file convention aligned; elder image tagged explicitly (was `latest`); BUS_ELDER_SECRET_N variants moved to secret files.
-- **`fix(compose-r1): RPC_URL_PRIMARY + .dockerignore secrets`** (PR #527 R1 super-swarm H1/H2/M2): heartbeat container was reading `RPC_URL` (singular) instead of `RPC_URL_PRIMARY` (canonical name across the rest of the stack). `.dockerignore` was leaking `~/.secrets/` references into the build context.
-- **`fix(compose): port-for caddy alloc + minimize env redundancy`** (PR #527 alignment review): port-allocation script ensured no clash with anvil-fork or convex; env var redundancy across services pared down.
-- **`fix(compose): remove host crontab bind-mount`** (PR #527 cloud-review MED on #344): the original compose draft bind-mounted the host crontab into the heartbeat container "for visibility" — unnecessary access surface; removed.
-- **`fix(command-bus): ackCommand leaseExpiresAt guard`** (PR #538 R1 swarm): `ackCommand` was overwriting `leaseExpiresAt` to `null` on ack — broke the audit trail for retroactive lease-expiry forensics. Now preserves the value.
-- **`fix(bundle3): Makefile status target + dashboard-auth bcrypt vs SHA512-crypt`** (PR #557): Makefile `status` target enumerated all four elders correctly; dashboard `HTPASSWD_BCRYPT` validation correctly rejected SHA512-crypt strings.
-- **`fix(bundle1): heartbeat doc/code mismatch + Convex version docs`** (PR #559): consolidated cloud-fix on Bundle 1's documentation. Convex CLI version pinned to 1.17.4 (matches package + docs).
+- **Heartbeat container** (PR #525 / Bundle 1): containerizes the existing TS runner not a thin shell wrapper. Multi-stage Dockerfile with cast + pnpm-layer-cache; entrypoint preflight checks (chain-id verification, anvil-rejection in production, required-secret presence); restart `on-failure:5`; atomic temp+rename readiness file. Replaces the host-launched runner; production deploys can scale per-container.
+- **Per-elder agent containers** (Bundle 2 — PR #533/#534/#542/#543/#545): `agents/Dockerfile` builds `clan-world/agent:dev` (Node 24 slim, ttyd, tmux, sudo-gated init-firewall.sh). Per-elder service template at `agents/elder-N/`. `agents/shared/` bind-mounted R/O overlay (CLAUDE.md, run.sh, settings.json). `packages/elder-runtime/` supervises tmux + claude lifecycle with 8 control verbs, observable health derivation, singleton atomic lock, readiness-file boot order, two-layer recovery, sync-vs-async fix on tmuxSink (`execFile.input` → `spawn` + stdin pipe).
+- **Phase 2 migration runbook + agents/Makefile** (Bundle 3 — PR #547/#548): 14-step migration runbook with rehearsal compose + transcript at `docs/runbooks/dockerize-migration-v1.md`. 330-line `agents/Makefile` provides lifecycle + bootstrap targets (`bootstrap-bus-secrets`, `bootstrap-convex-admin-key`, `bootstrap-vault-secret`, `agents-up`, `agents-down`, `agents-reset`, `agents-restart`, `agents-pause-heartbeat`, etc.) with `PROFILE=dev|prod` propagation, SHA-512-crypt dashboard auth bcrypt-compatible, OAuth token mounts.
+- **Convex command bus + per-elder bus secrets** (PR #542 + #549 + #551): new tables (`agentCommands`, `commandResults`, `elderHeartbeat`) with FSM (queued → leased → delivered → ackd → completed/failed) + claim/lease/sweep semantics. Per-elder Docker-secret mounts at `/run/secrets/bus-elder-{1..4}`. settings.json deny additions block 13 secret-exfil verbs (`/run/secrets` reads + bash strings/set/declare/export/perl-e/bash-c inline-script env-dump).
+- **Dockerized Caddy router** (PR #554 / issue #348 v3): dedicated `caddy:2-alpine` compose service bound to `127.0.0.1:58731:80`, talks to elders by Docker DNS service-name, one-line cloudflared ingress edit. Replaces the host-Caddy snippet approach (PR #546) which had 2 CRITICALs: no-auth public RCE, top-level site block not routing through cloudflared's loopback. ttyd `--writable` removed.
+- **Self-hosted Convex backend** (PR #526 / Bundle 1): 4 bash bootstrap scripts + root Makefile + runbook for `convex-backend` Docker image with socat loopback proxies, chicken-and-egg admin-key bootstrap, CONVEX_DATA volume preservation warnings, SDK + server CLI version alignment.
+- **Anvil-fork dev RPC** (PR #410 / Bundle 1): docker-compose service profile for local Anvil with fork of Base Sepolia; `make agents-up PROFILE=dev` brings up the full stack including anvil.
 
 ### Changed
 
-- **Auth model: OAuth-only for Claude Code in elder containers** (PR #533, decision in #350). The elder runtime uses `CLAUDE_CODE_OAUTH_TOKEN` exclusively. Direct `ANTHROPIC_API_KEY` is rejected at preflight per ADR 0013 (Claude MAX OAuth only — separate sub-quota from API).
-- **Convex backend hosting**: dev VPS migrates from cloud Convex (`*.convex.cloud`) to self-hosted Convex (SQLite, port 3210). Same schema, same Convex CLI; only the deploy URL changes. Cloud Convex remains available as fallback during cutover.
-- **Web routing topology**: cockpit shell moves from `/cockpit` to root `/`; world map moves from `/` to `/map` (PR #534, issue #354). Mobile fallback + landing iframes follow.
+- **`packages/runner/` is now the heartbeat-only package**, hardened with self-hosted Convex compatibility checks + on-chain interval reading (carried over from v2.13.0 PR #503).
+- **AGENTS.md + per-repo guidance refreshed** to point at the new `agents/Makefile` operator entrypoint + dockerize migration runbook (no more bare `tmux` commands in the day-1 onboarding).
+
+### Fixed
+
+- **Cloud-review pass** (PRs #557/#558/#559 — Copilot batch on Bundle 1/2/3): singleton lock race on SIGTERM in elder-runtime/main.ts; UTF-8 MAX_BYTES using string.length not Buffer.byteLength in snapshotRequest.ts; Caddy Host header `{upstream_hostport}` placeholder breaking Vercel routing; agents/Makefile status display + dashboard-auth bcrypt vs SHA512-crypt; heartbeat doc/code mismatch + Convex version docs.
+- **Bundle 3 merge-order recovery** (PR #561): PR #553 merged Bundle 3 to `dev-containerize-agents` 16 seconds after PR #552 already merged that branch to `dev`, leaving 11 commits stranded. Recovery PR #561 (`dev-containerize-agents → dev`) re-merged them, with R1 fix-round adding `failCommand` + `ackCommand` grace alignment, settings.json deny-list expansion, Makefile `--profile $(PROFILE)` propagation to mutating targets.
+- **tmuxSink execFile.input silent failure** (PR #545): `execFile`'s `input` option is sync-variant only; async silently ignored. tmux got empty buffer. Switched to `spawn` + stdin pipe. Caught post-merge by Bundle 3 exploration sweep; the swarm-blind-to-mocked-boundaries failure mode is documented in `feedback_swarm_blind_to_mocked_boundaries_2026_05_22.md`.
+
+### Operational
+
+- **`make agents-up PROFILE=dev`** is the canonical operator entrypoint — replaces the bare tmux + manual claude attach pattern. See `docs/runbooks/dockerize-migration-v1.md` for the full Phase 2 cutover sequence.
+- **Compose profiles** gate non-default services: `dev` adds anvil + convex-backend; `prod` skips anvil and assumes external Convex deployment.
+- **Bus secrets bootstrap** via `make bootstrap-bus-secrets` writes per-elder + operator secrets to `/etc/clan-world/secrets/` as Docker secret files; never embedded in env vars.
 
 ### Removed
 
-- **`SettleLatch` (Cycle A waits for Cycle B)**: see Bundle 3 "Added" → removed entry above. PR #523 reverted the v2.13.0 PR #503 introduction.
-- **Host crontab bind-mount in heartbeat container**: removed in PR #527 alignment review.
-- **ttyd `--writable` flag**: removed in PR #554; ttyd no longer accepts client-side writes, closing the post-image-build RCE surface.
+- **Host-Caddy snippet path** (PR #546): superseded by dockerized Caddy v3 (PR #554). Removed from operator workflow.
 
-### Infrastructure
+### Process notes
 
-- **`.dockerignore`** added (110 lines) — excludes `~/.secrets/`, `node_modules`, build artifacts, env files from the Docker build context.
-- **`Makefile`** added (top-level + `agents/Makefile`) — `make up PROFILE=dev|prod`, `make reset-anvil`, `make logs`, `make status`, `make backup-convex`.
-- **`bin/check-stack-health.sh`** added — operator script that probes all compose services + reports healthy/unhealthy.
-- **`bin/backup-convex.sh`** + **`bin/import-convex-schema.sh`** + **`bin/deploy-convex.sh`** added — self-hosted Convex lifecycle scripts. Backups chmod 0600.
-- **`.world/ports.yml`** added — canonical port allocations for all compose services.
-
-### Validation
-
-- **Per-PR swarm trail (all sub-PRs):** every sub-PR went through the local 3-tier swarm (claude subagent + codex + gemini-3-flash). Three PRs required multi-round super-swarms: PR #525 (heartbeat container — 4 rounds), PR #526 (self-hosted Convex — 2 rounds), PR #533 (elder image — 3 rounds), PR #543 (Node supervisor — 3 rounds before #545 caught the production-breaker via exploration sweep).
-- **Cross-tier exploration sweep caught production-breaker after swarm CLEAN.** PR #543 shipped with `execFileAsync(..., { input: ... } as any)` and passed 4 super-swarm rounds + an 18-test pass with a mocked execFile. The bug was caught post-merge by a Bundle 3 exploration sweep against the actual tmux load-buffer path. Fix landed as PR #545 before the next merge to dev. Lesson captured in memory `feedback_swarm_blind_to_mocked_boundaries_2026_05_22.md`: unit tests that mock the boundary they're testing verify caller behavior, not correctness; healthchecks must probe the actual surface, not just process existence.
-- **Cloud-review fix rounds.** Copilot reviewed each bundle integration branch + filed inline comments. Triaged across PRs #557 (Bundle 3), #558 (Bundle 2), #559 (Bundle 1) — 30 inline comments → 3 codex fix-rounds across separate worktrees. Includes one HIGH (singleton-lock race), one HIGH (UTF-8 MAX_BYTES), one HIGH (Caddy Host header `{upstream_hostport}` breaking Vercel routing).
-- **End-to-end live validation.** Bundle 3 included a live `caddy` container probe against the running compose stack — caught the dockerized Caddy Host header bug before cloud review even fired. Pattern: any compose-touching PR now requires `docker compose --profile <p> config` + a live service probe.
-
-### Follow-up issues filed during the Bundle 1/2/3 walkthrough
-
-- **#513**: Elder Anthropic/Claude tokens as Docker secrets (folded into Bundle 2 via #533).
-- **#514**: Profile-scoped `convex_data` volume (dev vs prod) — deferred to Bundle 4 era.
-- **#515**: Log rotation + per-service resource limits — deferred.
-- **#516**: Heartbeat restart policy semantics — closed by #525 R1.
-- **#517**: ✅ Remove `SettleLatch` — SHIPPED via PR #523.
-- **#518**: Convex ordering race (tick-stamped writes + reader joins on tick) — deferred to Bundle 4.
-- **#519/#520/#521**: Elder CLI hardening (tx-attempt record, `waitForTransactionReceipt`, agent-friendly text output) — deferred.
-- **#522**: Dev UI `/elder-orders` page (placeholder) — deferred to Bundle 4 (admin dev-UI message-injection).
-- **#524**: Move Convex functions into `@clan-world/sdk` (DISCUSS FIRST) — deferred indefinitely.
-- **#550**: `claimNext` 2-pass double-scan latent risk at high throughput — deferred (not surfacing under current load).
-- **#555**: Remove elder ack-clear handshake — separate PR scheduled after Bundle 4 lands.
-
-### Known gaps / Bundle 4 motivation
-
-The bundle 4 design phase is in flight at PR #556 (`docs(design): Bundle 4 — simplified communications architecture (draft)`). Liam's directive after the Bundle 2/3 swarm convergence: the command-bus's queue + lease + sweep + retry machinery turned out to be over-engineered for the elder messaging surface. Bundle 4 will strip it down to a thin message-injection layer with PostToolUse hook driven liveness + tick-driven reset + two-layer supervisor recovery (kill Claude inside tmux → docker restart fallback). Design doc lives at `docs/design/bundle-4-simplified-communications.md` (PR #556); 4 CRITICAL + 11 SHOULD-RESOLVE devil's-advocate findings still pending design iteration before implementation begins. See PR #556 for details.
+- Phase 1 dockerize shipped through the 4-level branching convention (`feat/* → dev-bundle-<N> → dev → main`) per ADR 0018. Bundle 3 recovery PR #561 illustrates the merge-order safety: when sub-branches merge to the bundle branch out-of-order vs the bundle branch's own merge to dev, the bundle-PR pattern surfaces it cleanly.
+- Two follow-up issues filed for v2.15.0 Bundle 4 scope: live-TUI capture-pane fixtures for paste verification regex tuning (#575); deliverPendingOnly multi-message confirm semantic (#577).
+- Bundle 4 (simplified communications architecture) lives on `dev-phase-4-simplified-comms` integration branch; ships in next release.
 
 ---
 

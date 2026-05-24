@@ -1,0 +1,11 @@
+# agents/.docker-mounts/
+#
+# Populated by `make link-mounts`. The Makefile runs a helper busybox
+# container that snapshots each elder's named volumes (`elder-N-workspace`,
+# `elder-N-home`) into this directory with the operator's UID, so the
+# contents are readable WITHOUT sudo and inspectable from anywhere in the
+# repo via `ls agents/.docker-mounts/elder-1-workspace/`.
+#
+# Trade-off: snapshots get stale — re-run `make link-mounts` to refresh.
+# All contents under this directory are gitignored (only this .gitkeep is
+# tracked).
