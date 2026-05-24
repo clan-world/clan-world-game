@@ -32,6 +32,7 @@ import type * as kickstart from "../kickstart.js";
 import type * as memory from "../memory.js";
 import type * as mock from "../mock.js";
 import type * as ops from "../ops.js";
+import type * as resetEvents from "../resetEvents.js";
 import type * as resetLock from "../resetLock.js";
 import type * as retention from "../retention.js";
 import type * as runnerStatus from "../runnerStatus.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   memory: typeof memory;
   mock: typeof mock;
   ops: typeof ops;
+  resetEvents: typeof resetEvents;
   resetLock: typeof resetLock;
   retention: typeof retention;
   runnerStatus: typeof runnerStatus;
