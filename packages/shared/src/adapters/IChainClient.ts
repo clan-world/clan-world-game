@@ -1,4 +1,7 @@
-import fs from 'node:fs';
+// node:fs dynamically imported at use site (submitOrders below) so Convex
+// bundling — V8-isolate runtime by default, rejects static node: imports —
+// can tree-shake when consumers (convex/indexer.ts etc.) only need pure
+// exports like baseSepolia / CLAN_WORLD_ABI.
 import { iClanWorldLensAbi } from '@clan-world/contract-types';
 import {
   type Abi,
@@ -5204,6 +5207,9 @@ class RealChainClient implements IChainClient {
     let pkSource: string | undefined;
     if (keyPath) {
       try {
+        // Dynamic import so the V8-isolate Convex bundler can tree-shake this
+        // file when consumers only need baseSepolia / CLAN_WORLD_ABI.
+        const fs = await import('node:fs');
         pk = fs.readFileSync(keyPath, 'utf8').trim();
         pkSource = `ELDER_WALLET_KEY_PATH file at ${keyPath}`;
       } catch (err) {
