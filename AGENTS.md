@@ -20,7 +20,8 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 | `apps/orchestrator/` | `@clan-world/orchestrator` | Spawns and pumps the 4 long-running Elder Claude Code sessions |
 | `packages/contracts/` | `@clan-world/contracts` | Foundry project; `IClanWorld.sol` is the canonical seam |
 | `packages/agents/` | `@clan-world/agents` | `elder` CLI toolbelt invoked by Elder sessions |
-| `packages/runner/` | `@clan-world/runner` | Daemon orchestrating per-tick reasoning loop for the 4 Elders (Cycle A heartbeat scheduler + Cycle B tick loop, with pluggable IElderMemoryStore + IElderPeerInbox + IRunnerInbox + IHeartbeatCaller adapters) |
+| `packages/heartbeat/` | `@clan-world/heartbeat` | Existing heartbeat/tick-loop implementation, renamed for Bundle 4 PR1; PR2 will strip it down to the dumb heartbeat singleton |
+| `packages/runner/` | `@clan-world/runner` | Per-elder runtime package, renamed from the old elder-runtime supervisor; PR2 wires the new pending-message flow |
 | `packages/shared/` | `@clan-world/shared` | TypeScript types + adapter interfaces consumed by every other workspace |
 
 ## 2. Active Hackathon Target

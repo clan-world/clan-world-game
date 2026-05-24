@@ -1,6 +1,19 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "_comment": "Shared CC permission base for every Elder container. Bind-mounted R/O at /home/elder/.claude/settings.json. Deny rules apply to the agent's tool calls (Read/Write/Edit/Bash), NOT the CC harness itself — the harness still reads/writes credentials and project state to run normally. NOTE: absolute filesystem paths use the `//path` double-slash convention per CC permissions docs (single leading slash is interpreted as project-relative). Tilde-expanded `~/.claude/...` and double-slash `//home/elder/.claude/...` both listed to defeat path-resolution variance.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /opt/clan-world/shared/home-claude/hooks/user_prompt_submit.py"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "deny": [
       "Read(.credentials.json)",

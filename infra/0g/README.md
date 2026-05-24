@@ -51,5 +51,5 @@ eval "$(infra/0g/setup-env.sh 1)"   # elder 1
 
 ## Reference
 
-- `packages/runner/src/zeroGMemoryStore.ts` — adapter implementation
+- `packages/heartbeat/src/zeroGMemoryStore.ts` — adapter implementation
 - `docs/planning/V1/05 0G/clanworld_inft_deployment_notes.md` — cost model + faucet details

@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { createMemoryStore } from '../../packages/runner/src/zeroGMemoryStore.js';
+import { createMemoryStore } from '../../packages/heartbeat/src/zeroGMemoryStore.js';
 
 const SECRETS_PATH = join(homedir(), '.secrets', 'clanworld-elder-wallets.json');
 

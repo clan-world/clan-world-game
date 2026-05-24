@@ -64,7 +64,7 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 RUN userdel -r node 2>/dev/null || true \
     && groupadd -g ${ELDER_GID} elder \
     && useradd -m -u ${ELDER_UID} -g ${ELDER_GID} -s /bin/bash elder \
-    && mkdir -p /home/elder/.claude /workspace /opt/clan-world \
+    && mkdir -p /home/elder/.claude /home/elder/.runner-state /workspace /opt/clan-world \
     && chown -R elder:elder /home/elder /workspace
 
 # Entrypoint scripts. init-firewall.sh requires CAP_NET_ADMIN; it runs via
@@ -81,9 +81,18 @@ RUN echo "elder ALL=(root) NOPASSWD: /opt/clan-world/init-firewall.sh" > /etc/su
 # elder-runtime supervisor (Phase 1.9, issue #352).
 # Copy source + install deps as root so node_modules land in /opt/elder-runtime/node_modules
 # and are readable by the elder user. tsx resolves imports from this directory at runtime.
-COPY --chown=root:root packages/elder-runtime/ /opt/elder-runtime/
+COPY --chown=root:root packages/runner/ /opt/elder-runtime/
 RUN cd /opt/elder-runtime && npm install --omit=dev \
     && chown -R elder:elder /opt/elder-runtime
+
+# Python hook deps. We own this container's Python environment, so
+# --break-system-packages is acceptable as the Debian PEP 668 workaround.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 \
+      python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+COPY agents/shared/home-claude/hooks/requirements.txt /tmp/hook-requirements.txt
+RUN pip install --no-cache-dir --require-hashes --break-system-packages -r /tmp/hook-requirements.txt
 
 USER elder
 WORKDIR /workspace

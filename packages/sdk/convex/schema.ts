@@ -417,53 +417,66 @@ export default defineSchema({
     .index("by_target_clan", ["targetClanId", "tick"])
     .index("by_tick", ["tick"]),
 
-  agentCommands: defineTable({
-    targetAgentId: v.string(),
-    kind: v.union(
-      v.literal("user_message"),
-      v.literal("system_message"),
-      v.literal("snapshot_request"),
-      v.literal("reset"),
-      v.literal("freeze"),
-      v.literal("unfreeze"),
+  pendingMessages: defineTable({
+    targetElderId: v.string(),
+    text: v.string(),
+    source: v.union(v.literal("admin-injection"), v.literal("user-message")),
+    insertedAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  }).index("by_target_unconsumed", ["targetElderId", "consumedAt"]),
+
+  resetEventLog: defineTable({
+    elderId: v.string(),
+    resetTick: v.number(),
+    reason: v.union(
+      v.literal("scheduled"),
+      v.literal("manual"),
+      v.literal("memory_wipe_gap"),
+      v.literal("late_join"),
     ),
-    payload: v.any(),
-    payloadVersion: v.number(),
-    source: v.string(),
-    createdAt: v.number(),
-    status: v.union(
-      v.literal("queued"),
-      v.literal("leased"),
-      v.literal("acked"),
-      v.literal("completed"),
-      v.literal("failed"),
-    ),
-    leaseOwner: v.optional(v.string()),
-    leaseExpiresAt: v.optional(v.number()),
-    ackedAt: v.optional(v.number()),
+    startedAt: v.number(),
     completedAt: v.optional(v.number()),
-    retryCount: v.number(),
-    broadcastSequence: v.optional(v.number()),
-  })
-    .index("by_target_status", ["targetAgentId", "status"])
-    .index("by_status_lease", ["status", "leaseExpiresAt"])
-    .index("by_broadcast_sequence", ["broadcastSequence"]),
+  }).index("by_elder_started", ["elderId", "startedAt"]),
 
-  elderHeartbeat: defineTable({
-    agentId: v.string(),
-    lastSeenAt: v.number(),
-    lastTickProcessed: v.number(),
-    currentStrategy: v.optional(v.string()),
-    health: v.union(v.literal("green"), v.literal("yellow"), v.literal("red")),
-  })
-    .index("by_agentId", ["agentId"]),
+  tickSendLog: defineTable({
+    elderId: v.string(),
+    tickNumber: v.number(),
+    sentAt: v.number(),
+    messageHash: v.string(),
+    resetMetadata: v.optional(v.object({
+      resetTick: v.number(),
+      resetReason: v.union(
+        v.literal("scheduled"),
+        v.literal("manual"),
+        v.literal("memory_wipe_gap"),
+        v.literal("late_join"),
+      ),
+      resetEventId: v.id("resetEventLog"),
+    })),
+  }).index("by_elder_tick", ["elderId", "tickNumber"]),
 
-  commandResults: defineTable({
-    commandId: v.id("agentCommands"),
-    agentId: v.string(),
-    resultPayload: v.any(),
-    tookMs: v.number(),
-    createdAt: v.number(),
+  tickReceiveLog: defineTable({
+    elderId: v.string(),
+    receivedAt: v.number(),
+    prefix: v.union(v.literal("tick"), v.literal("whisper"), v.literal("special-msg")),
+    tickNumber: v.optional(v.number()),
+    whisperUid: v.optional(v.string()),
+    specialMsgUid: v.optional(v.string()),
+    messagePreview: v.string(),
   })
-    .index("by_commandId", ["commandId"]),
+    .index("by_elder_tick", ["elderId", "tickNumber"])
+    .index("by_elder_received", ["elderId", "receivedAt"]),
+
+  runnerEvents: defineTable({
+    elderId: v.string(),
+    kind: v.union(
+      v.literal("hook_failure"),
+      v.literal("convex_outage_recovery"),
+      v.literal("settings_drift_panic"),
+      v.literal("invariant_violation"),
+      v.literal("ready_probe_timeout"),
+    ),
+    message: v.string(),
+    at: v.number(),
+  }).index("by_elder_at", ["elderId", "at"]),
 });

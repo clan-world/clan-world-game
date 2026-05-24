@@ -1,0 +1,91 @@
+import { deliverMessage, deliverPendingOnly } from "./messageDelivery.js";
+import { runResetFlow } from "./resetFlow.js";
+import { isScheduledMemoryWipeTick } from "./restartDecision.js";
+import { describeSettingsDrift, settingsEqual } from "./settingsCache.js";
+import { selectTemplates } from "./templateLoader.js";
+import type { RunnerConvexClient } from "./convexClient.js";
+import type { TmuxSink } from "./tmuxSink.js";
+import type { GameSettings, RestartDecision, RunnerAuxiliary, RunnerConfig } from "./types.js";
+
+export interface TickHandlerDeps {
+  config: RunnerConfig;
+  convex: RunnerConvexClient;
+  tmux: TmuxSink;
+  cachedSettings: GameSettings;
+  signal?: AbortSignal;
+}
+
+export async function handleStartupDecision(
+  deps: TickHandlerDeps,
+  decision: RestartDecision,
+): Promise<TickDeliveryResult> {
+  if (decision.kind === "wait") return { confirmed: true };
+  const aux = await deps.convex.getAuxiliary(deps.signal);
+  await assertNoSettingsDrift(deps, aux);
+  if (decision.kind === "reset") {
+    return await runResetFlow({ ...deps, aux, reason: decision.reason });
+  }
+  return await deliverCurrentTick(deps, aux, decision.kind === "fast-forward"
+    ? `Fast-forwarding from tick ${decision.fromTick} to tick ${decision.toTick}.`
+    : undefined);
+}
+
+export interface TickDeliveryResult {
+  confirmed: boolean;
+}
+
+export async function handleAuxiliaryUpdate(
+  deps: TickHandlerDeps,
+  aux: RunnerAuxiliary,
+): Promise<TickDeliveryResult> {
+  await assertNoSettingsDrift(deps, aux);
+  if (
+    isScheduledMemoryWipeTick(
+      aux.tickClock.tick,
+      deps.cachedSettings.memoryWipeTickInterval,
+    )
+  ) {
+    const result = await runResetFlow({ ...deps, aux, reason: "scheduled" });
+    return { confirmed: result.confirmed };
+  }
+  const delivery = await deliverCurrentTick(deps, aux);
+  return { confirmed: delivery.confirmed };
+}
+
+export async function handlePendingMessages(deps: TickHandlerDeps, aux: RunnerAuxiliary): Promise<void> {
+  await assertNoSettingsDrift(deps, aux);
+  await deliverPendingOnly(deps.convex, deps.tmux, {
+    pendingMessages: aux.pendingMessages,
+    receiveTimeoutMs: deps.config.hookReceiveTimeoutMs,
+    receivePollMs: deps.config.hookReceivePollMs,
+    maxAttempts: deps.config.maxPasteAttempts,
+    signal: deps.signal,
+  });
+}
+
+async function deliverCurrentTick(
+  deps: TickHandlerDeps,
+  aux: RunnerAuxiliary,
+  fastForwardPrefix?: string,
+): Promise<{ confirmed: boolean }> {
+  const templates = await selectTemplates(deps.config.promptDir, aux);
+  const result = await deliverMessage(deps.convex, deps.tmux, {
+    tickNumber: aux.tickClock.tick,
+    receiveTickNumber: aux.tickClock.tick,
+    templates,
+    fastForwardPrefix,
+    pendingMessages: aux.pendingMessages,
+    receiveTimeoutMs: deps.config.hookReceiveTimeoutMs,
+    receivePollMs: deps.config.hookReceivePollMs,
+    maxAttempts: deps.config.maxPasteAttempts,
+    signal: deps.signal,
+  });
+  return { confirmed: result.confirmed };
+}
+
+async function assertNoSettingsDrift(deps: TickHandlerDeps, aux: RunnerAuxiliary): Promise<void> {
+  if (settingsEqual(deps.cachedSettings, aux.gameSettings)) return;
+  const message = describeSettingsDrift(deps.cachedSettings, aux.gameSettings);
+  await deps.convex.recordRunnerEvent("settings_drift_panic", message, deps.signal);
+  throw new Error(`game settings drift panic: ${message}`);
+}

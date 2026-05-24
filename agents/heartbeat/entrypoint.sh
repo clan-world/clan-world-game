@@ -92,5 +92,5 @@ done
 OBSERVED_CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL_PRIMARY")" || fail "cast chain-id failed"
 [ "$OBSERVED_CHAIN_ID" = "$EXPECTED_CHAIN_ID" ] || fail "chain id mismatch: expected ${EXPECTED_CHAIN_ID}, got ${OBSERVED_CHAIN_ID}"
 
-log "preflight passed; starting @clan-world/runner heartbeat"
-exec pnpm --filter @clan-world/runner heartbeat
+log "preflight passed; starting @clan-world/heartbeat heartbeat"
+exec pnpm --filter @clan-world/heartbeat heartbeat
