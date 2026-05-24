@@ -21,8 +21,23 @@ const injectMessageRef = (anyApi as unknown as {
 }).adminMessages.injectMessage;
 
 function readOperatorSecret(): string {
-  const secretFile = process.env.BUS_OPERATOR_SECRET_FILE ?? "agents/secrets/bus-operator.key";
-  const resolved = path.isAbsolute(secretFile) ? secretFile : path.resolve(process.cwd(), secretFile);
+  // Default points at the canonical bind-mount location used by all elder
+  // containers (matches BUS_ELDER_SECRET_FILE convention). Relative paths
+  // are resolved against process.cwd(), which is reliable inside a container
+  // entrypoint but brittle when running `node` from a subdirectory locally.
+  // Always pass an absolute path in production.
+  const secretFile = process.env.BUS_OPERATOR_SECRET_FILE
+    ?? "/etc/clan-world/secrets/bus-operator.key";
+  const resolved = path.isAbsolute(secretFile)
+    ? secretFile
+    : path.resolve(process.cwd(), secretFile);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(
+      `BUS operator secret file not found at ${resolved} ` +
+      `(BUS_OPERATOR_SECRET_FILE='${secretFile}'). ` +
+      `Set BUS_OPERATOR_SECRET_FILE to an absolute path.`,
+    );
+  }
   return fs.readFileSync(resolved, "utf8").trim();
 }
 

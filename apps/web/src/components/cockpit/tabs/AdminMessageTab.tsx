@@ -184,7 +184,7 @@ export function AdminMessageTab({ elder, testIdPrefix }: Props) {
         <textarea
           data-testid={`${testIdPrefix}-admin-text`}
           value={text}
-          maxLength={MAX_CHARS + 1}
+          maxLength={MAX_CHARS}
           onChange={(event) => setText(event.currentTarget.value)}
           style={{
             ...controlStyle,
