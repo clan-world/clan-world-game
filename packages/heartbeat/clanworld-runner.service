@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 # Adjust these paths to the deployed checkout location.
 WorkingDirectory=%h/code/clan-world
-ExecStart=/usr/bin/env pnpm --filter @clan-world/runner start
+ExecStart=/usr/bin/env pnpm --filter @clan-world/heartbeat start
 Restart=on-failure
 RestartSec=10s
 # Read env vars from this file (chmod 600).

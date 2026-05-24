@@ -193,7 +193,7 @@ services:
     profiles: [dev]
 
   # ---------------------------------------------------------------------------
-  # Heartbeat — runs the existing @clan-world/runner heartbeat loop in a
+  # Heartbeat — runs the existing @clan-world/heartbeat heartbeat loop in a
   # container. Pre-flight assertions land in #353 (Phase 1.10).
   # ---------------------------------------------------------------------------
   heartbeat:

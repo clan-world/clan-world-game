@@ -418,7 +418,7 @@ ELDER_ADDRESS=0x...
 RPC_URL=https://sepolia.base.org   # or your Alchemy URL
 CLAN_WORLD_CONTRACT_ADDRESS=0x...   # same as the deployed PRIMARY diamond
 ELDER_WALLET_KEY_PATH=/home/<user>/.secrets/clanworld-elder-keys/elder-N.key
-# 0G (optional — for iNFT memory): see elder-runtime docs
+# 0G (optional — for iNFT memory): see heartbeat package docs
 ```
 
 Start each elder in a tmux session:

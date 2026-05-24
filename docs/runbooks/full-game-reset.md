@@ -375,7 +375,7 @@ cd ../..
 tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
   'bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log'
 tmux new-session -d -s clanworld-runner -c "$PWD" \
-  'pnpm --filter @clan-world/runner start 2>&1 | tee -a /tmp/clanworld-runner.log'
+  'pnpm --filter @clan-world/heartbeat start 2>&1 | tee -a /tmp/clanworld-runner.log'
 ```
 
 After unpausing, verify `getSnapshot:getSnapshot` advances and runner logs show
