@@ -79,6 +79,17 @@ x-elder-common: &elder-common
   depends_on:
     convex-backend:
       condition: service_healthy
+  # tty + stdin_open are REQUIRED — claude CLI detects TTY availability and
+  # falls back to `--print` mode (one-shot, requires stdin/prompt arg, exits
+  # immediately on no input) when no TTY is attached. Without these, every
+  # elder container restart-loops on:
+  #   Error: Input must be provided either through stdin or as a prompt
+  #   argument when using --print
+  # The runner-tmux launch path needs claude to detect an interactive
+  # TTY so it stays alive waiting for input. Validated 2026-05-24 self-hosted
+  # cutover (Phase 2 Blocker 2 fix).
+  tty: true
+  stdin_open: true
 
 services:
   # ---------------------------------------------------------------------------
