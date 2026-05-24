@@ -60,6 +60,100 @@ fi
 export HOME=/home/elder
 export CLAUDE_CONFIG_DIR=/home/elder/.claude
 
+# --- bootstrap CC auth/onboarding state ------------------------------------
+
+# Claude Code 2.x reads OAuth credentials from $CLAUDE_CONFIG_DIR/.credentials.json
+# on Linux, but a first TUI launch still stops on onboarding/theme/project-trust
+# prompts unless the per-user .claude.json state has already accepted them. Elder
+# containers are sealed and non-human, so materialize both from the env token on
+# every boot. We intentionally do not depend on a host keychain or copied host
+# state.
+if ! command -v node >/dev/null 2>&1; then
+  echo "[run.sh] FATAL: node not found; cannot bootstrap Claude Code auth state" >&2
+  exit 2
+fi
+
+node <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME || "", ".claude");
+const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+
+function readJson(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson0600(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const tmp = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  fs.chmodSync(file, 0o600);
+}
+
+fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+
+writeJson0600(path.join(configDir, ".credentials.json"), {
+  claudeAiOauth: {
+    accessToken: token,
+    // CLAUDE_CODE_OAUTH_TOKEN is documented as a one-year token. If an operator
+    // supplies a short-lived access token instead, the server will reject it
+    // when it expires; there is no refresh token in the elder env by design.
+    expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+    scopes: [
+      "user:file_upload",
+      "user:inference",
+      "user:mcp_servers",
+      "user:profile",
+      "user:sessions:claude_code",
+    ],
+    subscriptionType: "max",
+    rateLimitTier: "default_claude_max_20x",
+  },
+});
+
+const statePath = path.join(configDir, ".claude.json");
+const state = readJson(statePath, {});
+
+state.hasSeenTasksHint ??= true;
+state.hasCompletedOnboarding = true;
+state.lastOnboardingVersion ??= "2.1.150";
+state.firstStartTime ??= new Date().toISOString();
+state.opusProMigrationComplete ??= true;
+state.sonnet1m45MigrationComplete ??= true;
+state.seenNotifications ??= {};
+state.migrationVersion = Math.max(Number(state.migrationVersion) || 0, 13);
+state.projects ??= {};
+
+const projectPaths = new Set([process.cwd(), "/workspace"].filter(Boolean));
+for (const projectPath of projectPaths) {
+  const project = state.projects[projectPath] || {};
+  project.allowedTools ??= [];
+  project.mcpContextUris ??= [];
+  project.mcpServers ??= {};
+  project.enabledMcpjsonServers ??= [];
+  project.disabledMcpjsonServers ??= [];
+  project.hasTrustDialogAccepted = true;
+  project.projectOnboardingSeenCount = Math.max(Number(project.projectOnboardingSeenCount) || 0, 1);
+  project.hasClaudeMdExternalIncludesApproved ??= false;
+  project.hasClaudeMdExternalIncludesWarningShown ??= false;
+  project.hasCompletedProjectOnboarding = true;
+  project.lastGracefulShutdown ??= true;
+  state.projects[projectPath] = project;
+}
+
+writeJson0600(statePath, state);
+NODE
+
+# Keep the secret out of the long-running Claude process environment. The
+# freshly written credentials file becomes the auth source Claude reads.
+unset CLAUDE_CODE_OAUTH_TOKEN
+
 # --- bootstrap shared CC harness state ------------------------------------
 
 # Shared CC harness state lives at /opt/clan-world/shared/home-claude/ (R/O
