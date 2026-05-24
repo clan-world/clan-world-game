@@ -1,6 +1,6 @@
 import { tokens } from '../../../styles/cockpit-tokens';
 
-export type TabId = 'terminal' | 'vault' | 'clansman' | '0g' | 'comms';
+export type TabId = 'terminal' | 'vault' | 'clansman' | '0g' | 'comms' | 'admin';
 
 export interface TabDef {
   id: TabId;
@@ -16,6 +16,7 @@ export const TABS: ReadonlyArray<TabDef> = [
   { id: 'clansman', icon: '☗', label: 'CLAN' },
   { id: '0g',       icon: '◉', label: '0G' },
   { id: 'comms',    icon: '✉', label: 'COMMS' },
+  { id: 'admin',    icon: '⚙', label: 'ADMIN' },
 ];
 
 interface Props {
