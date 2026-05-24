@@ -40,7 +40,10 @@ export async function deliverMessage(
       return { ...composed, confirmed: false };
     }
     await tmux.pasteMessage(composed.text);
-    await postPasteSubmitted(tmux);
+    if (!(await postPasteSubmitted(tmux))) {
+      await convex.recordRunnerEvent("invariant_violation", `post-paste input stuck for tick ${input.tickNumber ?? "message"}`, input.signal);
+      return { ...composed, confirmed: false };
+    }
 
     if (input.receiveTickNumber === undefined) {
       await convex.consumePendingMessages(composed.pendingMessageIds, Date.now(), input.signal);
@@ -77,7 +80,10 @@ export async function deliverPendingOnly(
       return { ...composed, confirmed: false };
     }
     await tmux.pasteMessage(composed.text);
-    await postPasteSubmitted(tmux);
+    if (!(await postPasteSubmitted(tmux))) {
+      await convex.recordRunnerEvent("invariant_violation", "post-paste input stuck for pending message", input.signal);
+      return { ...composed, confirmed: false };
+    }
     if (receiveUid && await waitForUidReceive(convex, receiveUid, input.receiveTimeoutMs, input.receivePollMs, input.signal)) {
       await convex.consumePendingMessages(composed.pendingMessageIds, Date.now(), input.signal);
       return { ...composed, confirmed: true };

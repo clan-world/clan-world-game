@@ -1,0 +1,116 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TmuxSink } from "../src/tmuxSink.js";
+import {
+  postPasteSubmitted,
+  prePasteReady,
+  READY_PROBE_INTERVAL_MS,
+  READY_PROBE_TIMEOUT_MS,
+  STUCK_INPUT_MAX_RETRIES,
+  STUCK_INPUT_RETRY_DELAY_MS,
+} from "../src/pasteVerification.js";
+
+describe("paste verification", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("pre-paste returns true when the prompt is visible immediately", async () => {
+    const tmux = mockTmux([
+      pane("Claude is ready", "\u2502 > "),
+    ]);
+
+    await expect(prePasteReady(tmux)).resolves.toBe(true);
+    expect(tmux.capturePane).toHaveBeenCalledTimes(1);
+  });
+
+  it("pre-paste waits until the prompt appears", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([
+      pane("Starting Claude...", "Loading session"),
+      pane("Still warming up"),
+      pane("Claude is ready", "\u2502 > "),
+    ]);
+
+    const promise = prePasteReady(tmux);
+    await vi.advanceTimersByTimeAsync(READY_PROBE_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(READY_PROBE_INTERVAL_MS);
+
+    await expect(promise).resolves.toBe(true);
+    expect(tmux.capturePane).toHaveBeenCalledTimes(3);
+  });
+
+  it("pre-paste returns false when the prompt never appears before timeout", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([
+      pane("Starting Claude...", "Loading session"),
+    ]);
+
+    const promise = prePasteReady(tmux);
+    await vi.advanceTimersByTimeAsync(READY_PROBE_TIMEOUT_MS);
+
+    await expect(promise).resolves.toBe(false);
+    expect(tmux.capturePane).toHaveBeenCalled();
+  });
+
+  it("post-paste returns true when the input is empty", async () => {
+    const tmux = mockTmux([
+      pane("Submitted", "\u2502 > "),
+    ]);
+
+    await expect(postPasteSubmitted(tmux)).resolves.toBe(true);
+    expect(tmux.capturePane).toHaveBeenCalledTimes(1);
+    expect(tmux.sendKeys).not.toHaveBeenCalled();
+  });
+
+  it("post-paste resends Enter and returns true when the input clears", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([
+      pane("\u2502 > tick: 12"),
+      pane("Thinking...", "\u2502 > "),
+    ]);
+
+    const promise = postPasteSubmitted(tmux);
+    await vi.advanceTimersByTimeAsync(STUCK_INPUT_RETRY_DELAY_MS);
+
+    await expect(promise).resolves.toBe(true);
+    expect(tmux.sendKeys).toHaveBeenCalledTimes(1);
+    expect(tmux.sendKeys).toHaveBeenCalledWith("Enter");
+    expect(tmux.capturePane).toHaveBeenCalledTimes(2);
+  });
+
+  it("post-paste returns false when the input remains stuck after all retries", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([
+      pane("\u2502 > tick: 12"),
+    ]);
+
+    const promise = postPasteSubmitted(tmux);
+    await vi.advanceTimersByTimeAsync(STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES);
+
+    await expect(promise).resolves.toBe(false);
+    expect(tmux.sendKeys).toHaveBeenCalledTimes(STUCK_INPUT_MAX_RETRIES);
+    expect(tmux.capturePane).toHaveBeenCalledTimes(STUCK_INPUT_MAX_RETRIES + 1);
+  });
+});
+
+function mockTmux(captures: string[]): TmuxSink & {
+  capturePane: ReturnType<typeof vi.fn>;
+  sendKeys: ReturnType<typeof vi.fn>;
+} {
+  let index = 0;
+  const capturePane = vi.fn(async () => {
+    const paneText = captures[Math.min(index, captures.length - 1)] ?? "";
+    index++;
+    return paneText;
+  });
+  const sendKeys = vi.fn(async () => {});
+  return { capturePane, sendKeys } as unknown as TmuxSink & {
+    capturePane: ReturnType<typeof vi.fn>;
+    sendKeys: ReturnType<typeof vi.fn>;
+  };
+}
+
+function pane(...lines: string[]): string {
+  return lines.join("\n");
+}
