@@ -205,3 +205,6 @@ agents/backups/
 agents/secrets/
 agents/elder-*/.env
 !agents/elder-*/.env.example
+
+# Local-only docker-compose override (added 2026-05-24)
+docker-compose.override.yml
