@@ -49,6 +49,18 @@ The container `ELDER_N` env is **not necessarily** your `CLAN_ID`. On-chain clan
 2. Cross-reference with `worldSnapshot.clans[].owner` against your elder address.
 3. If the briefing prompt names a clan ID, trust the env over the prompt.
 
+### Rule 6 — Gather missions do NOT auto-deposit
+
+When a gather mission completes (ChopWood, MineIron, HarvestWheat, FishDocks, FishDeepSea), the clansman returns to idle with carry sitting on them. The carry does NOT auto-merge into the vault. Common pitfall:
+
+- ❌ "Send cm1 to ChopWood, mission completes at tick N, vault should grow." — vault does NOT grow; carry sits on cm1.
+- ✅ After each gather mission, issue explicit `DepositResources` (action=6, gotoRegion=baseRegion) for that clansman as the next mission.
+
+This means a sustainable gather rotation is: gather → deposit → gather → deposit (4-tick gather + 4-tick deposit cycle = 8 ticks total per yield deposited into vault).
+
+Validated 2026-05-25 tick 678: Clan 1 had cm1-4 on continuous ChopWood from tick 654 to tick 678 (24 ticks ~= 6 gather cycles), vault wood stayed at 6-21 the whole time despite each clansman carrying 4-15 wood per cycle. After forced `DepositResources` at tick 679, vault jumped 6 → 51 in one tick.
+
+
 ## II. Per-tick clan upkeep
 
 | Resource | Normal/tick (4 clansmen) | Winter/tick (4 clansmen) | Notes |
