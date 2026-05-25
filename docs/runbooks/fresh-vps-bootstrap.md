@@ -331,6 +331,18 @@ done
 
 Each tx returns `(uint32 clanId, uint256 iftTokenId)`. Clan IDs auto-increment from 1.
 
+> **Re-deploy/rotate revive ordering:** A freshly-deployed diamond has no clans yet, so this is a no-op. On a re-deploy, replay, or diamond-rotate scenario, clans may already exist and their clansmen may already be dead. If so, inject enough wheat + fish **before** calling `reviveDeadClansmen`; an empty vault lets the next heartbeat starve revived clansmen again within 1-2 ticks.
+
+```bash
+for clan_id in 1 2 3 4; do
+  cast send "$DIAMOND" "injectClanResources(uint32,uint256,uint256,uint256,uint256,uint256,uint256)" \
+    "$clan_id" 0 0 100e18 10e18 0 0 \
+    --rpc-url "$RPC_URL_PRIMARY" --private-key "$DEPLOYER_PRIVATE_KEY"
+  cast send "$DIAMOND" "reviveDeadClansmen(uint32)" "$clan_id" \
+    --rpc-url "$RPC_URL_PRIMARY" --private-key "$DEPLOYER_PRIVATE_KEY"
+done
+```
+
 Verify all 4 minted via:
 
 ```bash
