@@ -76,6 +76,18 @@ ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
 TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 
+# 3. ttyd-refresh loop. Background tick that forces tmux to redraw the
+# alt-screen every 2s so new ttyd clients (or browser reconnects) see the
+# live frame instead of the stale replay buffer that contains only the
+# rename+color slash commands from session start.
+# Root cause docs: research/ttyd-reset-display-bug-2026-05-25.md.
+while true; do
+  tmux refresh-client -t "${SESSION_NAME}" -S 2>/dev/null || true
+  sleep 2
+done &
+REFRESH_PID=$!
+echo "[entrypoint] ttyd-refresh loop started (PID ${REFRESH_PID})"
+
 # 4. Foreground monitor loop — exit container if any process dies.
 # compose restart: on-failure will restart the whole container.
 while true; do
@@ -90,6 +102,10 @@ while true; do
   if [[ -n "${RUNTIME_PID}" ]] && ! kill -0 "${RUNTIME_PID}" 2>/dev/null; then
     echo "[entrypoint] elder-runner (PID ${RUNTIME_PID}) died — exiting container" >&2
     exit 1
+  fi
+  if [[ -n "${REFRESH_PID:-}" ]] && ! kill -0 "${REFRESH_PID}" 2>/dev/null; then
+    echo "[entrypoint] WARNING: ttyd-refresh loop (PID ${REFRESH_PID}) died — display may show stale frame on reconnect" >&2
+    REFRESH_PID=""
   fi
   sleep 5
 done
