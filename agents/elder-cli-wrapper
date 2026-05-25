@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+CLAN_WORLD_REPO="${CLAN_WORLD_REPO:-/opt/clan-world-cli}"
+
+case "${CHAIN_NETWORK:-}" in
+  dev)
+    export RPC_URL_PRIMARY="${DEV_RPC_URL:-http://anvil-fork:8545}"
+    ;;
+  prod)
+    export RPC_URL_PRIMARY="${PROD_RPC_URL:-${RPC_URL_PRIMARY:-}}"
+    ;;
+esac
+
+exec "$CLAN_WORLD_REPO/packages/agents/bin/elder" "$@"
