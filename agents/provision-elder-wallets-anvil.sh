@@ -86,23 +86,29 @@ assert_dev_anvil_rpc() {
   local client_version chain_id expected_chain_id
   expected_chain_id="${DEV_FORK_CHAIN_ID:-${ANVIL_CHAIN_ID:-}}"
 
+  # Require anvil identity. This script uses anvil-only RPC methods
+  # (anvil_setBalance, --unlocked impersonation) and transfers clan ownership,
+  # so it must NEVER run against a non-anvil RPC. The chain-id check below is an
+  # ADDITIONAL constraint (AND), not an alternative pass-path — a matching chain
+  # id alone must not satisfy the guard (e.g. a real Base Sepolia node whose
+  # chain id happens to equal DEV_FORK_CHAIN_ID must still be refused).
   client_version="$(compose_cast rpc web3_clientVersion 2>/dev/null || true)"
-  if [[ "${client_version,,}" == *anvil* ]]; then
-    echo "[provision] verified anvil RPC: $client_version"
-    return
+  if [[ "${client_version,,}" != *anvil* ]]; then
+    echo "FATAL: refusing to run: DEV_RPC_URL is not a local anvil fork." >&2
+    echo "FATAL: clientVersion='${client_version:-<unreadable>}' (anvil identity required)." >&2
+    exit 2
   fi
+  echo "[provision] verified anvil RPC: $client_version"
 
+  # If an expected fork chain id is configured, it must ALSO match.
   if [[ -n "$expected_chain_id" ]]; then
     chain_id="$(compose_cast chain-id 2>/dev/null || true)"
-    if [[ "$chain_id" == "$expected_chain_id" ]]; then
-      echo "[provision] verified dev fork chain id: $chain_id"
-      return
+    if [[ "$chain_id" != "$expected_chain_id" ]]; then
+      echo "FATAL: anvil chain id '${chain_id:-<unreadable>}' != expected '$expected_chain_id'." >&2
+      exit 2
     fi
+    echo "[provision] verified dev fork chain id: $chain_id"
   fi
-
-  echo "FATAL: refusing to run: DEV_RPC_URL does not look like a local anvil fork." >&2
-  echo "FATAL: clientVersion='${client_version:-<unreadable>}' expectedChainId='${expected_chain_id:-<unset>}'." >&2
-  exit 2
 }
 
 warn_world_preflight() {
