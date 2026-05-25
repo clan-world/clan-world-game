@@ -76,6 +76,28 @@ ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
 TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 
+# 3. ttyd-refresh loop. Background tick that forces tmux to fully redraw
+# every attached client every 2s, so a browser that (re)connects sees the
+# live alt-screen frame instead of ttyd's stale replay buffer (which only
+# contains the rename+color slash commands echoed before claude entered the
+# alternate screen at session start).
+#
+# IMPORTANT: refresh-client takes a *client* target, not a session, and a
+# bare `-S` refreshes ONLY the status line (per tmux(1)) — neither repaints
+# the pane. We therefore enumerate the clients attached to this session and
+# issue a full (no-flag) refresh-client to each, which re-emits the complete
+# grid downstream to ttyd. When no browser is connected there are no clients
+# and the inner loop is a no-op.
+# Root cause docs: research/ttyd-reset-display-bug-2026-05-25.md.
+while true; do
+  while IFS= read -r _client; do
+    [ -n "${_client}" ] && tmux refresh-client -t "${_client}" 2>/dev/null || true
+  done < <(tmux list-clients -t "${SESSION_NAME}" -F '#{client_name}' 2>/dev/null)
+  sleep 2
+done &
+REFRESH_PID=$!
+echo "[entrypoint] ttyd-refresh loop started (PID ${REFRESH_PID})"
+
 # 4. Foreground monitor loop — exit container if any process dies.
 # compose restart: on-failure will restart the whole container.
 while true; do
@@ -90,6 +112,10 @@ while true; do
   if [[ -n "${RUNTIME_PID}" ]] && ! kill -0 "${RUNTIME_PID}" 2>/dev/null; then
     echo "[entrypoint] elder-runner (PID ${RUNTIME_PID}) died — exiting container" >&2
     exit 1
+  fi
+  if [[ -n "${REFRESH_PID:-}" ]] && ! kill -0 "${REFRESH_PID}" 2>/dev/null; then
+    echo "[entrypoint] WARNING: ttyd-refresh loop (PID ${REFRESH_PID}) died — display may show stale frame on reconnect" >&2
+    REFRESH_PID=""
   fi
   sleep 5
 done
