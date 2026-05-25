@@ -20,7 +20,7 @@ DIAMOND="${CLAN_WORLD_CONTRACT_ADDRESS:-}"
 BALANCE_HEX="${ELDER_ANVIL_BALANCE_HEX:-0x56BC75E2D63100000}" # 100 ETH
 PROVISIONER="${ANVIL_PROVISIONER_ADDRESS:-0x1000000000000000000000000000000000000615}"
 ZERO_ADDRESS="0x0000000000000000000000000000000000000000"
-CLAN_RETURNS="(uint32,uint256,address,uint8,uint8,uint8,uint8,uint8,uint64,uint64,uint16,uint64,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+CLAN_RETURNS="(uint32,uint256,address,uint8,uint8,uint8,uint8,uint8,uint8,uint64,uint64,uint16,uint64,uint256,uint256,uint256,uint256,uint256,uint256)"
 
 if [[ "$PROFILE" != "dev" || "$CHAIN_NETWORK" != "dev" ]]; then
   echo "FATAL: this script is dev/anvil-only. Set PROFILE=dev and CHAIN_NETWORK=dev." >&2
@@ -82,6 +82,29 @@ same_address() {
   [[ "${1,,}" == "${2,,}" ]]
 }
 
+assert_dev_anvil_rpc() {
+  local client_version chain_id expected_chain_id
+  expected_chain_id="${DEV_FORK_CHAIN_ID:-${ANVIL_CHAIN_ID:-}}"
+
+  client_version="$(compose_cast rpc web3_clientVersion 2>/dev/null || true)"
+  if [[ "${client_version,,}" == *anvil* ]]; then
+    echo "[provision] verified anvil RPC: $client_version"
+    return
+  fi
+
+  if [[ -n "$expected_chain_id" ]]; then
+    chain_id="$(compose_cast chain-id 2>/dev/null || true)"
+    if [[ "$chain_id" == "$expected_chain_id" ]]; then
+      echo "[provision] verified dev fork chain id: $chain_id"
+      return
+    fi
+  fi
+
+  echo "FATAL: refusing to run: DEV_RPC_URL does not look like a local anvil fork." >&2
+  echo "FATAL: clientVersion='${client_version:-<unreadable>}' expectedChainId='${expected_chain_id:-<unset>}'." >&2
+  exit 2
+}
+
 warn_world_preflight() {
   local label="$1"
   local paused_raw state_raw fields current_tick season_start_tick season_end_tick season_finalized rest
@@ -112,6 +135,7 @@ warn_world_preflight() {
 echo "[provision] diamond=$DIAMOND rpc=$RPC_URL balance=$BALANCE_HEX"
 echo "[provision] DEV/ANVIL ONLY: transferring clans 1-4 to dockerized elder wallets."
 echo "[provision] This is the intended auto-operator/legacy-owner -> elder ownership hand-off."
+assert_dev_anvil_rpc
 fund_account "$PROVISIONER"
 warn_world_preflight "before ownership hand-off"
 

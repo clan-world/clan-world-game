@@ -39,12 +39,16 @@ volumes:
   # config` can resolve mount references early.
   elder-1-home: {}
   elder-1-workspace: {}
+  elder-1-state: {}
   elder-2-home: {}
   elder-2-workspace: {}
+  elder-2-state: {}
   elder-3-home: {}
   elder-3-workspace: {}
+  elder-3-state: {}
   elder-4-home: {}
   elder-4-workspace: {}
+  elder-4-state: {}
   # Shared file transport used by `elder peer whisper` / `elder peer inbox`.
   elder-peer-inbox: {}
 
@@ -336,6 +340,7 @@ services:
       # bootstraps the shared symlinks here on first start (or if missing).
       - elder-1-home:/home/elder/.claude
       - elder-1-workspace:/workspace
+      - elder-1-state:/home/elder/.world/clanworld-runner/state
       - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       # Verifies tmux session, ttyd process, and elder-runtime supervisor (tsx) — all three
@@ -374,6 +379,7 @@ services:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-2-home:/home/elder/.claude
       - elder-2-workspace:/workspace
+      - elder-2-state:/home/elder/.world/clanworld-runner/state
       - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-2 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
@@ -409,6 +415,7 @@ services:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-3-home:/home/elder/.claude
       - elder-3-workspace:/workspace
+      - elder-3-state:/home/elder/.world/clanworld-runner/state
       - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-3 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
@@ -444,6 +451,7 @@ services:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-4-home:/home/elder/.claude
       - elder-4-workspace:/workspace
+      - elder-4-state:/home/elder/.world/clanworld-runner/state
       - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-4 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
