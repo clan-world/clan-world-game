@@ -39,13 +39,17 @@ agents/
 ## Dev workflow
 
 1. Copy each `elder-N/.env.template` → `elder-N/.env`, fill in `CLAUDE_CODE_OAUTH_TOKEN` and `BUS_ELDER_SECRET`.
-2. `make up` — bring up all 4 elder containers + supporting services.
-3. `make status` — see container + tmux + plugin states.
-4. `make logs ELDER=elder-2` — tail one elder's run.sh + claude output.
-5. `make reset-elder-3` — soft reset (kill tmux, keep conversation, restart with `--continue`).
-6. `make wipe-elder-3` — hard reset (delete sessions + workspace, re-seed from `shared/elder-bootstrap/`).
+2. Set `ELDER_WALLET_KEY_FILE_1..4` in the repo `.env` or `.env.local` to one-line private-key files for the four elder signer wallets.
+3. After the dev anvil stack is running, run `make provision-elder-wallets-anvil` to fund those wallets on the fork and make them own clans 1-4. This is DEV/ANVIL ONLY and intentionally transfers ownership away from the current owners as the auto-operator/legacy-owner -> dockerized-elder hand-off. `submitClanOrders` requires `clan.owner == msg.sender`; iNFT usage authorization does not authorize gameplay orders. Run a real smoke submit on the same anvil state before trusting autonomous elders.
+4. `make up` — bring up all 4 elder containers + supporting services.
+5. `make status` — see container + tmux + plugin states.
+6. `make logs ELDER=elder-2` — tail one elder's run.sh + claude output.
+7. `make reset-elder-3` — soft reset (kill tmux, keep conversation, restart with `--continue`).
+8. `make wipe-elder-3` — hard reset (delete sessions + workspace, re-seed from `shared/elder-bootstrap/`).
 
 The Makefile lives next to what it orchestrates. See issue #355 for the full target list and the operator-side compose plumbing.
+
+Known follow-up: the `elder` CLI constructs chain/Convex clients eagerly, so even `elder rules` requires configured diamond/lens env. Compose intentionally fails loud for this hotfix; lazy client construction can wait.
 
 ## Shared vs per-elder
 

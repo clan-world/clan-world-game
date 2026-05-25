@@ -118,20 +118,26 @@ CWD_ENCODED="${PWD//\//-}"
 SESSIONS_DIR="$CLAUDE_CONFIG_DIR/projects/${CWD_ENCODED}/sessions"
 
 APPEND_PROMPT="/opt/clan-world/shared/APPENDED_SYSTEM_PROMPT.md"
+MCP_CONFIG="/opt/clan-world/shared/elder-mcp.json"
+
+CLAUDE_ARGS=(--append-system-prompt-file "$APPEND_PROMPT")
+if [ -f "$MCP_CONFIG" ]; then
+  CLAUDE_ARGS=(--mcp-config "$MCP_CONFIG" "${CLAUDE_ARGS[@]}")
+fi
 
 # --- launch ----------------------------------------------------------------
 
 CONTINUE_MODE="${CLAN_WORLD_CLAUDE_CONTINUE:-auto}"
 if [ "$CONTINUE_MODE" = "always" ]; then
   echo "[run.sh] runner requested --continue"
-  exec claude --continue --append-system-prompt-file "$APPEND_PROMPT"
+  exec claude --continue "${CLAUDE_ARGS[@]}"
 elif [ "$CONTINUE_MODE" = "never" ]; then
   echo "[run.sh] runner requested fresh session"
-  exec claude --append-system-prompt-file "$APPEND_PROMPT"
+  exec claude "${CLAUDE_ARGS[@]}"
 elif compgen -G "$SESSIONS_DIR/*.jsonl" > /dev/null 2>&1; then
   echo "[run.sh] previous conversation found at $SESSIONS_DIR, resuming with --continue"
-  exec claude --continue --append-system-prompt-file "$APPEND_PROMPT"
+  exec claude --continue "${CLAUDE_ARGS[@]}"
 else
   echo "[run.sh] no previous conversation at $SESSIONS_DIR, starting fresh"
-  exec claude --append-system-prompt-file "$APPEND_PROMPT"
+  exec claude "${CLAUDE_ARGS[@]}"
 fi

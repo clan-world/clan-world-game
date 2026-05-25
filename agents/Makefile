@@ -44,6 +44,7 @@ BUS_ELDER_SECRET_FILE_4 ?= agents/secrets/bus-elder-4.key
         reset-anvil \
         link-mounts \
         bootstrap-convex-admin-key bootstrap-bus-secrets bootstrap-convex-dashboard-auth \
+        provision-elder-wallets-anvil \
         oauth-bootstrap \
         smoke-test build FORCE
 
@@ -86,6 +87,7 @@ help:
 	@echo "  bootstrap-convex-admin-key     generate + persist Convex admin key (chmod 0600)"
 	@echo "  bootstrap-bus-secrets          generate bus/webhook secrets and set Convex BUS_* envs"
 	@echo "  bootstrap-convex-dashboard-auth generate reserved dashboard auth credentials"
+	@echo "  provision-elder-wallets-anvil  fund elder wallets + own clans 1-4 on dev anvil"
 	@echo "  oauth-bootstrap                walk every elder through OAuth flow"
 	@echo "  oauth-bootstrap-elder-1        single-elder OAuth flow"
 	@echo ""
@@ -346,6 +348,9 @@ oauth-bootstrap-%: FORCE
 	} > "$$DEST"; \
 	chmod 0600 "$$DEST"; \
 	echo "[oauth] $* credentials saved to $$DEST"
+
+provision-elder-wallets-anvil:
+	bash $(REPO_ROOT)/agents/provision-elder-wallets-anvil.sh
 
 build: check-profile
 	$(DC) --profile $(PROFILE) build
