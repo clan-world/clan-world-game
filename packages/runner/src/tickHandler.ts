@@ -32,12 +32,18 @@ export async function handleStartupDecision(
 
 export interface TickDeliveryResult {
   confirmed: boolean;
+  /**
+   * True when this update fired a reset (runResetFlow). The live loop advances
+   * its wipe cursor on this regardless of `confirmed` — the session is already
+   * killed + relaunched, so re-firing the wipe on the next wake would livelock.
+   */
+  resetFired?: boolean;
 }
 
 export async function handleAuxiliaryUpdate(
   deps: TickHandlerDeps,
   aux: RunnerAuxiliary,
-  lastDeliveredTick: number,
+  lastWipeHandledTick: number,
 ): Promise<TickDeliveryResult> {
   await assertNoSettingsDrift(deps, aux);
   // Gap-aware wipe detection. The Convex subscription delivers the LATEST
@@ -45,19 +51,23 @@ export async function handleAuxiliaryUpdate(
   // jump (e.g. 2049 → 2052), stepping over a scheduled wipe tick. An
   // exact-tick check (tick % interval === 0) silently misses those wipes and
   // the session bloats until uncontrolled auto-compaction. Mirror startup's
-  // decideRestart: also fire when a wipe tick fell in the gap since the last
-  // *confirmed-delivered* tick. (Liam-reported 2026-05-26; codex co-design.)
+  // decideRestart and fire when a wipe tick fell in the gap since the last
+  // wipe we HANDLED. The caller advances that cursor whenever a reset fires
+  // (confirmed or not): the session is killed + relaunched fresh, so re-firing
+  // on the next wake would livelock; a failed continuity-prompt delivery is
+  // recovered by the next normal tick, not by re-wiping. (Liam-reported
+  // 2026-05-26; codex co-design + R1 HIGH.)
   const currentTick = aux.tickClock.tick;
   const interval = deps.cachedSettings.memoryWipeTickInterval;
   const exactScheduled = isScheduledMemoryWipeTick(currentTick, interval);
-  const crossedScheduled = containsMemoryWipeTick(lastDeliveredTick, currentTick, interval);
+  const crossedScheduled = containsMemoryWipeTick(lastWipeHandledTick, currentTick, interval);
   if (exactScheduled || crossedScheduled) {
     const result = await runResetFlow({
       ...deps,
       aux,
       reason: exactScheduled ? "scheduled" : "memory_wipe_gap",
     });
-    return { confirmed: result.confirmed };
+    return { confirmed: result.confirmed, resetFired: true };
   }
   const delivery = await deliverCurrentTick(deps, aux);
   return { confirmed: delivery.confirmed };

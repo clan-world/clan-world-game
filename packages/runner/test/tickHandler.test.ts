@@ -23,6 +23,8 @@ describe("tick handler confirmation", () => {
     const result = await handleAuxiliaryUpdate(deps as any, aux, aux.tickClock.tick - 1);
 
     expect(result.confirmed).toBe(false);
+    expect(result.resetFired).toBe(true);
+    expect(deps.calls).toContain("reset-start:scheduled");
     expect(deps.calls).toContain("event:hook_failure");
   });
 
@@ -48,6 +50,7 @@ describe("tick handler confirmation", () => {
     const result = await handleAuxiliaryUpdate(deps as any, aux, 49);
     expect(deps.calls).toContain("reset-start:memory_wipe_gap");
     expect(deps.calls).toContain("claude:false");
+    expect(result.resetFired).toBe(true);
     expect(result.confirmed).toBe(false);
   });
 
@@ -58,6 +61,17 @@ describe("tick handler confirmation", () => {
     expect(deps.calls.some((c) => c.startsWith("reset-start"))).toBe(false);
     expect(deps.calls).toContain("send");
     expect(result.confirmed).toBe(false);
+  });
+
+  it("does not re-fire the wipe once the boundary has been handled (livelock guard)", async () => {
+    const aux = makeAux(52);
+    const deps = makeDeps(aux);
+    // The caller advanced lastWipeHandledTick to 52 after a prior (possibly
+    // unconfirmed) reset; the same wipe tick 50 must NOT trigger another reset.
+    const result = await handleAuxiliaryUpdate(deps as any, aux, 52);
+    expect(deps.calls.some((c) => c.startsWith("reset-start"))).toBe(false);
+    expect(result.resetFired).toBeFalsy();
+    expect(deps.calls).toContain("send");
   });
 });
 

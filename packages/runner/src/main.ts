@@ -30,6 +30,11 @@ async function main(): Promise<void> {
         ? (started.startupState.lastReceivedTick ?? -1)
         : started.startupState.tickClock.tick)
       : (started.startupState.lastReceivedTick ?? started.startupState.tickClock.tick - 1);
+    // Separate cursor for wipe handling: advances whenever a reset FIRES
+    // (confirmed or not), so an unconfirmed reset (the session is already
+    // killed + relaunched fresh) does not re-fire the wipe on every wake and
+    // livelock. Seeded from the post-startup baseline. (codex R1 HIGH)
+    let lastWipeHandledTick = lastTickDelivered;
     for await (const aux of convex.watchAuxiliary(ac.signal)) {
       if (ac.signal.aborted) break;
       const deps = {
@@ -43,7 +48,14 @@ async function main(): Promise<void> {
         if (aux.pendingMessages.length > 0) await handlePendingMessages(deps, aux);
         continue;
       }
-      const result = await handleAuxiliaryUpdate(deps, aux, lastTickDelivered);
+      const result = await handleAuxiliaryUpdate(deps, aux, lastWipeHandledTick);
+      // Advance the wipe cursor whenever a reset fired, confirmed or not: the
+      // session was already killed + relaunched, so re-firing the wipe on the
+      // next wake would livelock. A failed continuity-prompt delivery recovers
+      // via the next normal tick (codex R1 HIGH).
+      if (result.resetFired) {
+        lastWipeHandledTick = aux.tickClock.tick;
+      }
       // Only advance the "delivered" cursor on confirmed receipt — if the
       // hook didn't write tickReceiveLog within the resend cap, the next
       // tick subscription wake-up will see this tick still un-delivered and
