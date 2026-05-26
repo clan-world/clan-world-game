@@ -241,17 +241,24 @@ This enables **arbitrage / camping**: keep a stocked clansman waiting in town; w
 🆕 **New-engine intent (Liam):** when *buying*, if the requested amount-out exceeds carry cap, **burn the excess** (the agent just wastes gold) rather than failing the whole trade. Today it **fails** (`ERR_CARRY_FULL`, gold refunded) — burn-on-overflow is not implemented.
 
 ### 10. Communications
-_Status: 🚧 mechanic ✅ verified (agent-layer); intended design + limits 📝 (Liam)_
+_Status: ✅ mechanic verified + 🆕 design captured (agent-layer, never on-chain)_
 
-Communications are an **agent-layer side-channel** — they do **not** touch the on-chain game engine. They let Elders coordinate: negotiate trades, form alliances, bribe, or warn each other.
-- **Whispers** ✅ — `elder peer whisper <toClanId> <msg>`: private point-to-point. Written to the **recipient's** inbox (a jsonl file `peer-inbox/elder-<clanId>.jsonl`, on the inbox volume shared across elder containers, + mirrored to Convex for the cockpit). Read with `elder peer inbox` (unread for your `ELDER_N`). Inbox keys are validated (`assertSafeInboxKey`) against path-traversal.
-- **Bulletins** ✅ — `elder bulletin post <msg>`: a public broadcast visible to all clans.
-- **No on-chain record** — this is *why* OTC deals (§9) are pure trust: promises live only in off-chain, non-binding messages, never enforced on-chain.
-- A future cross-agent "AXL channel" is hinted in the code, but today delivery is file-based jsonl + Convex.
+An **agent-layer side-channel** for Elders to coordinate (trade, alliances, bribes, warnings) — it never touches the on-chain engine, which is exactly *why* OTC deals (§9) are pure trust: promises live only in off-chain, non-binding messages. Two types:
 
-📝 **For Liam (to fill):** intended design + limits — message size caps? rate limits (per tick / cooldown)? inbox/history retention? and whether the new engine keeps this as a simple side-channel or makes it richer.
+**Private (whispers)** ✅ — `elder peer whisper <toClanId> <msg>`: strictly **1-to-1** (single recipient; reach several peers via several whispers — 🆕 Liam wants it kept 1-to-1, no one-to-many). Written to the recipient's inbox (`peer-inbox/elder-<clanId>.jsonl` on the shared volume + Convex mirror); read with `elder peer inbox`. Keys validated (`assertSafeInboxKey`).
 
-### 11. Revival & admin recovery
+**Public (bulletins)** ✅ — `elder bulletin post <msg>`: posted to the **Unicorn Town bulletin board**, visible to all clans. Purely **lore-flavored** — you do *not* need to be in Unicorn Town to post or read. Limit: the **last 3 bulletins per clan** stay active (📝 Liam's design; not found enforced in the CLI — likely Convex-side or not-yet-built). 🆕 *Idea: switch to a **global** 3-slot board (not per-clan) so a clan can **overwrite** rivals' bulletins — a visibility/denial dynamic.*
+
+🆕 **Notifications (not yet built):** the runner should **ping** an agent on a new whisper, and ping **all** agents on a new bulletin — but only a small ping ("you have a new unread whisper" / "a new bulletin was posted"), **never the message text**; the agent then looks it up itself. (A tick-event prompt-template — see the queued tick-events section.)
+
+### 11. Memory & continuity
+_Status: ✅ mechanic verified + 🆕 intent (agent-layer — the layer that survives the 50-tick memory wipe, §2)_
+
+Because an Elder's context is wiped every **50 ticks** (§2), two stores carry strategy forward:
+- **`ANCIENT_WISDOM.md`** ✅ — a workspace file the agent reads at session start and (today) **writes directly**. 🆕 Liam: make it **read-only**, and route updates **through the elder CLI** (a controlled write path) instead of direct file edits.
+- **Scratchpad (key-value memory)** ✅ — `elder memory save <key> <value>` / `elder memory recall <key>`: arbitrary notes that **persist across context wipes**. ⚠️🆕 It was designed for **0G iNFT storage** (ERC-7857, per-clan, survives ownership transfer) — but **0G is being removed entirely**; the scratchpad stays, backed by a normal store in the new engine.
+
+### 12. Revival & admin recovery
 _Status: ✅ verified against `AdminRecoveryFacet` / `LibAdminRecovery`_ — *(an **operator/admin** mechanic, not player-facing physics, but included for completeness as Liam requested)*
 
 Revival is **contract-owner-only** (`enforceIsContractOwner`) — an **operator recovery tool, NOT an Elder/player action.** So **within a season, clansman death is effectively permanent for the players**; bringing them back is an out-of-band admin intervention (R&D resets, recovering a wiped clan).
@@ -264,7 +271,7 @@ Revival is **contract-owner-only** (`enforceIsContractOwner`) — an **operator 
 
 _Relates to the death mechanics in §6 (starvation/cold) and §8 (bandit kills)._
 
-### 12. Open questions / disputed values
+### 13. Open questions / disputed values
 _Status: ⬜_ — Running list where intent and the reference code disagree, pending resolution.
 
 ---
@@ -281,3 +288,4 @@ _Status: ⬜_ — Running list where intent and the reference code disagree, pen
 | 2026-05-25 | §6/§7 | §6 ✅ consumption (1wheat+0.1fish/clansman from vault, winter 2x, winter wood 0.5/clansman+1/base) + cold cascade (walls degrade @2 dmg then deaths @2 dmg; NO freezing state). NEW §7 Building+winning ✅ (wall/base/monument costs; bonus-clansman 🆕 NOT impl, 4-cap; win = monument lvl→time→loot→wall→clanID). Renumbered bandits→8, trading→9, open-q→10. |
 | 2026-05-26 | §4/§9/§10 | §4 Missions ✅ (3-tuple, action set, lazy deterministic settlement). §9 Trading ✅ (OTC no-escrow/no-promises; real fee-less x·y=k stub AMM; travel-vs-immediate trade + intentional front-run window; gold global/vault; buy=amount-out+maxGoldIn, sell=amount-in w/ NO slippage protection; buy-overflow FAILS, 🆕 burn-excess intent). Added §10 Communications stub; Open-questions → §11. |
 | 2026-05-26 | §8 | Bandits ✅ (huge): base placement (6 regions ✅ but deterministic round-robin ⚠️ not random); spawn 10-tick cooldown ✅ + 10%/+10%/80%-cap ⚠️(not 20/5); seq Spawned(1)+Camped(3 ⚠️)+attack@end-of-tick ✅; levels RANDOM 1-5 ⚠️(intent escalating); DEFEAT needs clansman-def ≥2×power ⚠️(walls/base only absorb); defender 10 / idle-home 5 ✅; cross-clan defend ✅; 1:1 tie LOSES loot ⚠️(intent protect); ring Forest→Mtn→EFarms→EDocks→WDocks→WFarms; target=highest weighted loot; leaves after 6 attempts; win=steal20% ✅; defeat→owner+1bp+1gold, 50%carry-drop to defenders ⚠️(intent 100%), excess/zero-def burned ✅. 5 🆕 intents. |
+| 2026-05-26 | §1/§10/§11 | §1 Overview (synthesis). §10 Communications ✅ (1-to-1 whispers + Unicorn-Town bulletins, lore, agent-layer; 🆕 3/clan limit, global-override idea, runner ping-not-text notifications). NEW §11 Memory & continuity (ANCIENT_WISDOM 🆕read-only/CLI; key-value scratchpad, 🆕 removing 0G). §11 Revival → §12. |
