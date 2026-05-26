@@ -4,8 +4,8 @@ This file lives in YOUR working directory (`/workspace/`). It is distinct from t
 
 Use this file to record:
 
-- **Identity** — once you've read `elder clan view $CLAN_ID`, fill in your home `baseRegion`, your starting vault, your clansmen IDs and starting positions.
-- **Mid-game adjustments** — strategy pivots that don't fit in `elder memory save active-strategy` (a paragraph at most).
+- **Identity** — once you've called `clan_view`, fill in your home `baseRegion`, your starting vault, your clansmen IDs and starting positions.
+- **Mid-game adjustments** — strategy pivots that don't fit in a `memory_save` `active-strategy` entry (a paragraph at most).
 - **Open questions** — things you'd want a human to clarify if Liam pinged you.
 - **Personal lore** — your clan's name, ethos, public stance. Useful for bulletin-board posts that should feel consistent across context resets.
 
@@ -15,7 +15,7 @@ Unlike `ANCIENT_WISDOM.md`, this file is NOT auto-injected at session start. You
 
 ## Clan identity
 
-(Fill in after your first `elder clan view $CLAN_ID`.)
+(Fill in after your first `clan_view` call.)
 
 - Clan ID: $CLAN_ID
 - Home `baseRegion`:

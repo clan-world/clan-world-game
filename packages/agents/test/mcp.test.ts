@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { IChainClient, IConvexClient } from '@clan-world/shared/adapters';
 import type { ClanFullView, Tick, WorldSnapshot } from '@clan-world/shared';
 import { callElderTool } from '../src/mcp.js';
+import { ackFile, inboxFile } from '../src/cli.js';
 
 const STUB_SNAPSHOT: WorldSnapshot = {
   tick: 9,
@@ -62,6 +63,25 @@ afterEach(() => {
 });
 
 describe('elder MCP tools', () => {
+  it('clan_view defaults clanId from ELDER_N', async () => {
+    const calls: string[] = [];
+    const out = await callElderTool('clan_view', {}, {
+      convex: makeConvex(),
+      chain: makeChain({
+        async getClanFullView(clanId) {
+          calls.push(clanId);
+          return { ...STUB_CLAN_VIEW, clan: { ...STUB_CLAN_VIEW.clan, id: clanId } };
+        },
+      }),
+      env: { ELDER_N: '3' },
+      homeBase: tmpDir,
+    });
+
+    const parsed = JSON.parse(out.content[0]?.text ?? '') as ClanFullView;
+    expect(parsed.clan.id).toBe('3');
+    expect(calls).toEqual(['3']);
+  });
+
   it('submit_orders accepts direct JSON and defaults clanId from ELDER_N', async () => {
     const calls: Array<{ clanId: string; orders: unknown[] }> = [];
     const deps = {
@@ -108,5 +128,58 @@ describe('elder MCP tools', () => {
 
     expect(out.content[0]?.text).toBe('bulletin posted');
     expect(posted).toEqual([{ clanId: 4, slot: 9, body: 'public defense bid' }]);
+  });
+
+  it('memory_recall returns no-memory text for missing key', async () => {
+    const out = await callElderTool('memory_recall', { key: 'active-strategy' }, {
+      convex: makeConvex(),
+      chain: makeChain(),
+      env: { ELDER_N: '1' },
+      homeBase: tmpDir,
+    });
+
+    expect(out.content[0]?.text).toBe('no memory for active-strategy');
+  });
+
+  it('memory_save then memory_recall round-trips a value', async () => {
+    const deps = {
+      convex: makeConvex(),
+      chain: makeChain(),
+      env: { ELDER_N: '1' },
+      homeBase: tmpDir,
+    };
+
+    const saved = await callElderTool('memory_save', { key: 'active-strategy', value: 'deposit fish at base 6' }, deps);
+    const recalled = await callElderTool('memory_recall', { key: 'active-strategy' }, deps);
+
+    expect(saved.content[0]?.text).toBe('saved active-strategy');
+    expect(recalled.content[0]?.text).toBe('deposit fish at base 6');
+  });
+
+  it('peer_inbox reads newline-separated messages for ELDER_N', async () => {
+    const file = inboxFile(2, tmpDir);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'first message\nsecond message\n', 'utf8');
+
+    const out = await callElderTool('peer_inbox', {}, {
+      convex: makeConvex(),
+      chain: makeChain(),
+      env: { ELDER_N: '2' },
+      homeBase: tmpDir,
+    });
+
+    expect(out.content[0]?.text).toBe('first message\nsecond message');
+  });
+
+  it('ack_clear writes the ack flag for ELDER_N', async () => {
+    const out = await callElderTool('ack_clear', {}, {
+      convex: makeConvex(),
+      chain: makeChain(),
+      env: { ELDER_N: '4' },
+      homeBase: tmpDir,
+    });
+
+    expect(out.content[0]?.text).toBe('ack cleared');
+    expect(fs.existsSync(ackFile(4, tmpDir))).toBe(true);
   });
 });

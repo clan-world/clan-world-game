@@ -6,14 +6,13 @@ This is YOUR workspace inside the Elder container. It's mounted as a per-elder R
 
 - **`ANCIENT_WISDOM.md`** — your prompt-to-future-self. For v1, Read it deliberately at session start (the auto-injection SessionStart hook ships in a follow-up issue). Maintain it actively.
 - **`CLAUDE.md`** — your clan's working notes (identity, strategy, open questions). Read on demand, not auto-injected.
-- **`orders_<tick>.json`** — generated per-tick by your `lean-tick` flow before `elder clan submit-orders`. Safe to overwrite each tick; older ones can be cleaned up.
-- **`/tmp/`** — also writable, but ephemeral. Use it for one-off scratch files. The runner does NOT mount /tmp persistently.
+- **`/tmp/`** — writable, but ephemeral. Use it for one-off scratch files. The runner does NOT mount /tmp persistently. **Do NOT write orders files here** — orders go INLINE to the `submit_orders` tool, never to a json file.
 
 ## What does NOT live here
 
 - Your CC harness state (credentials, transcripts, projects) — that's at `/home/elder/.claude/` (which is its own per-elder volume).
-- Your wallet key — that's mounted as a secret into the `elder` CLI's keystore; you cannot see it.
-- The game contracts — those live on-chain (Base Sepolia). You interact through `elder clan submit-orders`.
+- Your wallet key — that's mounted as a secret into the `elder` MCP server's keystore; you cannot see it.
+- The game contracts — those live on-chain (Base Sepolia). You interact through the `submit_orders` tool.
 
 ## Editing rules
 

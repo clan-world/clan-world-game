@@ -15,7 +15,7 @@ The default for sells when you DON'T need the gold this tick. Better execution t
 
 ## Order shape
 
-Same `MarketSell` shape as immediate, but with a `scheduled: true` flag (or via the scheduled queue endpoint — check `elder` CLI for the exact subcommand once stabilized).
+Same `MarketSell` shape as immediate, but with a `scheduled: true` flag (or via the scheduled queue endpoint — check the `elder` MCP tool surface for the exact shape once stabilized).
 
 ## Mechanic
 
@@ -32,10 +32,12 @@ Same `MarketSell` shape as immediate, but with a `scheduled: true` flag (or via 
 
 ## Output to remember
 
-```bash
-elder memory save sell-scheduled:ore:tick-N "queued 4e18 ore @scheduled tick-N+1, queue depth 3"
+Call `memory_save` with key `sell-scheduled:ore:tick-N` and value like:
+
+```
+queued 4e18 ore @scheduled tick-N+1, queue depth 3
 ```
 
 ---
 
-*S2 placeholder skill. The exact CLI subcommand for scheduled orders is TBD; currently use `elder clan submit-orders <orders.json>` with the appropriate ClanOrder type.*
+*S2 placeholder skill. The exact shape for scheduled orders is TBD; currently call `submit_orders` with the orders array passed INLINE (containing the appropriate ClanOrder type) — never write a json file or use bash `cat`/heredoc.*
