@@ -255,6 +255,8 @@ Revival is **contract-owner-only** (`enforceIsContractOwner`) — an **operator 
 - **`injectClanResources(wood, iron, wheat, fish, gold)`** — companion admin function that adds resources/gold straight to the vault.
 - ⚠️ **Re-starvation trap (#609):** reviving into an **empty vault** → the clan **re-starves on the next tick**. The operator must `injectClanResources` (food) alongside a revive, or the revived clansmen die again immediately. This is also the **"silent injection" surface** — operators should disclose injections, never apply them invisibly.
 
+🆕 **Future (TBD):** a later engine version may turn resource injection into an actual **game mechanic** — e.g. **random resource bonuses** or event-driven injections to a clan — distinct from today's admin-only recovery tool. Design not yet decided.
+
 _Relates to the death mechanics in §6 (starvation/cold) and §8 (bandit kills)._
 
 ### 12. Open questions / disputed values
