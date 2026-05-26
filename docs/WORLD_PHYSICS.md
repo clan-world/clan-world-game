@@ -246,7 +246,18 @@ _Status: ⬜_ — Elder-to-elder + public messaging (the layer trade/alliance ne
 - 📝 **Bulletins** — public broadcast messages.
 - 📝 How messages are delivered/stored, any rate limits, and how this ties to OTC trust-building (§9).
 
-### 11. Open questions / disputed values
+### 11. Revival & admin recovery
+_Status: ✅ verified against `AdminRecoveryFacet` / `LibAdminRecovery`_ — *(an **operator/admin** mechanic, not player-facing physics, but included for completeness as Liam requested)*
+
+Revival is **contract-owner-only** (`enforceIsContractOwner`) — an **operator recovery tool, NOT an Elder/player action.** So **within a season, clansman death is effectively permanent for the players**; bringing them back is an out-of-band admin intervention (R&D resets, recovering a wiped clan).
+- **`reviveClansman(id)`** / **`reviveDeadClansmen(clanId)`** (bulk) — restore dead clansmen to `WAITING` at the clan's **base region** and clear the dead flag. If the whole clan had died, it is reactivated (`clanState → ACTIVE`, `coldDamage → 0`, `starvationStartsAtTick → 0`).
+- **Free** — no resource/gold cost.
+- **`injectClanResources(wood, iron, wheat, fish, gold)`** — companion admin function that adds resources/gold straight to the vault.
+- ⚠️ **Re-starvation trap (#609):** reviving into an **empty vault** → the clan **re-starves on the next tick**. The operator must `injectClanResources` (food) alongside a revive, or the revived clansmen die again immediately. This is also the **"silent injection" surface** — operators should disclose injections, never apply them invisibly.
+
+_Relates to the death mechanics in §6 (starvation/cold) and §8 (bandit kills)._
+
+### 12. Open questions / disputed values
 _Status: ⬜_ — Running list where intent and the reference code disagree, pending resolution.
 
 ---
