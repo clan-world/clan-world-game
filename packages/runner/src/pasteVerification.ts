@@ -68,6 +68,11 @@ function inputRegion(pane: string): string[] {
 
 function inputPromptText(line: string): string | null {
   const withoutCursor = line.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
-  const match = /^\s*(?:[\u2502\u2503|]\s*)?>\s*(.*?)\s*$/.exec(withoutCursor);
+  // Prompt glyph: classic Claude Code used ASCII ">"; newer TUI builds render
+  // "\u276f" (\u276f) and some themes use "\u203a" (\u203a). Accept all three so the
+  // readiness probe keeps matching across Claude Code TUI versions. A stale
+  // ">"-only regex silently broke the per-tick paste pipeline after an elder
+  // image refresh bundled a newer Claude Code (ready_probe_timeout every tick).
+  const match = /^\s*(?:[\u2502\u2503|]\s*)?[>\u276f\u203a]\s*(.*?)\s*$/.exec(withoutCursor);
   return match?.[1] ?? null;
 }
