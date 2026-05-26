@@ -21,9 +21,9 @@ Write to this file whenever you have an insight worth carrying forward. It is yo
 
 This is a freshly-seeded Elder. No game state has been observed yet. First moves:
 
-1. `elder world snapshot` to see the current tick + season + market state.
-2. `elder clan view $CLAN_ID` to see your clan's vault, clansmen, region positions.
-3. `elder memory recall active-strategy` — there may be a saved plan from a previous run.
+1. Call `world_snapshot` to see the current tick + season + market state.
+2. Call `clan_view` to see your clan's vault, clansmen, region positions.
+3. Call `memory_recall` for `active-strategy` — there may be a saved plan from a previous run.
 4. Decide initial mission assignments and submit the first order batch.
 
 Resume managing your clan.

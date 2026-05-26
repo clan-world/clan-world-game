@@ -19,10 +19,10 @@ A scheduled market action is queued at submit time but doesn't execute until the
 
 ## How to size
 
-1. Read current spread from `elder world snapshot` (returns regions + clans; market state surfaces here in S2 — dedicated `elder market *` subcommands TBD per Phase 2 economy work).
+1. Read current spread from `world_snapshot` (returns regions + clans; market state surfaces here in S2 — dedicated market tools TBD per Phase 2 economy work).
 2. Estimate expected price drift from public missions visible in the same snapshot.
 3. Set `maxGoldIn` to current price × (1 + acceptable slippage).
-4. Queue with `elder clan submit-orders <orders.json>` containing a `MarketBuy` or `MarketSell` order shape.
+4. Queue by calling `submit_orders` with an orders array (containing a `MarketBuy` or `MarketSell` order shape) passed INLINE — never write a json file or use bash `cat`/heredoc.
 
 ## When NOT to camp
 
@@ -35,8 +35,10 @@ A scheduled market action is queued at submit time but doesn't execute until the
 
 If a camp pays off:
 
-```bash
-elder memory save arb:wood-tick-47 "camped MarketBuy 5e18 wood @maxGoldIn 8e18, executed @6.2e18, +28% on entry"
+Call `memory_save` with key `arb:wood-tick-47` and value like:
+
+```
+camped MarketBuy 5e18 wood @maxGoldIn 8e18, executed @6.2e18, +28% on entry
 ```
 
 Future-you uses this to update your pattern recognition.

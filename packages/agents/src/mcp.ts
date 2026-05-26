@@ -184,72 +184,142 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
 const tools = [
   {
     name: 'world_snapshot',
-    description: 'Read current ClanWorld state.',
+    description: 'Read full ClanWorld state; call this first each tick. Returns JSON with tick, tickEpoch, regions[], and clans[]. Find your clan in clans[]; each clansman has state (0=WAITING/idle, 1=TRAVELING, 2=ACTING, 3=DEAD; only submit orders for idle clansmen), currentRegion, and activeMission.settlesAtTick. Also shows vault resources, wall/base/monument levels, winter status, and active bandit data. Prefer this over clan_view for clansman state, missions, region ownership, and vault planning.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'clan_view',
-    description: 'Read this Elder clan state. Defaults to ELDER_N.',
-    inputSchema: { type: 'object', properties: { clanId: { type: 'string' } }, additionalProperties: false },
+    description: 'Read a sparse single-clan view for THIS elder. clanId defaults to your own ELDER_N and cannot target another clan; cross-clan access is denied. This is mostly treasury/pending-order detail. For clansman states, currentRegion, activeMission, vault resources, regions, and missions, use world_snapshot instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clanId: { type: 'string', description: 'Optional. Defaults to your own ELDER_N. Passing another clan id is rejected.' },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: 'submit_orders',
-    description: 'Submit mission orders as direct JSON. Defaults clanId to ELDER_N.',
+    description: 'The ONLY way to act in the world. Submit one mission per IDLE clansman. Each order item MUST be { "kind": "mission", "payload": { "clansmanId", "gotoRegion", "action", ... } }; other kind values are silently dropped. ONE order per clansman per tick: a duplicate clansmanId silently overwrites the prior mission. Each new order replaces that clansman\'s current mission, so do not re-task a clansman mid-gather unless you intend to lose partial progress. clanId defaults to your own ELDER_N and cannot target another clan. gotoRegion: 0 is REGION_NOOP/stay put, NOT home; deposits/upgrades/withdraws at 0 silently no-op, so use your real baseRegion from world_snapshot. Gather actions do NOT auto-deposit; send explicit action 6 DepositResources at baseRegion. WEI WARNING: marketAmount, maxGoldIn, and withdrawResources values are raw 1e18-scaled on-chain integers as strings; "sell 8 fish" is "8000000000000000000", not "8". ActionType: 0=Idle,1=ChopWood,2=MineIron,3=FishDocks,4=FishDeepSea,5=HarvestWheat,6=DepositResources,7=UpgradeWall,8=UpgradeBase,9=UpgradeMonument,10=DefendBase,11=MarketBuy,12=MarketSell,13=Wait,14=WithdrawResources. Regions: 1=Forest,2=Mountains,3=Unicorn Town,4=West Farms,5=East Farms,6=West Docks,7=East Docks,8=Deep Sea. Returns per-order StatusCode values: OK, ERR_CLAN_DEAD, ERR_CLAN_NOT_OWNED, ERR_CLANSMAN_DEAD, ERR_INVALID_CLANSMAN, ERR_INVALID_REGION, ERR_INVALID_ACTION, ERR_INVALID_TARGET, ERR_COOLDOWN_ACTIVE, ERR_NOT_WAITING, ERR_NOT_IN_UNICORN_TOWN, ERR_NOT_AT_HOMEBASE, ERR_NOT_AT_TARGET_BASE, ERR_NOT_DEFENDABLE, ERR_MISSING_RESOURCES, ERR_EMPTY_CARGO, ERR_PLOT_NOT_READY, ERR_PLOT_EMPTY, ERR_MARKET_ZERO_AMOUNT, ERR_MARKET_UNSUPPORTED_TOKEN, ERR_IMMEDIATE_MARKET_NOT_ELIGIBLE, ERR_MARKET_BUY_OVER_CAPACITY, ERR_MAX_GOLD_IN_EXCEEDED, ERR_WORLD_TICK_MISMATCH, ERR_NO_ACTIVE_BANDIT, ERR_SEASON_ENDED, ERR_NOT_ENOUGH_GOLD, ERR_CARRY_FULL, ERR_WINTER_LOCKED, ERR_MUST_SETTLE_FIRST, ERR_LIQUIDITY_INSUFFICIENT, ERR_SLIPPAGE_REQUIRED. Example orders: [{ "kind": "mission", "payload": { "clansmanId": 1, "gotoRegion": 1, "action": 1 } }, { "kind": "mission", "payload": { "clansmanId": 2, "gotoRegion": 6, "action": 6 } }, { "kind": "mission", "payload": { "clansmanId": 3, "gotoRegion": 3, "action": 12, "marketToken": "0x0000000000000000000000000000000000000000", "marketAmount": "8000000000000000000" } }]. Call rules for the full reference.',
     inputSchema: {
       type: 'object',
-      properties: { clanId: { type: 'string' }, orders: { type: 'array', items: { type: 'object' } } },
+      properties: {
+        clanId: { type: 'string', description: 'Optional. Defaults to your own ELDER_N. Passing another clan id is rejected.' },
+        orders: {
+          type: 'array',
+          description: 'One mission per idle clansman. Max one order per clansmanId per tick; duplicates overwrite earlier missions.',
+          items: {
+            type: 'object',
+            required: ['kind', 'payload'],
+            properties: {
+              kind: {
+                type: 'string',
+                enum: ['mission'],
+                description: 'MUST be "mission". Other kinds are silently dropped.',
+              },
+              payload: {
+                type: 'object',
+                required: ['clansmanId', 'gotoRegion', 'action'],
+                properties: {
+                  clansmanId: { type: 'number', description: 'Your clansman id, usually 1..4. Submit only for state 0=WAITING/idle clansmen.' },
+                  gotoRegion: {
+                    type: 'number',
+                    enum: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+                    description: 'Destination. 0=REGION_NOOP/stay put, NOT home; deposits at 0 silently no-op. 1=Forest, 2=Mountains, 3=Unicorn Town, 4=West Farms, 5=East Farms, 6=West Docks, 7=East Docks, 8=Deep Sea. For DepositResources, UpgradeWall, UpgradeBase, UpgradeMonument, DefendBase, and WithdrawResources use your real baseRegion from world_snapshot.',
+                  },
+                  action: {
+                    type: 'number',
+                    enum: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+                    description: '0=Idle, 1=ChopWood, 2=MineIron, 3=FishDocks, 4=FishDeepSea, 5=HarvestWheat, 6=DepositResources (gotoRegion must be baseRegion; gather does NOT auto-deposit), 7=UpgradeWall, 8=UpgradeBase, 9=UpgradeMonument, 10=DefendBase, 11=MarketBuy, 12=MarketSell, 13=Wait, 14=WithdrawResources.',
+                  },
+                  targetClanId: { type: 'number', description: 'DefendBase only. 0=defend self, or 1..12 to defend an ally.' },
+                  marketToken: { type: 'string', description: 'MarketBuy/MarketSell only. 0x 20-byte resource-token address.' },
+                  marketAmount: { type: 'string', description: 'WEI (1e18-scaled) bigint string. MarketSell exact amount-in; MarketBuy exact amount-out. Example: 8 fish = "8000000000000000000", NOT "8".' },
+                  maxGoldIn: { type: 'string', description: 'MarketBuy only. WEI (1e18-scaled) bigint string gold cap. Must be greater than 0; example 5 gold = "5000000000000000000".' },
+                  withdrawResources: {
+                    type: 'object',
+                    description: 'WithdrawResources only. Per-resource WEI (1e18-scaled) bigint strings; example { "wood": "1000000000000000000", "iron": "0", "wheat": "0", "fish": "0" }.',
+                    properties: {
+                      wood: { type: 'string', description: 'Wood amount in raw WEI (1e18-scaled) bigint string.' },
+                      iron: { type: 'string', description: 'Iron amount in raw WEI (1e18-scaled) bigint string.' },
+                      wheat: { type: 'string', description: 'Wheat amount in raw WEI (1e18-scaled) bigint string.' },
+                      fish: { type: 'string', description: 'Fish amount in raw WEI (1e18-scaled) bigint string.' },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       required: ['orders'],
       additionalProperties: false,
     },
   },
   {
     name: 'post_bulletin',
-    description: 'Post a public bulletin for this Elder clan.',
+    description: 'Post a public bulletin visible to ALL clans on the Unicorn Town board. You do NOT need to be in Unicorn Town. clanId defaults to your own ELDER_N; slot defaults to the current tick.',
     inputSchema: {
       type: 'object',
-      properties: { body: { type: 'string' }, clanId: { type: 'string' }, slot: { type: 'number' } },
+      properties: {
+        body: { type: 'string', description: 'Public message text visible to all clans.' },
+        clanId: { type: 'string', description: 'Optional. Defaults to your own ELDER_N. Passing another clan id is rejected.' },
+        slot: { type: 'number', description: 'Optional board slot/tick. Defaults to current world_snapshot tick.' },
+      },
       required: ['body'],
       additionalProperties: false,
     },
   },
   {
     name: 'memory_recall',
-    description: 'Recall an Elder memory key.',
-    inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'], additionalProperties: false },
+    description: 'Read a saved strategy note after a context wipe. Returns the saved value, or "no memory for <key>" if unset. Convention key: active-strategy.',
+    inputSchema: {
+      type: 'object',
+      properties: { key: { type: 'string', description: 'Memory key to read, commonly active-strategy.' } },
+      required: ['key'],
+      additionalProperties: false,
+    },
   },
   {
     name: 'memory_save',
-    description: 'Save an Elder memory key/value.',
+    description: 'Persist a strategy note across the 50-tick context wipe. Save durable strategy before ack_clear. Convention key: active-strategy.',
     inputSchema: {
       type: 'object',
-      properties: { key: { type: 'string' }, value: { type: 'string' } },
+      properties: {
+        key: { type: 'string', description: 'Memory key to write, commonly active-strategy.' },
+        value: { type: 'string', description: 'Durable note/plan to recall after a wipe.' },
+      },
       required: ['key', 'value'],
       additionalProperties: false,
     },
   },
   {
     name: 'peer_inbox',
-    description: 'Read this Elder peer inbox.',
+    description: 'Read this Elder peer inbox. Returns "inbox empty" or newline-separated private whisper lines. Side-channel only; inbox messages have no on-chain effect.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'peer_whisper',
-    description: 'Send a private whisper to another clan.',
+    description: 'Send a private 1-to-1 whisper to another clan. Send several whispers to reach several peers. toClanId is usually 1..12. This is a side-channel only; OTC deals are pure trust and have no on-chain effect.',
     inputSchema: {
       type: 'object',
-      properties: { toClanId: { type: 'string' }, body: { type: 'string' } },
+      properties: {
+        toClanId: { type: 'string', description: 'Recipient clan id, usually 1..12.' },
+        body: { type: 'string', description: 'Private message body.' },
+      },
       required: ['toClanId', 'body'],
       additionalProperties: false,
     },
   },
   {
     name: 'ack_clear',
-    description: 'Signal the runner that this Elder is ready for context wipe.',
+    description: 'Signal the runner that this Elder is done for now; your context WILL be wiped next. Save durable strategy with memory_save first.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'rules',
-    description: 'Read game rules, action codes, regions, and constants.',
+    description: 'Read the full game rules reference: action codes, region codes, constants, resource/carry notes, timing, order examples, and error codes. Use this when unsure how to form submit_orders payloads.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
 ];

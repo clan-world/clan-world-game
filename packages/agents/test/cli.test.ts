@@ -120,7 +120,7 @@ describe('clan submit-orders', () => {
   it('reads orders file, calls chain.submitOrders, returns txHash', async () => {
     const ordersFile = path.join(tmpDir, 'orders.json');
     fs.writeFileSync(ordersFile, JSON.stringify({ clanId: '1', orders: [{ kind: 'mission', payload: {} }] }));
-    const out = await runCommand('clan', 'submit-orders', [ordersFile], deps, {}, tmpDir);
+    const out = await runCommand('clan', 'submit-orders', [ordersFile], deps, { ELDER_N: '1' }, tmpDir);
     expect(out).toContain('0xdeadbeef');
   });
 
