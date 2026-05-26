@@ -288,7 +288,29 @@ Revival is **contract-owner-only** (`enforceIsContractOwner`) — an **operator 
 
 _Relates to the death mechanics in §6 (starvation/cold) and §8 (bandit kills)._
 
-### 13. Open questions / disputed values
+### 13. Tick events & prompt templates (agent-runner layer)
+_Status: ✅ verified against `packages/runner/src/templateLoader.ts` + `agents/shared/runner/prompts/`_
+
+Beyond the on-chain engine, each Elder's **runner** reacts to every new tick — it tells the agent a tick landed, and on **predictable or event-driven ticks it injects a prompt template** to prime the agent. This is the agent-awareness layer for §2's recurring events, §6/§8 hazards, and §10 notifications. Templates live in `agents/shared/runner/prompts/`:
+
+| Template | Fires when |
+|---|---|
+| `00_game_start` | tick 0 — kickstart the agent |
+| `05_pre_memory_wipe_5ticks` | **5** ticks before a memory wipe (⚠️ Liam recalled 10) |
+| `06_pre_memory_wipe_1tick` | 1 tick before a memory wipe |
+| `07_post_memory_wipe` | first tick after a wipe (§11) |
+| `10_pre_winter_10ticks` | 10 ticks before winter (§6) |
+| `11_winter_started` / `12_winter_ended` | winter start / end ticks |
+| `20_bandits_appeared` | a bandit spawns (§8) — the camp warning |
+| `21_bandits_attacking` | bandit enters its ATTACKING state |
+| `22_post_bandit_attack` | after a raid resolves (won or lost) |
+| `99_clansmen_revived_and_resources_injected` | operator revived/injected (§12) — **the disclosure ping** that tells agents a revive+injection happened (per the no-silent-injection rule) |
+
+**Mechanism** ✅ — `selectTemplates(tick, gameSettings, events)` computes the due set each tick: tick-derived templates from the clock + `gameSettings` (e.g. `winterStartTick`), event-driven ones (bandits) from chain events; several can fire on one tick, and missing files are skipped. 🆕 **Liam's intended notification pings** (new whisper / new bulletin, §10) slot in here as additional templates — a ping only, never the message text.
+
+⚠️ *vs Liam's recall:* the early memory-wipe warning is **5 ticks** before, not 10 (the 1-tick wipe warning + the 10-tick **winter** warning match). The `99` revive/inject template is a bonus he didn't list — the built-in mechanism for disclosing operator injections to the agents.
+
+### 14. Open questions / disputed values
 _Status: ⬜_ — Running list where intent and the reference code disagree, pending resolution.
 
 ---
