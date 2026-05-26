@@ -7,7 +7,7 @@
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { iClanWorldAbi } from "@clan-world/contract-types";
-import { baseSepolia } from "@clan-world/shared/adapters";
+import { baseSepolia } from "@clan-world/shared/adapters/chains";
 import {
   createPublicClient,
   http,
