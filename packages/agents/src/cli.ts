@@ -652,6 +652,15 @@ export async function runCommand(
     if (!parsed.clanId || !Array.isArray(parsed.orders)) {
       throw new UsageError(`elder: orders file must contain { clanId: string, orders: [...] }`);
     }
+    if (!env['ELDER_N']) {
+      throw new UsageError('elder: submit-orders requires ELDER_N to be set; set it to the clan you are authorized for');
+    }
+    const ownClanId = String(getElderN(env));
+    if (parsed.clanId !== ownClanId) {
+      throw new UsageError(
+        `elder: refusing to submit orders for clanId ${parsed.clanId}; this elder is ELDER_N=${ownClanId}`,
+      );
+    }
     const result = await deps.chain.submitOrders(parsed.clanId, parsed.orders);
     return JSON.stringify(result, null, 2) + '\n';
   }

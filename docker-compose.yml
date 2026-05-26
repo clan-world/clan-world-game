@@ -39,12 +39,18 @@ volumes:
   # config` can resolve mount references early.
   elder-1-home: {}
   elder-1-workspace: {}
+  elder-1-state: {}
   elder-2-home: {}
   elder-2-workspace: {}
+  elder-2-state: {}
   elder-3-home: {}
   elder-3-workspace: {}
+  elder-3-state: {}
   elder-4-home: {}
   elder-4-workspace: {}
+  elder-4-state: {}
+  # Shared file transport used by `elder peer whisper` / `elder peer inbox`.
+  elder-peer-inbox: {}
 
 secrets:
   # Webhook HMAC shared secret for heartbeat → Convex webhook (Finding 30 fix).
@@ -59,6 +65,16 @@ secrets:
     file: ${BUS_ELDER_SECRET_FILE_3:-./agents/secrets/bus-elder-3.key}
   bus-elder-4:
     file: ${BUS_ELDER_SECRET_FILE_4:-./agents/secrets/bus-elder-4.key}
+  # Per-Elder on-chain signer keys. The CLI reads these through
+  # ELDER_WALLET_KEY_PATH; never pass raw private keys as environment values.
+  elder-wallet-1:
+    file: ${ELDER_WALLET_KEY_FILE_1:?ELDER_WALLET_KEY_FILE_1 required (one-line private key file for elder-1)}
+  elder-wallet-2:
+    file: ${ELDER_WALLET_KEY_FILE_2:?ELDER_WALLET_KEY_FILE_2 required (one-line private key file for elder-2)}
+  elder-wallet-3:
+    file: ${ELDER_WALLET_KEY_FILE_3:?ELDER_WALLET_KEY_FILE_3 required (one-line private key file for elder-3)}
+  elder-wallet-4:
+    file: ${ELDER_WALLET_KEY_FILE_4:?ELDER_WALLET_KEY_FILE_4 required (one-line private key file for elder-4)}
   # Operator secret for enqueueing commands into the Convex bus.
   bus-operator:
     file: ${BUS_OPERATOR_SECRET_FILE:-./agents/secrets/bus-operator.key}
@@ -299,10 +315,20 @@ services:
         required: false
     environment:
       ELDER_N: "1"
+      CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      DEV_RPC_URL: ${DEV_RPC_URL:-http://anvil-fork:8545}
+      PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      CONVEX_URL: http://convex-backend:3210
       CONVEX_DEPLOY_URL: http://convex-backend:3210
+      CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
+      CLAN_WORLD_LENS_ADDRESS: ${CLAN_WORLD_LENS_ADDRESS:?CLAN_WORLD_LENS_ADDRESS required}
+      # TODO: move to INDEXER_SECRET_FILE for prod; env is accepted for dev/anvil hotfix.
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
+      ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-1
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
     secrets:
       - bus-elder-1
+      - elder-wallet-1
     volumes:
       # Shared bind-mount — entrypoint.sh execs /opt/clan-world/shared/run.sh
       # from this tree, and run.sh symlinks home-claude/{settings.json,CLAUDE.md}
@@ -314,6 +340,8 @@ services:
       # bootstraps the shared symlinks here on first start (or if missing).
       - elder-1-home:/home/elder/.claude
       - elder-1-workspace:/workspace
+      - elder-1-state:/home/elder/.world/clanworld-runner/state
+      - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       # Verifies tmux session, ttyd process, and elder-runtime supervisor (tsx) — all three
       # required for Phase 1.9 (#352). Hardcoded elder-1 literal because compose-time
@@ -333,14 +361,26 @@ services:
         required: false
     environment:
       ELDER_N: "2"
+      CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      DEV_RPC_URL: ${DEV_RPC_URL:-http://anvil-fork:8545}
+      PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      CONVEX_URL: http://convex-backend:3210
       CONVEX_DEPLOY_URL: http://convex-backend:3210
+      CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
+      CLAN_WORLD_LENS_ADDRESS: ${CLAN_WORLD_LENS_ADDRESS:?CLAN_WORLD_LENS_ADDRESS required}
+      # TODO: move to INDEXER_SECRET_FILE for prod; env is accepted for dev/anvil hotfix.
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
+      ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-2
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
     secrets:
       - bus-elder-2
+      - elder-wallet-2
     volumes:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-2-home:/home/elder/.claude
       - elder-2-workspace:/workspace
+      - elder-2-state:/home/elder/.world/clanworld-runner/state
+      - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-2 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s
@@ -357,14 +397,26 @@ services:
         required: false
     environment:
       ELDER_N: "3"
+      CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      DEV_RPC_URL: ${DEV_RPC_URL:-http://anvil-fork:8545}
+      PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      CONVEX_URL: http://convex-backend:3210
       CONVEX_DEPLOY_URL: http://convex-backend:3210
+      CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
+      CLAN_WORLD_LENS_ADDRESS: ${CLAN_WORLD_LENS_ADDRESS:?CLAN_WORLD_LENS_ADDRESS required}
+      # TODO: move to INDEXER_SECRET_FILE for prod; env is accepted for dev/anvil hotfix.
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
+      ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-3
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
     secrets:
       - bus-elder-3
+      - elder-wallet-3
     volumes:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-3-home:/home/elder/.claude
       - elder-3-workspace:/workspace
+      - elder-3-state:/home/elder/.world/clanworld-runner/state
+      - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-3 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s
@@ -381,14 +433,26 @@ services:
         required: false
     environment:
       ELDER_N: "4"
+      CHAIN_NETWORK: ${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      DEV_RPC_URL: ${DEV_RPC_URL:-http://anvil-fork:8545}
+      PROD_RPC_URL: ${RPC_URL_PRIMARY:-}
+      CONVEX_URL: http://convex-backend:3210
       CONVEX_DEPLOY_URL: http://convex-backend:3210
+      CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
+      CLAN_WORLD_LENS_ADDRESS: ${CLAN_WORLD_LENS_ADDRESS:?CLAN_WORLD_LENS_ADDRESS required}
+      # TODO: move to INDEXER_SECRET_FILE for prod; env is accepted for dev/anvil hotfix.
+      INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
+      ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-4
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
     secrets:
       - bus-elder-4
+      - elder-wallet-4
     volumes:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-4-home:/home/elder/.claude
       - elder-4-workspace:/workspace
+      - elder-4-state:/home/elder/.world/clanworld-runner/state
+      - elder-peer-inbox:/home/elder/.world/clanworld-runner/state/peer-inbox
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-4 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null && test \"$(pgrep claude | wc -l)\" -eq 1"]
       interval: 30s

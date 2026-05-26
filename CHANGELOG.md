@@ -6,6 +6,23 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.16.0] — 2026-05-26
+
+**WORLD_PHYSICS spec + real elder CLI.** A complete, code-verified game-engine specification — built collaboratively as a spec-alignment exercise (owner states intent → subagent verifies against the contracts → reconcile + cite, surfacing ~30 code-vs-intent gaps as the rebuild to-do) — plus the real elder CLI/MCP finally wired into the dockerized image.
+
+### Added
+
+- **`docs/WORLD_PHYSICS.md`** — the canonical human-facing game-engine spec. 14 sections (time/seasons, regions & travel, missions, resources & gathering, consumption/winter/cold, building & winning, bandits & defense, trading, communications, memory, revival, tick-events + prompt templates) with every value code-verified, plus §14 Open-questions / rebuild checklist consolidating all ⚠️ implementation-vs-intent gaps and 🆕 new-engine decisions.
+- **`docs/WORLD_PHYSICS_CONSTANTS.md`** — the tuning table: ~115 constants + their current values, same section order, current-vs-intended deltas flagged.
+- **Agent-facing `world-physics` skill** (`agents/shared/home-claude/skills/world-physics/`) — a lean `SKILL.md` (triggers + critical rules) pointing to a focused `WORLD_PHYSICS.md` play-the-game rules reference for the Elders.
+- **Region map figure** (`docs/assets/map_regions.png`) — the 8 colored region polygons.
+
+### Fixed / Changed
+
+- **Real elder CLI + MCP bundled into the dockerized image (#615 / #616)** — replaces the v1 stub; dockerized elders can now read snapshots, `submit-orders`, and `peer whisper`. Adds per-elder wallet secrets + chain/Convex env, a shared peer-inbox volume, an idempotent anvil wallet-provisioning script, and a CLI `clanId == ELDER_N` guard.
+- **ttyd cockpit display fix (#612)** — a refresh loop so reconnecting browsers see the live alt-screen frame instead of a stale replay buffer.
+- **Revive runbook** — clarified the `injectClanResources`-before-`reviveDeadClansmen` ordering to avoid instant re-starvation (#609 / #610).
+
 ## [2.15.0] — 2026-05-24
 
 **Bundle 4 — Simplified communications architecture.** Six sub-PRs replace the command-bus FSM + supervisor pattern with a per-elder runner + two-phase commit + pendingMessages queue. Net effect: simpler runtime model, explicit confirmation accounting, per-elder auth surface on every Convex function the runner touches, Python UserPromptSubmit hook handles receipt logging, and a Clerk-authed admin inject path replaces writable ttyd. Plus three super-swarm-driven fix rounds (R1 polish + R2 cross-tier HIGHs + R3 cloud-reviewer findings).

@@ -7,7 +7,7 @@
 #
 # Layout note: the agents/shared/* tree (run.sh, home-claude/, elder-bootstrap/)
 # is NOT baked into the image — it is bind-mounted at runtime at
-# /opt/clan-world/shared. Only the entrypoint scripts + elder CLI stub +
+# /opt/clan-world/shared. Entrypoint scripts, the real elder CLI workspace, and
 # sudoers rule live in the image.
 
 FROM node:24-slim
@@ -47,6 +47,11 @@ RUN curl -fsSL -o /usr/local/bin/ttyd \
 RUN npm install -g @anthropic-ai/claude-code @openai/codex tsx \
     && npm cache clean --force
 
+# pnpm workspace support for the real @clan-world/agents CLI. Keep pnpm pinned
+# to the root packageManager version so lockfile installs are reproducible.
+RUN corepack enable \
+    && corepack prepare pnpm@10.33.2 --activate
+
 # Foundry (cast only — elder CLI's chain reads use it). Install into a system
 # location rather than root's home so the elder user can find the binary
 # without an extra PATH dance.
@@ -64,14 +69,33 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 RUN userdel -r node 2>/dev/null || true \
     && groupadd -g ${ELDER_GID} elder \
     && useradd -m -u ${ELDER_UID} -g ${ELDER_GID} -s /bin/bash elder \
-    && mkdir -p /home/elder/.claude /home/elder/.runner-state /workspace /opt/clan-world \
+    && mkdir -p /home/elder/.claude \
+      /home/elder/.runner-state \
+      /home/elder/.world/clanworld-runner/state/peer-inbox \
+      /workspace \
+      /opt/clan-world \
+      /opt/clan-world-cli \
     && chown -R elder:elder /home/elder /workspace
+
+# Real elder CLI + MCP server. This package intentionally runs TypeScript
+# source through tsx at runtime; package build is a no-op.
+COPY --chown=root:root package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json /opt/clan-world-cli/
+COPY --chown=root:root packages/agents/         /opt/clan-world-cli/packages/agents/
+COPY --chown=root:root packages/shared/         /opt/clan-world-cli/packages/shared/
+COPY --chown=root:root packages/sdk/            /opt/clan-world-cli/packages/sdk/
+COPY --chown=root:root packages/contract-types/ /opt/clan-world-cli/packages/contract-types/
+COPY --chown=root:root packages/contracts/      /opt/clan-world-cli/packages/contracts/
+RUN cd /opt/clan-world-cli \
+    && pnpm install --prod --filter @clan-world/agents... --frozen-lockfile \
+    && pnpm store prune \
+    && chown -R elder:elder /opt/clan-world-cli
 
 # Entrypoint scripts. init-firewall.sh requires CAP_NET_ADMIN; it runs via
 # sudo with a strict allowlist (see /etc/sudoers.d/elder-firewall).
 COPY --chmod=755 agents/entrypoint.sh    /opt/clan-world/entrypoint.sh
 COPY --chmod=755 agents/init-firewall.sh /opt/clan-world/init-firewall.sh
-COPY --chmod=755 agents/elder            /usr/local/bin/elder
+COPY --chmod=755 agents/elder-cli-wrapper /usr/local/bin/elder
+COPY --chmod=755 agents/elder-mcp-wrapper /usr/local/bin/elder-mcp
 
 # Sudoers rule: elder may run init-firewall.sh as root, no password, no other commands.
 # /etc/sudoers.d/* files must be chmod 0440.
@@ -99,6 +123,7 @@ WORKDIR /workspace
 
 ENV HOME=/home/elder
 ENV CLAUDE_CONFIG_DIR=/home/elder/.claude
+ENV CLAN_WORLD_REPO=/opt/clan-world-cli
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Healthcheck — v1 elder claude process alive. entrypoint.sh / run.sh also

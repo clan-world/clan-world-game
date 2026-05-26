@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "elder": {
+      "type": "stdio",
+      "command": "/usr/local/bin/elder-mcp"
+    }
+  }
+}
