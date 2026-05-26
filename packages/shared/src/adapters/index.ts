@@ -1,3 +1,4 @@
+export * from './chains';
 export * from './IChainClient';
 export * from './IConvexClient';
 export * from './IInftClient';

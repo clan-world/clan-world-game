@@ -24,7 +24,7 @@ import {
   HEARTBEAT_INTERVAL_SECONDS,
   RESOURCE_GOLD,
 } from "@clan-world/shared/generated/constants";
-import { baseSepolia } from "@clan-world/shared/adapters";
+import { baseSepolia } from "@clan-world/shared/adapters/chains";
 import type { Doc } from "./_generated/dataModel";
 import { resetLocked } from "./resetLock";
 
