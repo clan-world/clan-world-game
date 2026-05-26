@@ -4,7 +4,7 @@
 
 This document is **human-facing and forward-looking**. The current on-chain (smart-contract) engine is being retired — its rules are being lifted into this spec so they can be re-implemented in a normal backend (or Solana) game engine without carrying over the gas/complexity baggage. So this is the canonical statement of *what the game should do*; the existing contract is treated as the reference implementation we extract rules from, not as the permanent home of those rules. An agent-facing rewrite (tuned for the Elder prompts/CLI) will be derived from this later.
 
-**Status: 🚧 Being built collaboratively, one section at a time.** Treat unverified sections as drafts, not ground truth.
+**Status: ✅ Complete (v1).** All 14 sections built + code-verified via the spec-alignment process; §14 is the rebuild checklist. Still living — refine as the new engine is built.
 
 > ⚠️ **All numeric values in this doc are subject to change.** They are the current engine's tuning, not fixed law — expect them to be re-balanced (especially in the new engine).
 
@@ -310,8 +310,44 @@ Beyond the on-chain engine, each Elder's **runner** reacts to every new tick —
 
 ⚠️ *vs Liam's recall:* the early memory-wipe warning is **5 ticks** before, not 10 (the 1-tick wipe warning + the 10-tick **winter** warning match). The `99` revive/inject template is a bonus he didn't list — the built-in mechanism for disclosing operator injections to the agents.
 
-### 14. Open questions / disputed values
-_Status: ⬜_ — Running list where intent and the reference code disagree, pending resolution.
+### 14. Open questions & rebuild checklist
+_Status: ✅ compiled from the ⚠️/🆕 flags above — the decision list to carry into the new engine._
+
+Every item below is a place where the **current implementation diverges from intent** (⚠️) or a **deliberate new-engine change** (🆕). This doubles as the rebuild to-do list.
+
+**Gathering & resources**
+- [ ] 🆕 Make gathering **per-tick** (carry grows each tick; interrupted gather keeps partial progress) — today it's 4-tick batches that **lose partial progress** (0 wood at tick 2). §4/§5
+- [ ] 🆕 Wood **crit per-tick (+1)** — today it doubles the whole 4-tick batch (4→8). §5
+- [ ] 🆕 Wheat plots **regrow continuously on partial harvest** — today: full-deplete → 4-tick regrow; (later) add a **planting** step. §5
+- [ ] 🆕 Market **buy-overflow burns excess** (waste gold) — today the buy **fails** (`ERR_CARRY_FULL`). §9
+- [ ] ❓ **Sells have no slippage protection** (sandwichable) — decide: add a min-gold-out, or keep as an arbitrage surface. §9
+
+**Bandits & defense**
+- [ ] 🆕 **Escalating bandit levels** (1×3 → 2×3 → 3…) — today uniformly random tier 1–5. §8
+- [ ] 🆕 Fold **wall + base into the defense SUM** (so they help *win*) — today they only soak damage after a loss and never help win; defeat needs **2× clansman defense**. §8
+- [ ] 🆕 Decide whether bandit raids should **kill clansmen at all** (current clansman-death is unplanned drift). §8
+- [ ] 🆕 **Tie → loot protected**, bandits continue — today a 1:1 tie still loses 20%. §8
+- [ ] 🆕 Dropped loot **100% to defenders** — today only 50% drops (other 50% burned). §8
+- [ ] ❓ Defeat reward (blueprint + 1 gold) currently goes to the **base owner**, not defenders — intended? §8
+- [ ] 🆕 Consider **random base placement** — today deterministic `(clanId-1)%6`. §8
+- [ ] ❓ Revisit spawn-probability ramp (today 10% +10%/tick → 80% cap). §8
+
+**Seasons**
+- [ ] 🆕 **Fresh game each season** — full clan reset; today **nothing resets** (state bleeds across seasons). Persist only (future) agent skills/memories; future per-season agent/owner reassignment. §2
+- [ ] 🆕 Season-start vault **3 gold + 50 wheat + 10 fish** (wood/iron TBD) + re-apply on rollover — today 20W/20Wh/2F/3gold, not re-applied. §2/§5
+- [ ] 🆕 Per-agent **random starting variability** (double/half food etc.) — not built. §2
+
+**Communications & memory**
+- [ ] 🆕 **Wipe all messages (private + bulletins) between seasons** — not implemented (history bleeds across seasons). §10
+- [ ] ❓ Confirm/implement the **3-bulletins-per-clan** limit (not found in the CLI — Convex-side or unbuilt?). §10
+- [ ] 🆕 Idea: **global 3-slot bulletin board** (clans can overwrite rivals') — a visibility/denial dynamic. §10
+- [ ] 🆕 **Runner notification pings** on new whisper / new bulletin (ping only, never the text) — not built. §10/§13
+- [ ] 🆕 Make `ANCIENT_WISDOM.md` **read-only**, update via the elder CLI only. §11
+- [ ] 🆕 **Re-back the key-value scratchpad** — 0G being removed entirely. §11
+
+**Misc**
+- [ ] 🆕 **Bonus clansman on base upgrade** — not implemented (hard-capped at 4). §7
+- [ ] ❓ Confirm the pre-memory-wipe early warning is **5 ticks** (Liam recalled 10). §13
 
 ---
 
@@ -328,3 +364,4 @@ _Status: ⬜_ — Running list where intent and the reference code disagree, pen
 | 2026-05-26 | §4/§9/§10 | §4 Missions ✅ (3-tuple, action set, lazy deterministic settlement). §9 Trading ✅ (OTC no-escrow/no-promises; real fee-less x·y=k stub AMM; travel-vs-immediate trade + intentional front-run window; gold global/vault; buy=amount-out+maxGoldIn, sell=amount-in w/ NO slippage protection; buy-overflow FAILS, 🆕 burn-excess intent). Added §10 Communications stub; Open-questions → §11. |
 | 2026-05-26 | §8 | Bandits ✅ (huge): base placement (6 regions ✅ but deterministic round-robin ⚠️ not random); spawn 10-tick cooldown ✅ + 10%/+10%/80%-cap ⚠️(not 20/5); seq Spawned(1)+Camped(3 ⚠️)+attack@end-of-tick ✅; levels RANDOM 1-5 ⚠️(intent escalating); DEFEAT needs clansman-def ≥2×power ⚠️(walls/base only absorb); defender 10 / idle-home 5 ✅; cross-clan defend ✅; 1:1 tie LOSES loot ⚠️(intent protect); ring Forest→Mtn→EFarms→EDocks→WDocks→WFarms; target=highest weighted loot; leaves after 6 attempts; win=steal20% ✅; defeat→owner+1bp+1gold, 50%carry-drop to defenders ⚠️(intent 100%), excess/zero-def burned ✅. 5 🆕 intents. |
 | 2026-05-26 | §1/§10/§11 | §1 Overview (synthesis). §10 Communications ✅ (1-to-1 whispers + Unicorn-Town bulletins, lore, agent-layer; 🆕 3/clan limit, global-override idea, runner ping-not-text notifications). NEW §11 Memory & continuity (ANCIENT_WISDOM 🆕read-only/CLI; key-value scratchpad, 🆕 removing 0G). §11 Revival → §12. |
+| 2026-05-26 | §13/§14 | §13 Tick events & prompt templates ✅ (runner prompt set: game-start, pre-wipe 5+1, post-wipe, pre-winter-10, winter start/end, bandits appeared/attacking/post-attack, 99 revive+inject disclosure). §14 Open-questions/rebuild-checklist compiled from all ⚠️/🆕 flags. Status → Complete v1. |
