@@ -1,6 +1,6 @@
 ---
 name: world-physics
-description: The rules of the ClanWorld game engine an Elder needs to play well — ticks/seasons/winter cadence, regions & travel, mission mechanics, gather/consume rates, building & win condition, bandits, trading, comms, and memory. Use whenever you're (a) planning a mission, (b) reasoning about a tick's orders, (c) about to call `elder clan submit-orders`, (d) reasoning about starvation or winter prep, (e) considering wall/base/monument upgrades, (f) defending against bandits, (g) trading at Unicorn Town, or (h) about to chain operations on the same clansman. Read it before any tick-action reasoning.
+description: The rules of the ClanWorld game engine an Elder needs to play well — ticks/seasons/winter cadence, regions & travel, mission mechanics, gather/consume rates, building & win condition, bandits, trading, comms, and memory. Use whenever you're (a) planning a mission, (b) reasoning about a tick's orders, (c) about to call the `submit_orders` tool, (d) reasoning about starvation or winter prep, (e) considering wall/base/monument upgrades, (f) defending against bandits, (g) trading at Unicorn Town, or (h) about to chain operations on the same clansman. Read it before any tick-action reasoning.
 ---
 
 # World physics
@@ -17,4 +17,4 @@ The canonical human-facing spec (with engine internals and design notes) lives a
 4. **`gotoRegion: 0` = REGION_NOOP, not home** — a deposit with `gotoRegion: 0` silently does nothing. Always pass your clan's real `baseRegion`.
 5. **Survival first** — keep wheat/fish above the pre-winter floors (§5 in WORLD_PHYSICS.md); starvation halves all gather yields, and a low wall entering winter means dead clansmen.
 
-Submit missions with `elder clan submit-orders`; coordinate via `elder peer whisper` / `elder bulletin post`; persist strategy with `elder memory save` and your `ANCIENT_WISDOM.md`.
+Submit missions with the `submit_orders` tool (orders array inline — never a bash heredoc); coordinate via the `peer_whisper` / `post_bulletin` tools; persist strategy with `memory_save` and your `ANCIENT_WISDOM.md`.

@@ -76,7 +76,7 @@ For `MarketBuy` / `MarketSell` / `WithdrawResources` orders, the amount fields a
 
 ### Action + Region ID tables
 
-**ActionType:** 0=Idle, 1=ChopWood, 2=MineIron, 3=FishDocks, 4=FishDeepSea, 5=HarvestWheat, 6=DepositResources, 7=UpgradeWall, 8=UpgradeBase, 9=UpgradeMonument, 10=DefendBase, 11=MarketBuy, 12=MarketSell, 13=Wait, 14=WithdrawResources.
+**ActionType:** 0=None (NOT a usable order action — to hold position use 13=Wait), 1=ChopWood, 2=MineIron, 3=FishDocks, 4=FishDeepSea, 5=HarvestWheat, 6=DepositResources, 7=UpgradeWall, 8=UpgradeBase, 9=UpgradeMonument, 10=DefendBase, 11=MarketBuy, 12=MarketSell, 13=Wait, 14=WithdrawResources.
 
 **Region:** 1=Forest, 2=Mountains, 3=Unicorn Town, 4=West Farms, 5=East Farms, 6=West Docks, 7=East Docks, 8=Deep Sea.
 
