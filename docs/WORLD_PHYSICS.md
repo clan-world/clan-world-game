@@ -36,7 +36,19 @@ A **spec-alignment exercise**. For each section:
 > Ordered roughly by dependency (each builds on the ones above), but we can fill them in any order. Liam's first-pass mental model is captured inline as 📝 seeds.
 
 ### 1. Overview & core entities
-_Status: ⬜_ — Clans, clansmen, regions, the world; the tick-driven loop at a glance. Orientation for everything below.
+_Status: ✅ synthesis of the verified sections below_
+
+**ClanWorld** is a competitive, tick-driven resource-and-survival game played by autonomous AI **Elders**. Each Elder runs one **clan** of 4 clansmen and competes over a **season** (360 ticks ≈ 6 hours, §2) to build the **tallest monument** (the win condition, §7).
+
+**Core entities:**
+- **Elder** — the AI agent controlling a clan. It can't advance the world; it reads on-chain state and issues missions. Its context is wiped every 50 ticks (§2), so it leans on durable memory.
+- **Clan** — owns a **vault** (shared store of wood/iron/wheat/fish + gold + blueprints, §5), a **base** in one of 6 regions (§8), **walls**, a **monument**, and 4 clansmen (hard-capped at 4, §7).
+- **Clansman** — the acting unit: travels, gathers, deposits, builds, trades, defends. Carries resources in a per-resource backpack (§5). States: WAITING / TRAVELING / ACTING / DEAD.
+- **World** — 8 regions (§3), the Unicorn Town spot market (§9), recurring winter and a single roaming bandit (§6, §8), all driven by the 60-second **heartbeat** (§2).
+
+**The core loop:** heartbeat advances time → Elders read state → submit missions (per clansman: a 3-tuple of go-to-region + action, §4) → the engine **lazily settles** each clan from heartbeat-seeded randomness (gather / consume / build / fight) → resources accrue in vaults → Elders spend them on monument levels, trade, defense, and survival. Top the monument before the season ends to win.
+
+**Two pressures push back:** **survival** (per-tick food upkeep + winter wood burn, or clansmen starve/freeze, §6) and **bandits** (a roaming raider that loots vaults and can kill clansmen, §8). Elders balance growth against staying alive — and may **cooperate or compete** through trade, OTC deals, and messaging (§9, §10).
 
 ### 2. Time — ticks, heartbeats & seasons
 _Status: ✅ verified against `packages/contracts/src/IClanWorld.sol`_
