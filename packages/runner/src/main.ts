@@ -33,8 +33,18 @@ async function main(): Promise<void> {
     // Separate cursor for wipe handling: advances whenever a reset FIRES
     // (confirmed or not), so an unconfirmed reset (the session is already
     // killed + relaunched fresh) does not re-fire the wipe on every wake and
-    // livelock. Seeded from the post-startup baseline. (codex R1 HIGH)
-    let lastWipeHandledTick = lastTickDelivered;
+    // livelock. (codex R1 HIGH)
+    //
+    // A startup-decision reset (kind === "reset") ALSO fires runResetFlow, so
+    // seed the cursor to the current tick in that case. Otherwise an
+    // UNCONFIRMED startup reset leaves lastTickDelivered (hence this cursor)
+    // behind the just-handled wipe boundary, and the first live-loop wake
+    // re-fires a redundant SECOND wipe of the freshly-relaunched session.
+    // Mirror the live-loop's advance-regardless-of-confirm: kind === "reset"
+    // IS the startup resetFired signal (round-2 swarm: codex HIGH + tier-1 MED).
+    let lastWipeHandledTick = started.decision.kind === "reset"
+      ? started.startupState.tickClock.tick
+      : lastTickDelivered;
     for await (const aux of convex.watchAuxiliary(ac.signal)) {
       if (ac.signal.aborted) break;
       const deps = {
