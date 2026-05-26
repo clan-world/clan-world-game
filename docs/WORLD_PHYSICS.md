@@ -56,6 +56,8 @@ _What the heartbeat resolves each tick (mission settlement, consumption, season 
 ### 3. Regions & travel
 _Status: ✅ verified against `IClanWorld.sol` + `LibTravel.sol`_
 
+![ClanWorld map with the 8 colored region polygons](assets/map_regions.png)
+
 **8 regions** (`gotoRegion` IDs): **1** Forest · **2** Mountains · **3** Unicorn Town · **4** West Farms · **5** East Farms · **6** West Docks · **7** East Docks · **8** Deep Sea. `gotoRegion: 0` = **REGION_NOOP** — stay put / no move (a known footgun: 0 is *not* "home").
 
 **Travel** — adjacent regions are **1 tick** apart. Longer trips follow a **fixed shortest path** through the adjacency graph (deterministic BFS over a precomputed `distMatrix`), **1 tick per hop**, up to a max of **4 ticks** across the map (e.g. Forest → East Docks). Because the path is deterministic, the engine can compute a clansman's **exact location mid-travel** — which is precisely what makes lazy re-dispatch work: re-tasking a clansman while it's still travelling, the engine knows where it is on the path. *(Contrast §5: interrupted **gathering** loses partial progress, but travel **position** is always known.)*
@@ -63,10 +65,21 @@ _Status: ✅ verified against `IClanWorld.sol` + `LibTravel.sol`_
 **Map shape** (adjacency): Forest ↔ Mountains ↔ Unicorn Town form the core; Unicorn Town links the two Farms; each Farm leads to its Dock; **Deep Sea is reachable only via the Docks (6/7)** — so deep-sea fishing (the best odds, §5) requires travelling out through a dock.
 
 ### 4. Missions
-_Status: 🚧 partial — cooldown ✅ verified; rest 📝_
-- 📝 A mission is a **3-tuple: (clansman, gotoRegion, action)**.
-- 📝 Missions are **deterministically computed lazily** from partial randomness (lazy evaluation — outcomes are derived on demand, not eagerly rolled).
-- An order **replaces** that clansman's current mission — an agent may re-plan a clansman at any time (mid-travel, mid-gather, or once idle).
+_Status: ✅ verified against `IClanWorld.sol` + `LibSubmitOrders`/`LibSettlement`_
+
+A mission is intentionally simple — a **3-tuple: `(clansmanId, gotoRegion, action)`** = "go to this region, do this action" (`ClanOrder`). A few actions carry extra params: `targetClanId` (DefendBase), `marketToken`/`marketAmount`/`maxGoldIn` (MarketBuy/Sell), `withdrawResources` (Withdraw).
+
+**Action set** (`ActionType`):
+- **Gather** (4 ticks): ChopWood · MineIron · FishDocks · FishDeepSea · HarvestWheat
+- **Logistics** (1 tick): DepositResources · WithdrawResources
+- **Build** (1 tick): UpgradeWall · UpgradeBase · UpgradeMonument
+- **Other**: DefendBase · MarketBuy · MarketSell · Wait (idle)
+
+A mission first **travels** to `gotoRegion` (1 tick/hop, §3), then performs the action.
+
+**Lazy, deterministic settlement** ✅ — the engine doesn't tick every clansman live. Whenever an elder submits a new order, `submitClanOrders` first calls `_settleClan`, which replays the clan forward **one tick at a time** from its `lastSettledTick` to now, resolving each clansman's actions and **persisting gathered resources + state on-chain**. Outcomes (wood crit, fish/gold rolls) are **deterministic**, seeded from the per-tick heartbeat seed (`tickSeeds[tick]` / `currentTickSeed`) — fixed once the heartbeat sets the seed, just computed on demand. (Settlement also runs on heartbeat/winter/season events; a `MAX_LAZY_SETTLE_BACKLOG` cap means a clan left unsettled too long must be settled before it can take new orders.)
+
+- An order **replaces** that clansman's current mission — an agent may re-plan at any time (mid-travel, mid-gather, or once idle). ⚠️ *Caveat (§5): re-planning mid-gather loses the partial 4-tick batch (0 wood at tick 2 of a chop); travel position, by contrast, is always preserved (§3).*
 - **Submission cooldown** ✅ — a **per-clansman 60-second wall-clock** throttle on new submissions (`CLANSMAN_COOLDOWN_SECONDS = 60`; enforced via `cooldownEndsAtTs`, a **timestamp** — NOT a tick boundary; configurable up to 1h; orders inside it revert with `ERR_COOLDOWN_ACTIVE`). The 60s is *meant to match* the tick duration so an agent can submit a clansman **at most ~once per tick**, but it is a distinct clock, not gated on the tick boundary. **Purpose:** since missions can be changed mid-flight, the cooldown limits dispatch frequency to force agents to plan command timing rather than spam re-submissions.
 
 ### 5. Resources & gathering
