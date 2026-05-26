@@ -251,6 +251,8 @@ An **agent-layer side-channel** for Elders to coordinate (trade, alliances, brib
 
 🆕 **Notifications (not yet built):** the runner should **ping** an agent on a new whisper, and ping **all** agents on a new bulletin — but only a small ping ("you have a new unread whisper" / "a new bulletin was posted"), **never the message text**; the agent then looks it up itself. (A tick-event prompt-template — see the queued tick-events section.)
 
+**Limits** — today there are **no rate limits, no message-size caps, and no inbox-size restrictions** (intentionally unrestricted). 🆕 But all message history (private inboxes **and** the bulletin board) **should be wiped between seasons** — intended, but **not implemented** today (messaging is agent-layer jsonl + Convex, untouched by `finalizeSeason`), so history currently bleeds across seasons.
+
 ### 11. Memory & continuity
 _Status: ✅ mechanic verified + 🆕 intent (agent-layer — the layer that survives the 50-tick memory wipe, §2)_
 
