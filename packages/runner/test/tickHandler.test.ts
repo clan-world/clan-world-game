@@ -119,6 +119,7 @@ function makeDeps(aux: RunnerAuxiliary) {
       async sendSlashCommand(cmd: string) { calls.push(cmd); },
       async pasteMessage(text: string) { calls.push(`paste:${text.split("\n")[0]}`); },
       async capturePane() { return "\u2502 > "; },
+      async setStatusBar(name: string, color: string) { calls.push(`status:${name}:${color}`); },
     },
   };
 }
