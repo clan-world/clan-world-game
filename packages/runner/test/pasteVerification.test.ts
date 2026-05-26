@@ -25,6 +25,25 @@ describe("paste verification", () => {
     expect(tmux.capturePane).toHaveBeenCalledTimes(1);
   });
 
+  it("pre-paste detects modern Claude TUI prompt glyphs (>, ❯, ›)", async () => {
+    // Newer Claude Code TUI builds render the prompt as "❯" (U+276F) instead
+    // of ASCII ">"; some themes use "›" (U+203A). The readiness probe must
+    // accept all three or it silently times out every tick (the 2026-05-26 runner
+    // outage). An empty input region after the glyph = ready.
+    for (const glyph of [">", "❯", "›"]) {
+      const tmux = mockTmux([pane("Claude is ready", `│ ${glyph} `)]);
+      await expect(prePasteReady(tmux)).resolves.toBe(true);
+    }
+  });
+
+  it("pre-paste does NOT treat a non-empty ❯ input (busy) as ready", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([pane("Claude is thinking", "│ ❯ draft the orders")]);
+    const promise = prePasteReady(tmux);
+    await vi.advanceTimersByTimeAsync(READY_PROBE_TIMEOUT_MS);
+    await expect(promise).resolves.toBe(false);
+  });
+
   it("pre-paste waits until the prompt appears", async () => {
     vi.useFakeTimers();
     const tmux = mockTmux([
