@@ -1,6 +1,6 @@
 import { deliverMessage, deliverPendingOnly } from "./messageDelivery.js";
 import { runResetFlow } from "./resetFlow.js";
-import { isScheduledMemoryWipeTick } from "./restartDecision.js";
+import { containsMemoryWipeTick, isScheduledMemoryWipeTick } from "./restartDecision.js";
 import { describeSettingsDrift, settingsEqual } from "./settingsCache.js";
 import { selectTemplates } from "./templateLoader.js";
 import type { RunnerConvexClient } from "./convexClient.js";
@@ -37,15 +37,26 @@ export interface TickDeliveryResult {
 export async function handleAuxiliaryUpdate(
   deps: TickHandlerDeps,
   aux: RunnerAuxiliary,
+  lastDeliveredTick: number,
 ): Promise<TickDeliveryResult> {
   await assertNoSettingsDrift(deps, aux);
-  if (
-    isScheduledMemoryWipeTick(
-      aux.tickClock.tick,
-      deps.cachedSettings.memoryWipeTickInterval,
-    )
-  ) {
-    const result = await runResetFlow({ ...deps, aux, reason: "scheduled" });
+  // Gap-aware wipe detection. The Convex subscription delivers the LATEST
+  // snapshot, so while the runner is busy delivering one tick the clock can
+  // jump (e.g. 2049 → 2052), stepping over a scheduled wipe tick. An
+  // exact-tick check (tick % interval === 0) silently misses those wipes and
+  // the session bloats until uncontrolled auto-compaction. Mirror startup's
+  // decideRestart: also fire when a wipe tick fell in the gap since the last
+  // *confirmed-delivered* tick. (Liam-reported 2026-05-26; codex co-design.)
+  const currentTick = aux.tickClock.tick;
+  const interval = deps.cachedSettings.memoryWipeTickInterval;
+  const exactScheduled = isScheduledMemoryWipeTick(currentTick, interval);
+  const crossedScheduled = containsMemoryWipeTick(lastDeliveredTick, currentTick, interval);
+  if (exactScheduled || crossedScheduled) {
+    const result = await runResetFlow({
+      ...deps,
+      aux,
+      reason: exactScheduled ? "scheduled" : "memory_wipe_gap",
+    });
     return { confirmed: result.confirmed };
   }
   const delivery = await deliverCurrentTick(deps, aux);

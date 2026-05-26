@@ -43,7 +43,7 @@ async function main(): Promise<void> {
         if (aux.pendingMessages.length > 0) await handlePendingMessages(deps, aux);
         continue;
       }
-      const result = await handleAuxiliaryUpdate(deps, aux);
+      const result = await handleAuxiliaryUpdate(deps, aux, lastTickDelivered);
       // Only advance the "delivered" cursor on confirmed receipt — if the
       // hook didn't write tickReceiveLog within the resend cap, the next
       // tick subscription wake-up will see this tick still un-delivered and

@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { postPasteSubmitted, prePasteReady } from "./pasteVerification.js";
+import { sleep } from "./retry.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -87,10 +89,28 @@ export class TmuxSink {
   }
 
   async sendSlashCommand(command: string): Promise<void> {
-    await this.sendLiteral(command);
-    await this.sendKeys("Enter");
-    await delay(250);
-    await this.sendKeys("Enter");
+    // Slash commands (/rename, /color) need the same readiness + submit
+    // verification as tick pastes. A fixed double-Enter raced the TUI and left
+    // the 2nd command (/color) stuck unsubmitted in the input on a reset
+    // (Liam-diagnosed 2026-05-26; codex co-design). Escape clears any stale
+    // slash-autocomplete/input state; prePasteReady waits for an empty prompt;
+    // a single Enter submits; postPasteSubmitted verifies the input returned to
+    // empty (it retries Enter on render lag). Log-don't-throw so a stuck command
+    // never strands the reset before the post-wipe continuity prompt.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await this.sendKeys("Escape");
+      await sleep(250);
+      if (!(await prePasteReady(this))) continue;
+      await this.sendLiteral(command);
+      await sleep(500);
+      await this.sendKeys("Enter");
+      await sleep(500);
+      if (await postPasteSubmitted(this)) {
+        await sleep(750);
+        return;
+      }
+    }
+    console.warn(`[tmux] slash command did not visibly submit after 3 attempts: ${command}`);
   }
 
   async sendLiteral(content: string): Promise<void> {
@@ -126,8 +146,4 @@ export class TmuxSink {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-async function delay(ms: number): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, ms));
 }
