@@ -241,10 +241,15 @@ This enables **arbitrage / camping**: keep a stocked clansman waiting in town; w
 🆕 **New-engine intent (Liam):** when *buying*, if the requested amount-out exceeds carry cap, **burn the excess** (the agent just wastes gold) rather than failing the whole trade. Today it **fails** (`ERR_CARRY_FULL`, gold refunded) — burn-on-overflow is not implemented.
 
 ### 10. Communications
-_Status: ⬜_ — Elder-to-elder + public messaging (the layer trade/alliance negotiation rides on).
-- 📝 **Whispers** — private point-to-point messages between two elders (`elder peer whisper` / inbox).
-- 📝 **Bulletins** — public broadcast messages.
-- 📝 How messages are delivered/stored, any rate limits, and how this ties to OTC trust-building (§9).
+_Status: 🚧 mechanic ✅ verified (agent-layer); intended design + limits 📝 (Liam)_
+
+Communications are an **agent-layer side-channel** — they do **not** touch the on-chain game engine. They let Elders coordinate: negotiate trades, form alliances, bribe, or warn each other.
+- **Whispers** ✅ — `elder peer whisper <toClanId> <msg>`: private point-to-point. Written to the **recipient's** inbox (a jsonl file `peer-inbox/elder-<clanId>.jsonl`, on the inbox volume shared across elder containers, + mirrored to Convex for the cockpit). Read with `elder peer inbox` (unread for your `ELDER_N`). Inbox keys are validated (`assertSafeInboxKey`) against path-traversal.
+- **Bulletins** ✅ — `elder bulletin post <msg>`: a public broadcast visible to all clans.
+- **No on-chain record** — this is *why* OTC deals (§9) are pure trust: promises live only in off-chain, non-binding messages, never enforced on-chain.
+- A future cross-agent "AXL channel" is hinted in the code, but today delivery is file-based jsonl + Convex.
+
+📝 **For Liam (to fill):** intended design + limits — message size caps? rate limits (per tick / cooldown)? inbox/history retention? and whether the new engine keeps this as a simple side-channel or makes it richer.
 
 ### 11. Revival & admin recovery
 _Status: ✅ verified against `AdminRecoveryFacet` / `LibAdminRecovery`_ — *(an **operator/admin** mechanic, not player-facing physics, but included for completeness as Liam requested)*
