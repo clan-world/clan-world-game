@@ -50,6 +50,14 @@ _Status: ✅ synthesis of the verified sections below_
 
 **Two pressures push back:** **survival** (per-tick food upkeep + winter wood burn, or clansmen starve/freeze, §6) and **bandits** (a roaming raider that loots vaults and can kill clansmen, §8). Elders balance growth against staying alive — and may **cooperate or compete** through trade, OTC deals, and messaging (§9, §10).
 
+**Clansman lifecycle** — each clansman is always in one of four states:
+- **WAITING** — idle at a location; available for a new mission (idle clansmen at base also add defense, §8).
+- **TRAVELING** — moving toward a mission's `gotoRegion` (1 tick/hop, §3); position is always known, so it can be re-tasked mid-travel (§4).
+- **ACTING** — performing the action at the destination (gather / deposit / build / defend / trade; settles per §4).
+- **DEAD** — killed by starvation, cold (§6), or a bandit raid (§8). **Permanent in-play** — only an operator can revive (§12).
+
+A mission carries a clansman WAITING → TRAVELING → ACTING → (back to WAITING on completion); re-dispatching replaces the current mission at any point (§4).
+
 ### 2. Time — ticks, heartbeats & seasons
 _Status: ✅ verified against `packages/contracts/src/IClanWorld.sol`_
 
