@@ -168,10 +168,42 @@ Three structures can be upgraded (each upgrade is a **1-tick** action consuming 
 
 So the game is: build the tallest monument, fastest. Tiebreaks reward speed, then hoarded resources, then defense.
 
-### 8. Bandits, the path & defense
-_Status: ⬜_
-- 📝 Bandits, **the path**, and **defense** (walls absorb damage — costs in §7; base adds HP).
-- 📝 **Bandit protection** — including how winter affects it.
+### 8. Bandits, defense & the rampage
+_Status: ✅ verified against `LibBanditSpawning`/`LibBanditCombat`/`LibBanditTargets`/`LibBanditLifecycle` + `ClanLifecycleFacet`_
+
+Bandits are the PvE threat. **Only one bandit exists world-wide at a time** (`MAX_TOTAL_BANDITS = 1`); it spawns, camps as a warning, then attacks bases while rampaging a fixed ring of regions.
+
+#### Base placement
+Clans occupy the **6 base-eligible regions** — Forest, Mountains, West/East Farms, West/East Docks (never Unicorn Town or Deep Sea) ✅. ⚠️ But assignment is **deterministic round-robin** `(clanId-1) % 6`, **not random** as recalled — fully predictable. Bases start at level 1, wall 0, 4 clansmen WAITING at base.
+
+#### Spawning
+- **10-tick cooldown** after any spawn (`BANDIT_COOLDOWN_TICKS = 10`) ✅.
+- Then a per-tick spawn roll: ⚠️ starts at **10%** and climbs **+10%/tick** to an **80% cap** — *not* 20% + 5% (the cap of 80% ✅ and the cooldown ✅ match; the base + increment do not).
+
+#### Spawn → attack sequence
+**Spawned (1 tick) → Camped (3 ticks) → Attack.** ⚠️ Camp is **3 ticks uniformly** (not "3 then 2"; the recalled "spawn1 + camp2" undercounts). The camp is the warning window to rush a wall upgrade, recall clansmen to defend, or negotiate help. The **attack resolves at the END of the attack tick** (after that tick's settlement) ✅ — so a late deposit/withdraw can change the stolen amount or flip which base is targeted.
+
+#### Bandit levels
+⚠️ Currently **uniformly random, tier 1–5** (`BANDIT_TIER_COUNT = 5`) — *no* escalation. Attack power by tier: **T1 30 · T2 45 · T3 60 · T4 80 · T5 95**. 🆕 *Liam intends escalating levels (start at 1, +1 every 3 attacks) instead of random, and capping lower.*
+
+#### Defense (two layers)
+1. **Clansman defense score** (the only thing that can *defeat* a bandit):
+   - **Active defender** = **10** each (an `ActionType.DefendBase` mission, physically in the target's base region). There is no separate "defending" state — it's the DefendBase action.
+   - **Idle (WAITING) home clansman at the base** = **5** each ✅ (exactly half, as recalled).
+   - **Cross-clan defending counts** ✅ — you can send clansmen to defend another clan's base (DefendBase with that clan's id) and they add 10 each.
+2. **Structural HP** (only *absorbs leftover damage* on a loss — does **not** help defeat the bandit): wall **100/level**, base **25/level**, each clansman **100 HP**.
+
+#### Attack outcome
+⚠️ Defeat requires **clansman defense ≥ 2× bandit attack power** (a 2:1 ratio — and *only* clansman/defender points count toward defeat; walls/base never help win). On a win the bandit dies. Otherwise it **steals 20% of the vault** (`BANDIT_BASE_STEAL_BPS = 2000`) ✅, then leftover damage (`power − defense`) cascades wall → base → clansman kills. ⚠️ A 1:1 tie (defense == power) is a **loss** — loot is still stolen (only structural damage is zeroed). 🆕 *Liam intends: tie → loot protected, bandits continue.*
+
+#### Movement & targeting
+Fixed ring: **Forest → Mountains → East Farms → East Docks → West Docks → West Farms → (loop)** (⚠️ East-before-West — verify this is the intended counterclockwise direction). No base in region → no-op, move on. One base → attack it. **Multiple bases → highest `lootValue`** = weighted **wood + wheat + 2×fish + 4×iron** (⚠️ weighted, not raw total). The bandit **leaves on its own after 6 attack-attempts** (`BANDIT_MAX_ATTACK_ATTEMPTS = 6`, ≈ one loop).
+
+#### Looting & drops
+- **Win:** steal 20% of the target's (weighted-spendable) vault into the bandit's carry.
+- **Defeated:** the **base owner** (not the defenders) gets **+1 blueprint + 1 gold** (flat, ⚠️ not random, not per-bandit). The bandit's **carried loot drops — but only 50%** (`BANDIT_DROP_TO_DEFENDERS_BPS = 5000`); the other 50% is **burned** ⚠️ (so defenders net ~10% of the original vault, not 100%). The 50% is split **equally per defender head-count** (ignoring the 10-vs-5 weight), into each defender's backpack; **excess over carry cap is burned** ✅; **zero defenders → all dropped loot burned** ✅.
+
+🆕 **New-engine intents (Liam):** (1) **escalating** bandit levels (1×3 → 2×3 → 3…) not random 1–5; (2) **tie → loot protected**, bandits continue; (3) dropped loot **100% to defenders** (not 50%); (4) consider **random** base placement; (5) revisit the spawn-probability ramp (currently 10% +10%/tick).
 
 ### 9. Trading & economy
 _Status: ✅ verified against `LibOrderMarket` / `StubPool` / `LibDirectTransfers`_
@@ -218,3 +250,4 @@ _Status: ⬜_ — Running list where intent and the reference code disagree, pen
 | 2026-05-25 | §5 | Gathering ✅: 4-tick gathers; wood 1/tick +10% crit-doubles; iron 0.125/tick +2% gold(1); wheat 5/tick from 100-cap plots w/ 4-tick regrow (field-cap IS implemented); fish prob 25% docks / 75% deep, 1 fish/success; starvation halves yields. Corrected Liam's recall (wood 1 not 2, crit 10 not 30, fish docks 25 not 5). |
 | 2026-05-25 | §6/§7 | §6 ✅ consumption (1wheat+0.1fish/clansman from vault, winter 2x, winter wood 0.5/clansman+1/base) + cold cascade (walls degrade @2 dmg then deaths @2 dmg; NO freezing state). NEW §7 Building+winning ✅ (wall/base/monument costs; bonus-clansman 🆕 NOT impl, 4-cap; win = monument lvl→time→loot→wall→clanID). Renumbered bandits→8, trading→9, open-q→10. |
 | 2026-05-26 | §4/§9/§10 | §4 Missions ✅ (3-tuple, action set, lazy deterministic settlement). §9 Trading ✅ (OTC no-escrow/no-promises; real fee-less x·y=k stub AMM; travel-vs-immediate trade + intentional front-run window; gold global/vault; buy=amount-out+maxGoldIn, sell=amount-in w/ NO slippage protection; buy-overflow FAILS, 🆕 burn-excess intent). Added §10 Communications stub; Open-questions → §11. |
+| 2026-05-26 | §8 | Bandits ✅ (huge): base placement (6 regions ✅ but deterministic round-robin ⚠️ not random); spawn 10-tick cooldown ✅ + 10%/+10%/80%-cap ⚠️(not 20/5); seq Spawned(1)+Camped(3 ⚠️)+attack@end-of-tick ✅; levels RANDOM 1-5 ⚠️(intent escalating); DEFEAT needs clansman-def ≥2×power ⚠️(walls/base only absorb); defender 10 / idle-home 5 ✅; cross-clan defend ✅; 1:1 tie LOSES loot ⚠️(intent protect); ring Forest→Mtn→EFarms→EDocks→WDocks→WFarms; target=highest weighted loot; leaves after 6 attempts; win=steal20% ✅; defeat→owner+1bp+1gold, 50%carry-drop to defenders ⚠️(intent 100%), excess/zero-def burned ✅. 5 🆕 intents. |
