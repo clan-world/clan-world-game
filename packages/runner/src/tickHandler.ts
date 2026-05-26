@@ -59,14 +59,19 @@ export async function handleAuxiliaryUpdate(
   // 2026-05-26; codex co-design + R1 HIGH.)
   const currentTick = aux.tickClock.tick;
   const interval = deps.cachedSettings.memoryWipeTickInterval;
-  const exactScheduled = isScheduledMemoryWipeTick(currentTick, interval);
-  const crossedScheduled = containsMemoryWipeTick(lastWipeHandledTick, currentTick, interval);
-  if (exactScheduled || crossedScheduled) {
-    const result = await runResetFlow({
-      ...deps,
-      aux,
-      reason: exactScheduled ? "scheduled" : "memory_wipe_gap",
-    });
+  // Fire when a wipe tick falls in the half-open interval (lastWipeHandledTick,
+  // currentTick]. Using ONLY this — not an `exactScheduled || crossed` OR —
+  // closes the unconfirmed-reset livelock for BOTH the gap and the exact-
+  // boundary case: once we've handled tick T (cursor advanced to T), the
+  // interval excludes T, so an intra-tick re-yield of `aux` (getRunnerAuxiliary
+  // is reactive over pendingMessages/banditView/chainEvents and can re-emit at
+  // the same tick) won't re-trigger the wipe. An exact-tick OR would re-fire
+  // forever at the boundary. isScheduledMemoryWipeTick is kept only to label
+  // the reason. (codex R1 + claude R2 HIGH)
+  const wipeDue = containsMemoryWipeTick(lastWipeHandledTick, currentTick, interval);
+  if (wipeDue) {
+    const reason = isScheduledMemoryWipeTick(currentTick, interval) ? "scheduled" : "memory_wipe_gap";
+    const result = await runResetFlow({ ...deps, aux, reason });
     return { confirmed: result.confirmed, resetFired: true };
   }
   const delivery = await deliverCurrentTick(deps, aux);

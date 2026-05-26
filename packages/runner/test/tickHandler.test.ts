@@ -73,6 +73,18 @@ describe("tick handler confirmation", () => {
     expect(result.resetFired).toBeFalsy();
     expect(deps.calls).toContain("send");
   });
+
+  it("does not re-fire at an exact wipe boundary once handled (livelock guard)", async () => {
+    const aux = makeAux(50); // exact wipe tick (50 % 50 === 0)
+    const deps = makeDeps(aux);
+    // Cursor already at 50 — the reset fired at this boundary (possibly
+    // unconfirmed). An intra-tick re-yield at tick 50 must NOT fire again;
+    // an `exactScheduled || crossed` OR would have re-fired here forever.
+    const result = await handleAuxiliaryUpdate(deps as any, aux, 50);
+    expect(deps.calls.some((c) => c.startsWith("reset-start"))).toBe(false);
+    expect(result.resetFired).toBeFalsy();
+    expect(deps.calls).toContain("send");
+  });
 });
 
 function makeDeps(aux: RunnerAuxiliary) {
