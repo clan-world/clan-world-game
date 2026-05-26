@@ -71,6 +71,13 @@ The **tick** is the atomic unit by which game *state* advances — gathering, se
 - **Winter** — a recurring cold period: starts at tick 110, lasts 10 ticks, so the **first winter completes at tick 120**; it then recurs every **110 ticks** (`WINTER_START_TICK = 110`, `WINTER_PERIOD_TICKS = 110`, `WINTER_DURATION_TICKS = 10`; same in the runner `gameSettings`). Conceptually each cycle is a "year" that culminates in a winter (the first such year ends at ~tick 120). Mechanics in §6.
 - **Memory wipe** — every **50 ticks** (`memoryWipeTickInterval = 50`) each Elder agent's context window is wiped, forcing it to rely on its memory tools (e.g. `ANCIENT_WISDOM.md`) to carry strategy forward. This is an **agent-layer** mechanic — driven by the runner (which warns the agent 5 and 1 ticks ahead), not an on-chain engine event.
 
+**Season end & rollover** ✅ — once `currentTick ≥ seasonEndTick`, `finalizeSeason()` is called: it settles every clan, computes the **final ranking**, and emits `SeasonFinalized`. It is **pure scoring — no state reset.** Then `rollSeason` advances to the next season: bump `currentSeasonNumber`, slide the season window forward 360 ticks, clear the finalized flag — **and nothing else.**
+- **Ranking** (identical to the §7 win condition): **monument level → earliest to reach it → most loot (weighted wood + wheat + 2×fish + 4×iron) → highest wall → lowest clan id.**
+- ⚠️ **Nothing resets across seasons.** Vaults, gold, monument levels, walls, clansmen (even *dead* ones), and wheat plots **all carry over** — a "new season" is just a relabeled tick window over one continuous game. (Confirms the suspicion that state bleeds across seasons.)
+- 🆕 **Intended: a new season = a fresh game** — reset every clan to a clean starting state; **nothing persists** except (future) an agent's *skills/memories*, and future seasons may even reassign a different agent/owner to each clan.
+- 🆕 **Intended season-start vault:** **3 gold + 50 wheat + 10 fish** per clan (today's init is 20 wood / 20 wheat / 2 fish / 3 gold, §5 — and it is *not* re-applied on rollover). Starting wood/iron TBD.
+- 🆕 **Per-agent starting variability (not built):** random agent "powers" may give some clans extra starting food/resources/gold and others less (e.g. double or half food).
+
 _What the heartbeat resolves each tick (mission settlement, consumption, season transitions) is described in the relevant sections (§4, §6) rather than duplicated here._
 
 ### 3. Regions & travel
