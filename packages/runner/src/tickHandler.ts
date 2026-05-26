@@ -1,6 +1,6 @@
 import { deliverMessage, deliverPendingOnly } from "./messageDelivery.js";
 import { runResetFlow } from "./resetFlow.js";
-import { isScheduledMemoryWipeTick } from "./restartDecision.js";
+import { containsMemoryWipeTick, isScheduledMemoryWipeTick } from "./restartDecision.js";
 import { describeSettingsDrift, settingsEqual } from "./settingsCache.js";
 import { selectTemplates } from "./templateLoader.js";
 import type { RunnerConvexClient } from "./convexClient.js";
@@ -32,21 +32,47 @@ export async function handleStartupDecision(
 
 export interface TickDeliveryResult {
   confirmed: boolean;
+  /**
+   * True when this update fired a reset (runResetFlow). The live loop advances
+   * its wipe cursor on this regardless of `confirmed` — the session is already
+   * killed + relaunched, so re-firing the wipe on the next wake would livelock.
+   */
+  resetFired?: boolean;
 }
 
 export async function handleAuxiliaryUpdate(
   deps: TickHandlerDeps,
   aux: RunnerAuxiliary,
+  lastWipeHandledTick: number,
 ): Promise<TickDeliveryResult> {
   await assertNoSettingsDrift(deps, aux);
-  if (
-    isScheduledMemoryWipeTick(
-      aux.tickClock.tick,
-      deps.cachedSettings.memoryWipeTickInterval,
-    )
-  ) {
-    const result = await runResetFlow({ ...deps, aux, reason: "scheduled" });
-    return { confirmed: result.confirmed };
+  // Gap-aware wipe detection. The Convex subscription delivers the LATEST
+  // snapshot, so while the runner is busy delivering one tick the clock can
+  // jump (e.g. 2049 → 2052), stepping over a scheduled wipe tick. An
+  // exact-tick check (tick % interval === 0) silently misses those wipes and
+  // the session bloats until uncontrolled auto-compaction. Mirror startup's
+  // decideRestart and fire when a wipe tick fell in the gap since the last
+  // wipe we HANDLED. The caller advances that cursor whenever a reset fires
+  // (confirmed or not): the session is killed + relaunched fresh, so re-firing
+  // on the next wake would livelock; a failed continuity-prompt delivery is
+  // recovered by the next normal tick, not by re-wiping. (Liam-reported
+  // 2026-05-26; codex co-design + R1 HIGH.)
+  const currentTick = aux.tickClock.tick;
+  const interval = deps.cachedSettings.memoryWipeTickInterval;
+  // Fire when a wipe tick falls in the half-open interval (lastWipeHandledTick,
+  // currentTick]. Using ONLY this — not an `exactScheduled || crossed` OR —
+  // closes the unconfirmed-reset livelock for BOTH the gap and the exact-
+  // boundary case: once we've handled tick T (cursor advanced to T), the
+  // interval excludes T, so an intra-tick re-yield of `aux` (getRunnerAuxiliary
+  // is reactive over pendingMessages/banditView/chainEvents and can re-emit at
+  // the same tick) won't re-trigger the wipe. An exact-tick OR would re-fire
+  // forever at the boundary. isScheduledMemoryWipeTick is kept only to label
+  // the reason. (codex R1 + claude R2 HIGH)
+  const wipeDue = containsMemoryWipeTick(lastWipeHandledTick, currentTick, interval);
+  if (wipeDue) {
+    const reason = isScheduledMemoryWipeTick(currentTick, interval) ? "scheduled" : "memory_wipe_gap";
+    const result = await runResetFlow({ ...deps, aux, reason });
+    return { confirmed: result.confirmed, resetFired: true };
   }
   const delivery = await deliverCurrentTick(deps, aux);
   return { confirmed: delivery.confirmed };

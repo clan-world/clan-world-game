@@ -163,3 +163,15 @@ describe("TmuxSink.loadBuffer (mock-based regression for PR #543 hot-fix)", () =
     await expect(sink.loadBuffer("elder-input", "payload")).rejects.toThrow(/EPIPE/);
   });
 });
+
+describe("clanColorToTmuxStyle", () => {
+  it("maps known clan colors to tmux bg/fg and falls back to green for unknown", async () => {
+    const { clanColorToTmuxStyle } = await import("../src/tmuxSink.js");
+    expect(clanColorToTmuxStyle("blue")).toEqual({ bg: "blue", fg: "white" });
+    expect(clanColorToTmuxStyle("cyan")).toEqual({ bg: "cyan", fg: "black" });
+    expect(clanColorToTmuxStyle("red")).toEqual({ bg: "red", fg: "white" });
+    expect(clanColorToTmuxStyle("green")).toEqual({ bg: "green", fg: "black" });
+    expect(clanColorToTmuxStyle("purple")).toEqual({ bg: "colour93", fg: "white" });
+    expect(clanColorToTmuxStyle("olive")).toEqual({ bg: "green", fg: "black" }); // unknown → default
+  });
+});
