@@ -174,11 +174,35 @@ _Status: ⬜_
 - 📝 **Bandit protection** — including how winter affects it.
 
 ### 9. Trading & economy
-_Status: ⬜_
-- 📝 Gold + the **Uniswap-style channel**: trade **immediately or manually** (uses *carried* resources — see §5).
-- 📝 **OTC trades** — direct clan-to-clan transfers (`transferVaultResource`/`transferGold`, from the vault).
+_Status: ✅ verified against `LibOrderMarket` / `StubPool` / `LibDirectTransfers`_
 
-### 10. Open questions / disputed values
+Two ways to move resources between clans:
+
+**A. OTC / direct transfer** ✅ — `transferVaultResource` + `transferGold` move vault resources or gold clan-to-clan instantly. **No escrow, no forced settlement, no on-chain record of promises** — intentional, so elders must *learn to trust each other* when hiring, bribing, or negotiating deals. Guards: owner-only; both clans force-settled to the current tick first (else `ERR_MUST_SETTLE_FIRST`); sender alive; can't transfer resources reserved for a pending upgrade.
+
+**B. Unicorn Town spot market** ✅ — a **Uniswap-v2 constant-product (x·y = k) AMM**, one pool per resource (wood/wheat/fish/iron, each paired with gold). Currently "stub" pools (`StubPool`) — but they're *real*, **fee-less** constant-product pools (no 0.3% fee; ClanWorld is the sole swapper). The new engine keeps the x·y=k model. Pool seeds set starting prices (iron most gold-expensive, then fish).
+
+To trade, a clansman must be **in Unicorn Town (region 3)** with the resource **in its backpack** (sell) or carry headroom (buy):
+- **Sell**: `marketAmount` = resource **amount-in** (exact-input). ⚠️ *No slippage protection — there's no min-gold-out, so a scheduled sell can be sandwiched.*
+- **Buy**: `marketAmount` = resource **amount-out** (exact-output); `maxGoldIn` = the (required) gold slippage cap. A buy fails if it would exceed carry cap (`ERR_CARRY_FULL`), exceed `maxGoldIn`, or the vault lacks gold.
+
+**Gold is global** — it lives in the clan vault (`goldBalance`); clansmen never carry gold to/from town. Only **resources** flow through the backpack and count against per-resource carry caps (§5).
+
+**Two timings — and the intentional front-run window:**
+- **Travel-then-trade (one mission):** "go to Unicorn Town (3) + MarketBuy/Sell." The clansman travels (≥1 tick); the trade **resolves at the arrival tick's settlement** (market actions have 0 duration). The amount + cap are **committed publicly** at submit time, but the price is whatever the pool is at the arrival tick — so a clansman **already camped in town can front-run it**. Intentional.
+- **Camp-then-trade-immediately (manual):** park a clansman in Unicorn Town with **Wait** (full backpack). While idle in town, a MarketBuy/Sell **executes immediately** (same tx). For an in-place trade pass `gotoRegion = 3` — *not* 0 (NOOP works only because it normalizes to the current region, which must already be 3).
+
+This enables **arbitrage / camping**: keep a stocked clansman waiting in town; when you see another clan's clansman en route to trade, sell ahead of them, let their trade move the price, then buy back cheaper. Within a settlement tick, scheduled orders execute deterministically in commit (FIFO) order.
+
+🆕 **New-engine intent (Liam):** when *buying*, if the requested amount-out exceeds carry cap, **burn the excess** (the agent just wastes gold) rather than failing the whole trade. Today it **fails** (`ERR_CARRY_FULL`, gold refunded) — burn-on-overflow is not implemented.
+
+### 10. Communications
+_Status: ⬜_ — Elder-to-elder + public messaging (the layer trade/alliance negotiation rides on).
+- 📝 **Whispers** — private point-to-point messages between two elders (`elder peer whisper` / inbox).
+- 📝 **Bulletins** — public broadcast messages.
+- 📝 How messages are delivered/stored, any rate limits, and how this ties to OTC trust-building (§9).
+
+### 11. Open questions / disputed values
 _Status: ⬜_ — Running list where intent and the reference code disagree, pending resolution.
 
 ---
@@ -193,3 +217,4 @@ _Status: ⬜_ — Running list where intent and the reference code disagree, pen
 | 2026-05-25 | §2/§5 | Winter reframed (no discrepancy — completed-winter mark at 120, period 110). §5 carrying ✅ (per-resource caps W15/I5/Wh40/F8) + vault-vs-carried ✅ (spot market = carried via LibOrderMarket; vault = OTC/transfer). Gathering rates queued. |
 | 2026-05-25 | §5 | Gathering ✅: 4-tick gathers; wood 1/tick +10% crit-doubles; iron 0.125/tick +2% gold(1); wheat 5/tick from 100-cap plots w/ 4-tick regrow (field-cap IS implemented); fish prob 25% docks / 75% deep, 1 fish/success; starvation halves yields. Corrected Liam's recall (wood 1 not 2, crit 10 not 30, fish docks 25 not 5). |
 | 2026-05-25 | §6/§7 | §6 ✅ consumption (1wheat+0.1fish/clansman from vault, winter 2x, winter wood 0.5/clansman+1/base) + cold cascade (walls degrade @2 dmg then deaths @2 dmg; NO freezing state). NEW §7 Building+winning ✅ (wall/base/monument costs; bonus-clansman 🆕 NOT impl, 4-cap; win = monument lvl→time→loot→wall→clanID). Renumbered bandits→8, trading→9, open-q→10. |
+| 2026-05-26 | §4/§9/§10 | §4 Missions ✅ (3-tuple, action set, lazy deterministic settlement). §9 Trading ✅ (OTC no-escrow/no-promises; real fee-less x·y=k stub AMM; travel-vs-immediate trade + intentional front-run window; gold global/vault; buy=amount-out+maxGoldIn, sell=amount-in w/ NO slippage protection; buy-overflow FAILS, 🆕 burn-excess intent). Added §10 Communications stub; Open-questions → §11. |
