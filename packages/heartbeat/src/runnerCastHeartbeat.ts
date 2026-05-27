@@ -132,6 +132,12 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         // Mined-but-reverted. Most common cause is the rate-limit window
         // hadn't elapsed yet (when simulation succeeded but execution didn't).
         // Re-read state to upgrade to HeartbeatRateLimitedError when applicable.
+        // NOTE (intentional asymmetry vs. the simulation-revert catch below): a
+        // mined-revert receipt carries no decoded reason string without a trace
+        // call, so we can only use the nextHeartbeatAtTs timestamp heuristic here.
+        // If a real chain-vs-wall clock skew is confirmed (the scheduler
+        // instrumentation diagnoses this), revisit with decodeErrorResult on the
+        // receipt revert data.
         const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
         if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
           throw new HeartbeatRateLimitedError(next);
@@ -161,14 +167,22 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       // Pre-flight / RPC errors (no contract revert) must surface unchanged.
       const revert = extractContractRevert(err);
       if (!revert) throw err;
-      // The contract's rate-limit revert reason is the authoritative, clock-basis
-      // independent signal; fall back to the nextHeartbeatAtTs timestamp check.
-      const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
-      if (
-        isRateLimitRevert(revert) ||
-        (next !== undefined && next > Math.floor(Date.now() / 1000))
-      ) {
+      // Classify by the DECODED revert reason first — it is the authoritative,
+      // clock-basis-independent signal. heartbeat() runs _requireWorldNotPaused()
+      // (and other guards) BEFORE the rate-limit check, so a paused world / other
+      // require produces a decoded reason that is NOT the rate-limit string. We
+      // must surface those unchanged: letting the nextHeartbeatAtTs timestamp
+      // heuristic fire for them would mask a real fault as a (false) rate-limit.
+      if (isRateLimitRevert(revert)) {
+        const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
         throw new HeartbeatRateLimitedError(next ?? 0);
+      }
+      if (decodedRevertReason(revert) !== undefined) throw err;
+      // No decoded reason (e.g. a custom error with no ABI match) — only here do
+      // we fall back to the timestamp heuristic for the rate-limit case.
+      const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
+      if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
+        throw new HeartbeatRateLimitedError(next);
       }
       throw err;
     }
@@ -270,6 +284,18 @@ function isRateLimitRevert(revert: ContractFunctionRevertedError): boolean {
     .join(' ')
     .toLowerCase();
   return haystack.includes(RATE_LIMIT_REVERT_REASON);
+}
+
+/**
+ * The decoded Solidity `Error(string)` revert reason, if viem decoded one.
+ * A non-empty value means the revert is an identified `require`/`revert` reason
+ * (not the rate-limit one, once isRateLimitRevert has been ruled out) and should
+ * surface unchanged rather than falling through to the timestamp heuristic.
+ */
+function decodedRevertReason(revert: ContractFunctionRevertedError): string | undefined {
+  return typeof revert.reason === 'string' && revert.reason.length > 0
+    ? revert.reason
+    : undefined;
 }
 
 function normalizePk(pk: string): `0x${string}` {

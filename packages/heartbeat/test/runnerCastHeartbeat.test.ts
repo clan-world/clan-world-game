@@ -30,7 +30,7 @@ vi.mock('viem/accounts', () => ({
   })),
 }));
 
-import { BaseError, ContractFunctionRevertedError } from 'viem';
+import { BaseError, ContractFunctionRevertedError, encodeErrorResult } from 'viem';
 import { HeartbeatRateLimitedError } from '@clan-world/agents/seams';
 import {
   configFromEnv,
@@ -40,6 +40,12 @@ import { writeHeartbeatSuccessFile } from '../src/heartbeatSuccessFile';
 
 const HEARTBEAT_ABI_FRAGMENT = [
   { type: 'function', name: 'heartbeat', inputs: [], outputs: [], stateMutability: 'nonpayable' },
+] as const;
+
+// Solidity `Error(string)` selector ABI — encodes a require/revert reason the way
+// the chain actually returns it, so ContractFunctionRevertedError decodes `.reason`.
+const ERROR_STRING_ABI = [
+  { type: 'error', name: 'Error', inputs: [{ type: 'string', name: 'reason' }] },
 ] as const;
 
 let heartbeatSuccessDir = '';
@@ -330,17 +336,48 @@ describe('RunnerCastHeartbeat', () => {
     warn.mockRestore();
   }, 7_000);
 
-  it('upgrades a viem-wrapped rate-limit revert to HeartbeatRateLimitedError', async () => {
-    // viem surfaces the on-chain revert wrapped in a BaseError (e.g.
-    // ContractFunctionExecutionError) whose cause is the ContractFunctionRevertedError.
-    // A bare `instanceof ContractFunctionRevertedError` misses the wrapper and the
-    // rate-limit revert leaks out as a generic error, sending the scheduler down its
-    // retry-with-backoff path instead of cleanly waiting for the window. The caller
-    // must walk the cause chain + match the rate-limit reason.
+  it('detects a viem-wrapped rate-limit revert by reason ALONE (no timestamp help)', async () => {
+    // viem wraps the on-chain revert in a BaseError (e.g. ContractFunctionExecutionError)
+    // whose cause is the ContractFunctionRevertedError; a bare `instanceof` misses it.
+    // Crucially: the readNextHeartbeatAtTs() read FAILS here, so the timestamp fallback
+    // cannot fire — only the reason-based detection can. This is the load-bearing case
+    // (the prod failure mode) and it fails on pre-fix code.
     const reverted = new ContractFunctionRevertedError({
       abi: HEARTBEAT_ABI_FRAGMENT,
       functionName: 'heartbeat',
-      message: 'ClanWorld: heartbeat rate limited',
+      data: encodeErrorResult({
+        abi: ERROR_STRING_ABI,
+        errorName: 'Error',
+        args: ['ClanWorld: heartbeat rate limited'],
+      }),
+    });
+    const wrapped = new BaseError('Execution reverted for an unknown reason.', { cause: reverted });
+    viemMocks.writeContract.mockRejectedValue(wrapped);
+    viemMocks.readContract.mockRejectedValue(new Error('rpc unavailable'));
+
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+    });
+
+    const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(HeartbeatRateLimitedError);
+  });
+
+  it('does NOT mis-classify a world-paused revert as rate-limited even when nextHeartbeatAtTs is in the future', async () => {
+    // heartbeat() runs _requireWorldNotPaused() BEFORE the rate-limit guard, so a
+    // paused world reverts with a DIFFERENT decoded reason. With nextHeartbeatAtTs
+    // far in the future, a naive timestamp-fallback would wrongly upgrade this to a
+    // rate-limit (masking the real fault). The decoded reason must win.
+    const reverted = new ContractFunctionRevertedError({
+      abi: HEARTBEAT_ABI_FRAGMENT,
+      functionName: 'heartbeat',
+      data: encodeErrorResult({
+        abi: ERROR_STRING_ABI,
+        errorName: 'Error',
+        args: ['ClanWorld: world paused'],
+      }),
     });
     const wrapped = new BaseError('Execution reverted for an unknown reason.', { cause: reverted });
     viemMocks.writeContract.mockRejectedValue(wrapped);
@@ -353,22 +390,22 @@ describe('RunnerCastHeartbeat', () => {
     });
 
     const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
-    expect(err).toBeInstanceOf(HeartbeatRateLimitedError);
+    expect(err).not.toBeInstanceOf(HeartbeatRateLimitedError);
+    expect(err).toBe(wrapped);
   });
 
-  it('surfaces a non-rate-limit contract revert unchanged', async () => {
-    vi.useFakeTimers();
-    // Wall clock far ahead of nextHeartbeatAtTs below, so the timestamp fallback
-    // does NOT mis-classify this as rate-limited.
-    vi.setSystemTime(10_000_000_000_000);
+  it('falls back to the timestamp heuristic for an UNDECODED revert (no reason)', async () => {
+    // A custom error with no ABI match has no decoded reason; only here may the
+    // nextHeartbeatAtTs timestamp heuristic classify it as rate-limited.
     const reverted = new ContractFunctionRevertedError({
       abi: HEARTBEAT_ABI_FRAGMENT,
       functionName: 'heartbeat',
-      message: 'ClanWorld: world paused',
+      data: '0xdeadbeef',
     });
+    expect(reverted.reason).toBeUndefined(); // guards the test's premise
     const wrapped = new BaseError('Execution reverted for an unknown reason.', { cause: reverted });
     viemMocks.writeContract.mockRejectedValue(wrapped);
-    viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 1n });
+    viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 9_999_999_999n });
 
     const heartbeat = new RunnerCastHeartbeat({
       privateKey: '1'.repeat(64),
@@ -377,7 +414,6 @@ describe('RunnerCastHeartbeat', () => {
     });
 
     const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
-    expect(err).not.toBeInstanceOf(HeartbeatRateLimitedError);
-    expect(err).toBe(wrapped);
+    expect(err).toBeInstanceOf(HeartbeatRateLimitedError);
   });
 });
