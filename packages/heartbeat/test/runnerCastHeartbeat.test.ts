@@ -30,11 +30,17 @@ vi.mock('viem/accounts', () => ({
   })),
 }));
 
+import { BaseError, ContractFunctionRevertedError } from 'viem';
+import { HeartbeatRateLimitedError } from '@clan-world/agents/seams';
 import {
   configFromEnv,
   RunnerCastHeartbeat,
 } from '../src/runnerCastHeartbeat';
 import { writeHeartbeatSuccessFile } from '../src/heartbeatSuccessFile';
+
+const HEARTBEAT_ABI_FRAGMENT = [
+  { type: 'function', name: 'heartbeat', inputs: [], outputs: [], stateMutability: 'nonpayable' },
+] as const;
 
 let heartbeatSuccessDir = '';
 let heartbeatSuccessFile = '';
@@ -323,4 +329,55 @@ describe('RunnerCastHeartbeat', () => {
     );
     warn.mockRestore();
   }, 7_000);
+
+  it('upgrades a viem-wrapped rate-limit revert to HeartbeatRateLimitedError', async () => {
+    // viem surfaces the on-chain revert wrapped in a BaseError (e.g.
+    // ContractFunctionExecutionError) whose cause is the ContractFunctionRevertedError.
+    // A bare `instanceof ContractFunctionRevertedError` misses the wrapper and the
+    // rate-limit revert leaks out as a generic error, sending the scheduler down its
+    // retry-with-backoff path instead of cleanly waiting for the window. The caller
+    // must walk the cause chain + match the rate-limit reason.
+    const reverted = new ContractFunctionRevertedError({
+      abi: HEARTBEAT_ABI_FRAGMENT,
+      functionName: 'heartbeat',
+      message: 'ClanWorld: heartbeat rate limited',
+    });
+    const wrapped = new BaseError('Execution reverted for an unknown reason.', { cause: reverted });
+    viemMocks.writeContract.mockRejectedValue(wrapped);
+    viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 9_999_999_999n });
+
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+    });
+
+    const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(HeartbeatRateLimitedError);
+  });
+
+  it('surfaces a non-rate-limit contract revert unchanged', async () => {
+    vi.useFakeTimers();
+    // Wall clock far ahead of nextHeartbeatAtTs below, so the timestamp fallback
+    // does NOT mis-classify this as rate-limited.
+    vi.setSystemTime(10_000_000_000_000);
+    const reverted = new ContractFunctionRevertedError({
+      abi: HEARTBEAT_ABI_FRAGMENT,
+      functionName: 'heartbeat',
+      message: 'ClanWorld: world paused',
+    });
+    const wrapped = new BaseError('Execution reverted for an unknown reason.', { cause: reverted });
+    viemMocks.writeContract.mockRejectedValue(wrapped);
+    viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 1n });
+
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+    });
+
+    const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
+    expect(err).not.toBeInstanceOf(HeartbeatRateLimitedError);
+    expect(err).toBe(wrapped);
+  });
 });

@@ -1,4 +1,5 @@
 import {
+  BaseError,
   ContractFunctionRevertedError,
   createPublicClient,
   createWalletClient,
@@ -151,12 +152,23 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
           `heartbeat tx receipt timed out after ${this.receiptTimeoutMs}ms`,
         );
       }
-      // Attempt to upgrade only simulation-level contract reverts to
-      // HeartbeatRateLimitedError; pre-flight/RPC errors must surface unchanged.
-      if (!(err instanceof ContractFunctionRevertedError)) throw err;
+      // Upgrade simulation-level contract reverts to HeartbeatRateLimitedError.
+      // viem wraps the revert in ContractFunctionExecutionError (and similar
+      // BaseError subclasses), so a bare `instanceof ContractFunctionRevertedError`
+      // MISSES it and the rate-limit revert leaks out as a generic error — which
+      // sends the scheduler down its retry-with-backoff path instead of cleanly
+      // waiting for the window. Walk the cause chain to find the real revert.
+      // Pre-flight / RPC errors (no contract revert) must surface unchanged.
+      const revert = extractContractRevert(err);
+      if (!revert) throw err;
+      // The contract's rate-limit revert reason is the authoritative, clock-basis
+      // independent signal; fall back to the nextHeartbeatAtTs timestamp check.
       const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
-      if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
-        throw new HeartbeatRateLimitedError(next);
+      if (
+        isRateLimitRevert(revert) ||
+        (next !== undefined && next > Math.floor(Date.now() / 1000))
+      ) {
+        throw new HeartbeatRateLimitedError(next ?? 0);
       }
       throw err;
     }
@@ -226,6 +238,38 @@ export class HeartbeatTimeoutError extends Error {
     super(message);
     this.name = 'HeartbeatTimeoutError';
   }
+}
+
+/** ClanWorld.heartbeat() rate-limit revert reason (see IClanWorld.sol). */
+const RATE_LIMIT_REVERT_REASON = 'heartbeat rate limited';
+
+/**
+ * viem wraps contract reverts in ContractFunctionExecutionError (a BaseError
+ * subclass), so a bare `instanceof ContractFunctionRevertedError` misses them.
+ * Walk the error cause chain to find the underlying revert, returning it (or
+ * undefined for non-contract errors like RPC/network failures).
+ */
+function extractContractRevert(err: unknown): ContractFunctionRevertedError | undefined {
+  if (err instanceof ContractFunctionRevertedError) return err;
+  if (err instanceof BaseError) {
+    const walked = err.walk(e => e instanceof ContractFunctionRevertedError);
+    if (walked instanceof ContractFunctionRevertedError) return walked;
+  }
+  return undefined;
+}
+
+/**
+ * True when the revert is the contract's rate-limit guard (basis-independent).
+ * Scans reason + shortMessage + message rather than `??`-picking one field,
+ * because viem may populate a generic shortMessage while the decoded reason
+ * carries the actual `ClanWorld: heartbeat rate limited` string.
+ */
+function isRateLimitRevert(revert: ContractFunctionRevertedError): boolean {
+  const haystack = [revert.reason, revert.shortMessage, revert.message]
+    .filter((s): s is string => typeof s === 'string')
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(RATE_LIMIT_REVERT_REASON);
 }
 
 function normalizePk(pk: string): `0x${string}` {
