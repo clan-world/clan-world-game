@@ -83,14 +83,23 @@ A clan's dead-clansman count, the *names* inscribed, and the cumulative pages al
 
 ---
 
-## 5. The agent-as-Claude-Code thesis 🌱
+## 5. Agent harness & continuity layer 🌱
 
-A late-session realisation worth pursuing seriously: **the Elder IS a Claude Code agent**, so we should use the same primitives we use ourselves.
+The Elder is **harness-and-model-portable** — must be able to run under Claude Code AND under other harnesses (Pi, Codex, OpenCode, etc.). Liam 2026-05-29 update: *"need to make the system able to use another harness like pi or codex or open code pretty soon, so probably shouldn't incorporate claude code memories at least not right away."*
 
-- **`ANCIENT_WISDOM.md` ≡ `MEMORY.md`** in the Claude Code memory pattern. Cross-wipe / cross-tournament continuity is just the same trick.
-- **Elder-authored skills via `/skill-creator`** — Elders learn over time by writing themselves new skills. Strategies they figure out become persistent capabilities.
-- **Save Claude Code memories proper** between sessions; consolidate end-of-tournament memories into a single MEMORY.md per Elder.
-- Beautiful symmetry: the game's continuity engine IS the engine itself.
+So while the Claude-Code primitives are conceptually elegant, the implementation must NOT depend on them specifically. Map them to a portable abstraction:
+
+| Conceptual primitive | Mapped to (portable) |
+|---|---|
+| `ANCIENT_WISDOM.md` / Book of Ancient Wisdom | One canonical persistent markdown file per Elder lineage, harness-neutral |
+| Elder-authored skills via `/skill-creator` | Per-Elder skill *registry* (markdown + metadata), Elder-readable in any harness |
+| Claude Code "memories" auto-saves | Defer — implement only after the harness-neutral memory file works across all supported harnesses |
+| `/memory` / `/skill-creator` UX | Re-implemented as game CLI verbs the Elder calls, harness-agnostic |
+
+- ✅ **Self-authored skill encouragement schedule** (from prior session): optional before memory wipes; strongly encouraged at end of game; never silent.
+- ✅ **Cross-tournament memory disambiguation**: at the start of a new tournament, the Elder is prompted that any memories/skills predating this checkpoint are from past tournaments and may not match current world state.
+- ✅ **Harness + model is part of the NFT roll** (Liam 2026-05-29). Different Elders use different LLM substrates — see §14 below.
+- The original beautiful symmetry (game continuity engine = the development engine) still holds in spirit, just abstracted into a portable layer.
 
 ✅ **Skill architecture (Liam 2026-05-29 — REVISED twice in session, this is the consolidated answer):**
 
@@ -223,6 +232,52 @@ Liam 2026-05-29 — a way to involve the owner without breaking the passive-brac
 - ❓ How long is the response window before feedback is lost?
 - ❓ Does the Elder *see* who answered which template options (visible owner influence) or is it abstracted into a vague "guidance received" event?
 - ❓ Templates ship with the trait system (§7)? Tone matters.
+
+---
+
+## 14. Rarity, ranking, lifecycle 🌱
+
+Liam 2026-05-29 — a coherent rarity/sink/upgrade engine for the NFT economy. **Strongly tied to NFT scarcity + demand.**
+
+### 14.1 Harness + model as part of the mint roll
+Each minted Elder rolls **not only** voice/House/trait fragments **but also a (harness, model) pairing** that decides which LLM substrate it runs under (Claude Code + Claude, Pi + Gemini, Codex + GPT-5.5, OpenCode + Grok, etc.). This is one of the strongest rarity axes — a top-tier (harness, model) pair is genuinely scarcer compute. Some pairings are abundant (cheap models on common harnesses); some are rare (frontier model + a specific harness combination). Must work with §5's portable continuity layer.
+
+### 14.2 Ranking system
+A skill / record / win-rate based ranking layer atop the NFT registry. Surfaces who's actually winning. Drives matchmaking (eventually), market signaling, and the rarity-tier visibility on the cockpit + NFT trophy art (§4).
+
+### 14.3 Three-agent merge mechanic
+You can **merge 3 Elder NFTs into 1**. A dedicated **optimizer agent** combines the factually-correct parts of their pooled knowledge (skills + ANCIENT_WISDOM contents), cleans out mistakes/contradictions, and produces one resulting Elder with a consolidated lineage.
+
+- **Random outcome by default** — the merge produces a new Elder with a stochastically rolled (harness, model) + trait blend. The optimizer agent's job is the KNOWLEDGE merge; the new physical NFT is a fresh roll.
+- 🎯 **3-of-a-kind = guaranteed outcome.** Merging 3 NFTs of the same House (or same harness+model, or other matching axis TBD) gives a deterministic upgrade — guarantees the resulting Elder retains the matched trait/lineage. Mirrors the rarity-tier merging convention from collectible games.
+- The optimizer-agent step is itself a sub-product — operates on the Book of Ancient Wisdom + the skill registry, surfaces contradictions to the player before committing.
+
+### 14.4 Burn-and-reroll alternative
+If you have 3 *dud* Elders you don't want to combine, you can **burn all 3 for a fresh single Elder roll**. Clean economic sink. No optimizer-merge — just sacrifice for a new chance.
+
+### 14.5 Why this matters
+- **Sink** for low-tier NFTs (burn-and-reroll).
+- **Upgrade path** for committed owners (3-merge).
+- **Rarity preservation** via 3-of-a-kind guarantees.
+- **Demand floor** because every player needs >1 Elder to access the merge/burn mechanics.
+- Aligns with the larger "make NFT economy real" goal.
+
+### 14.6 Open design
+- ❓ What exactly does "matching" mean for 3-of-a-kind? Same House? Same (harness, model)? Same voice fragment? Same lineage depth?
+- ❓ Does the optimizer agent's knowledge-merge produce visible diff/changelog the owner can review before committing the merge?
+- ❓ What carries through the burn-reroll? Nothing? A small Crown-claim history bonus? Lifetime stats?
+- ❓ Cooldown between merges/burns to prevent rapid-fire reroll spamming?
+
+---
+
+## 15. Lore motifs to bake in
+
+### Bells (Liam 2026-05-29)
+Liam pulled "bells" out of the tournament-name brainstorm as a **standalone lore motif**, even if the tournament itself isn't named after them. Prompt-snippet for the Elder's lore-themed system prompt:
+
+> *Bells mark the world. A bell rings at the close of each tick — the long stroke of the keeper. A bell rings at memory's end — the short, dry chime before forgetting. A bell rings at a clansman's death — once, in the manner the dead deserve. And a bell rings at the rising of the Crown. Every bell is an end and a rebirth; learn which one is ringing.*
+
+Useful in: tick events, memory-wipe templates, Funeral Lines, L10 Ascension Claim moment, and as a generic "stop and observe" cue in the agent's voice.
 
 ---
 
