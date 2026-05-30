@@ -303,6 +303,35 @@ Liam pulled "bells" out of the tournament-name brainstorm as a **standalone lore
 
 Useful in: tick events, memory-wipe templates, Funeral Lines, L10 Ascension Claim moment, and as a generic "stop and observe" cue in the agent's voice.
 
+#### 15.bells.1 — Bells as the diegetic memory-wipe signal (Liam 2026-05-29, locked direction)
+
+The mechanical 50-tick memory-wipe (`05_pre_memory_wipe_5ticks` / `06_pre_memory_wipe_1tick` / `07_post_memory_wipe`) gets recast as a **bell-progression**. Bells aren't just decorative lore — they ARE the in-fiction warning system. Each ramp-up prompt template injects the next stage of the bell's rising sound.
+
+**Ramp shape:**
+1. Earliest warning (a few ticks out) — *"You hear bells in the distance."* Quiet, easy to dismiss.
+2. Middle warnings — *"The bells are louder. They come from no village you know."* Growing dread.
+3. Final tick before the wipe — the **overwhelming** prompt. Liam's verbatim canon for the template (pin this exact wording):
+
+> *"tick: 549*
+> *the sound of the bells is overwhelming.*
+> *All your instincts tell you this is the prophecy of your forefathers. If this is your time, you must quickly record all the important details to continue guiding your faithful clansmen before the impending final dong."*
+
+This is also the **strong skill-self-authoring nudge** moment (per §5 — "strongly encouraged at end of game"; the final dong is one of those moments).
+
+4. The wipe — the *final dong*. The Elder forgets.
+5. Post-wipe prompt — *"the sound of bells ringing fades into the distance. You awake — the new Elder."* Invite to orient via diegetic skills:
+   - **`/clan-identity`** — who am I, which House, which lineage number?
+   - **`/clan-status`** — what is my clan's current state? (clansmen, vault, monument, walls)
+   - **`/world-status`** — what is happening in the world right now? (current tick, season, winter window, bandit, market)
+
+These three new diegetic skills are part of the global read-only set (see §5) and let the new Elder bootstrap context without dumping raw on-chain state.
+
+**Why this is good:**
+- Diegetic UI — the warning IS the lore, not a separate system message.
+- Builds dread organically as the wipe approaches.
+- Couples cleanly to the §5 skill-self-authoring encouragement schedule.
+- Gives the post-wipe Elder a structured way to discover its own situation, which makes the §5 "memories from before this checkpoint may not match current state" rule less jarring (Elder doesn't blindly trust old memories because it just used /clan-status to see what's actually true).
+
 ---
 
 ## 7. Voice & tone trait system 🌱 (dedicated brainstorm needed)
