@@ -611,26 +611,128 @@ Codex's red-team pass on the §17 package. Six sharpenings; Liam responded to fo
 
 6. ⚠️ **Secondary-market optionality blind spot — STILL OPEN.** Liam didn't address this either; framed as a related-but-not-urgent concern since hoarding isn't a failure mode per his §17.12 item 2 correction. Wingman's framing — *"the sink has to beat the option value of waiting"* — stays as a long-term lens for the merge-and-burn loop tuning, not a launch blocker.
 
-### 17.13 Status after Liam's 2026-05-30 verdict
-- 🚩 **Pay-to-compete dynamic** (§17.12 item 4) — **still urgent.** Liam hasn't addressed; codex's prize-eligibility-vs-participation fix stands as a proposal awaiting his call.
-- ✅ **Dumb percentage + commons baseline** — **direction locked.** Liam pushed UP to ~75–80% dumb; the emotional-baseline tension resolved by giving dumbs full personality/art/dialogue (§17.2). The "blank card" risk is averted by treating dumb strategically, not cosmetically.
+### 17.13 Status after Liam's 2026-05-30 verdicts (updated)
+- ✅ **Pay-to-compete dynamic — RESOLVED by Liam 2026-05-30.** Wingman + Claude were overweighting the concern. The Clash-of-Clans precedent is the correct reference, not pure-PvP-ladder games. Clash of Clans makes its entire business model on per-base cooldown + skip-cost, and players don't read it as unfair because (a) skip is an impatience tax, not a competitive moat; (b) the alternative path of owning multiple Elders is genuinely viable. The cooldown stays as designed (§17.7). Conditions where the concern would resurface (flagged for sim modelling, not deal-breakers):
+  - If skip-cooldown cost is too low relative to cost of a second Elder, skip becomes dominant and the multi-Elder alternative collapses. Skip cost needs tuning so a player chooses meaningfully between "skip my one Elder 5×/week" and "buy a second Elder."
+  - If secondary-market friction makes owning multiple Elders impractical, the alternative path quietly dies. Keep mint costs + secondary market healthy.
+- ✅ **Dumb percentage + commons baseline** — direction locked. ~75–80% dumb; full personality/art/dialogue per §17.2.
 - ✅ **Hoarding worry** — softened to a non-issue per Liam.
 - ✅ **Paid House lock-in** — no exclusion concern per Liam.
 - 🌱 **Secondary-market optionality** — kept as long-term tuning lens, not launch blocker.
 
-### 17.14 Open questions (NFT economy)
-- ❓ Dumb-agent percentage: 40%? 50%? 60%? Affects compute cost + rarity floor.
-- ❓ Dumb-script ARCHETYPE count per House — how many distinct dumb playstyles do we need?
+### 17.14 Wingman's 3-way rejoin (codex 2026-05-30 second pass)
+
+After Liam's corrections, wingman delivered a second pass that added meaningful sharpenings. Three additions worth pulling forward:
+
+**The fifth player archetype — the Social Organizer / Local-Club Player.** Wingman flagged my four-archetype frame (whale / dedicated / casual / speculator) as incomplete. The missing one: the host, recruiter, meme-maker, House-Discord-coordinator. Not optimizing EV, not purely casual, not a whale, not a grinder. They host, explain rules, coordinate House identity, make the game feel alive (the local-game-store layer in Pokémon). Traverses §17 sideways:
+- Random base mint → conversational variety to share with friends
+- Pack-of-11 → gifting, trading, onboarding new players
+- House lock-in → identity + banner
+- Discord gating → clubhouse
+- Same-House cooperation → reason to coordinate
+- Burn-3 → communal rituals ("who's upgrading, who needs spares?")
+- Dumb agents WITH personality → bond without needing strategic depth
+
+**Risk for this archetype:** if House mechanics get too economically optimized, the social player gets dragged into factional ROI warfare against their will. They like belonging; they may dislike conscription.
+
+**Four additional composition tensions** (beyond the three already flagged in §17.12):
+- **Dumb-script % × perceived agency** — 75–80% dumb is fine if characters are expressive, dangerous if outcomes feel solved by archetype matchups rather than player decisions.
+- **Gold-skip × secondary market** — if faster play farms scarce outputs, spenders dominate both the ladder AND asset supply.
+- **Burn-3 × newbie onboarding** — late entrants may feel the affordable ladder was already consumed by earlier waves of burning.
+- **Dialogue/personality × fixed strategy** — if a dumb Elder TALKS like a cunning individual but always pilots a static script, the fiction eventually fights the mechanics. Implication: dumb-script archetype design needs personality-variety AND strategic-script-variety to MATCH, so the talk lines up with the play.
+
+**House tribalism failure mode confirmed.** Auto-balanced *pricing* (§17.5) can rebalance demand but cannot rebalance *coordinated power*. If one House gets a coordination lead, the in-game cooperation bonus (§17.9) compounds through Discord activity → tactics → wins → prestige → recruits. Higher mint price may not deter joiners; it may even become a luxury/status signal.
+
+**Fix needs to be POWER balancing, not just price balancing.** Candidates:
+- Diminishing cooperation-bonus returns at high same-House counts
+- Underdog House bonuses
+- Seasonal House resets (rotate which House is "ascendant")
+- Cross-House incentives (gold rewards for mixed-House trades)
+- Caps on same-House stacking in competitive contexts
+
+### 17.15 Open questions (NFT economy, updated)
+
+- ❓ Skip-cooldown cost ratio vs second-Elder cost — needs to be tunable so both paths are real.
+- ❓ Dumb-agent percentage: confirmed ~75–80%; fine-tune in sim.
+- ❓ Dumb-script ARCHETYPE count per House — how many distinct strategic playstyles do we need, matched to personality variants?
 - ❓ House lock-in pricing structure — flat premium or population-imbalance-dynamic?
 - ❓ Tournament entry fee scaling curve — linear with league rank, exponential, tiered?
-- ❓ Cooldown skip pricing — flat per skip, doubling, capped?
-- ❓ Cooldown coupling — participation, prize-eligibility, or both? (Codex: prize-eligibility only.)
 - ❓ Pack-mint probability distribution — guaranteed 1 rare per 10? Per 11? Per 5?
 - ❓ When does the next-edition release happen? On schedule or when mint pool depletes?
 - ❓ Bid-to-jump-queue for tournament entry — implement at launch or defer?
 - ❓ Burn-window cadence + visible-odds disclosure mechanics?
 - ❓ Identity anchor at mint — free House pick, auto-assigned re-pickable, or paid only?
 - ❓ Sink-vs-optionality: how do we make the sink credibly *beat* the option value of waiting?
+- ❓ House power-balancing mechanism (§17.14 fixes) — which combo: diminishing cooperation returns, underdog bonuses, seasonal House resets, cross-House incentives, same-House stacking caps?
+
+---
+
+## 17b. Elder Level mechanic 🌱 (Liam 2026-05-30 + codex stress-test)
+
+A separate progression axis layered on top of the rarity/mint axes. **Captures the lineage continuity of merging Elders across tournaments into a single numeric level.**
+
+### 17b.1 The formula (Liam 2026-05-30)
+- All Elders start at **level 1**.
+- A 3-merge of input Elders produces an output with level = **median of the 3 input levels + 1**.
+
+Worked examples:
+- `1 + 1 + 1` → median 1 → **L2**
+- `1 + 1 + 2` → median 1 → **L2**
+- `2 + 2 + 1` → median 2 → **L3**
+- `2 + 2 + 2` → median 2 → **L3**
+- `2 + 2 + 3` → median 2 → **L3**
+- `1 + 2 + 3` → median 2 → **L3**
+- `1 + 1 + 3` → median 1 → **L2** (the L3 input was downgraded into L2 output — see §17b.2)
+
+**Cost curve to climb (codex wingman 2026-05-30):** because the third input can always be trash, the cheapest path doubles each level: L2 costs 3 base, L3 costs 7, L4 costs 15, L5 costs 31, **L10 costs 1,023 base-tier Elders**. Elegant doubling, properly expensive at the cap, but it admits the third merge input is functionally an **offering / witness / catalyst**, not an equal participant. Frame it that way in the UI/lore.
+
+### 17b.2 Downgrade discipline (codex 2026-05-30)
+The `1+1+3 → L2` pattern actively downgrades the L3 input. Codex flag: this is *good as edge tension, bad as common UX outcome*. Players will read it as "I destroyed value by misunderstanding the rules," not as strategic choice.
+
+**Fix candidates:**
+- Cap output floor at **highest** input level (no downgrades possible).
+- Allow downgrade ONLY behind explicit *sacrifice* language — the UI screams the output level before confirmation.
+- Forbid merges where output level < max input level entirely.
+
+### 17b.3 What level unlocks — Liam's core insight via codex
+
+**🔑 The crystallization (codex 2026-05-30):**
+> *"Level should mean MYTHIC SENIORITY. Let MODEL TIER mean INTELLIGENCE."*
+
+Two separate axes that never collapse into each other. Level is the legacy/identity/ritual axis. Model tier is the competitive-power axis. Trying to let level grant competitive advantage re-creates pay/burn-to-win optics.
+
+### 17b.4 Concrete level unlocks
+
+**Expressive depth (level-gated, not competitive):**
+- **Chat with Elder** depth scales with level. Lower-level Elders give brief / basic responses; higher-level Elders hold richer conversations, can crystallise memories, can pass blessings to clansmen.
+- **The Book gets thicker.** Higher-level Elders have visibly bigger Books of Ancient Wisdom — more pages, more remembered Funeral Lines from past lifetimes, more lineage-depth flavour seeded into the system prompt.
+- **Visible NFT art evolution.** A ring/halo/badge that grows. Each merge-up is a slot-machine reveal moment.
+- **Skill slot growth.** Level 1 carries baseline + 1 rolled rare; level 5 carries baseline + 5. Ties to §17.8 skill-bundles-at-mint.
+
+**Sideways league access (codex's "Ancient Divisions" idea):**
+- High-level Elders can enter special tournament formats with **cosmetic prestige, council voting, lore stakes** — but NOT raw ladder advantage.
+- Prevents level from becoming pay/burn-to-win while still rewarding lineage progression.
+
+**🆕 Lineage Powers (codex 2026-05-30):** higher-level Elders **preserve traits from sacrificed ancestors** — voice fragments, battle memories, old titles, rivalries, scars, prophecies. Level means accumulated ancestry, not just XP. Each merge LITERALLY pulls a phrase, a voice quirk, a remembered grudge from each sacrificed Elder into the resulting one. Over 10 levels, an Elder accumulates a CHORUS of voices.
+
+**🆕 World Authority (codex 2026-05-30):** high-level Elders can author small canonical changes to the realm itself — bless a clan, name a seasonal event, found a doctrine, mark another Elder as rival/heir/exile. Level unlocks governance over **meaning**, not stats.
+
+### 17b.5 Two more I added (Claude 2026-05-30 building on codex)
+
+**🆕 Lineage-name convention.** As ancestors are preserved through merges, the Elder's full name accumulates them. *"Pell, the Eleventh of House Slate, of the line of Mara, Iren, and four others whose names have faded."* Genealogy becomes naming. Funeral Lines from earlier seasons get pulled forward into the Elder's signature, so the dead literally walk in the living.
+
+**🆕 The Council of Elders tournament.** Wingman's "Ancient Divisions" idea taken further. Once per cycle, all **level-8-plus Elders** across all clans convene for a special tournament with completely different rule set + stakes. The *Council Vote* is the actual product — high-level Elders vote to ratify a single canonical change to the realm's physics for the next cycle. Players vote THROUGH their Elders, but it's the Elders who carry the authority. World Authority made concrete.
+
+### 17b.6 Cap and pacing
+- **Cap at level 10** — mirrors the Crown win condition at monument L10. Same number, same dramatic ceiling. Once you have a level-10 Elder, you've maxed the lineage; that Elder becomes a true legend with full chorus + thickest Book + most authority.
+
+### 17b.7 Open questions
+- ❓ Downgrade discipline — cap at max input level, allow only behind explicit sacrifice language, or forbid?
+- ❓ Lineage Powers mechanic — how many traits transfer per merge? Random selection from each sacrificed Elder, or owner-chooses?
+- ❓ World Authority — what scale of canonical change can a level-8/9/10 Elder author? Reversible? Voted on by other high-level Elders?
+- ❓ Council of Elders cadence — annual, per-season, per-tournament-cycle?
+- ❓ Chat-depth gating — concrete: what does "richer conversation" mean per level?
+- ❓ Skill slot growth — how steep? L1=1, L5=5, or steeper/shallower curve?
 
 ---
 
@@ -689,3 +791,4 @@ Elder design must produce **depth over months**, not demand-spikes over days. Th
 | 2026-05-30 | r8 NFT economy + chat refinement + collecting-psychology framework. Added §17 (mint/rarity/packs/cooldown/tournament economy), §18 (chat-with-Elder refined as optional side bonus, codex-critiqued cost structure), §19 (collecting-psychology framework with codex's 4 missing drivers + Tamagotchi-vs-dogs reframe). |
 | 2026-05-30 | r9 wingman stress-test on §17. Added §17.12 (6 sharpenings — dumb-script archetypes, burn-window layering, identity-anchor fix, prize-eligibility-vs-participation cooldown decouple, 60/30/10 commons counter-proposal, secondary-market optionality blind spot) + §17.13 (red flags before sim modelling) + 5 new open questions. |
 | 2026-05-30 | r10 Liam's verdicts on the r9 wingman sharpenings: dumb-agent "blank card" framing rejected (dumbs have full art/personality/dialogue; the boring STRATEGY is the point); dumb % raised from 40–60% to ~75–80%; hoarding softened as non-issue; paid House lock-in cleared (1-in-8 random base + pack-of-11 gives variety); cooldown pay-to-compete still open; secondary-market optionality moved from blocker to long-term lens. Slot-machine reveal moments framed as the emotional engine of the product. |
+| 2026-05-30 | r11 cooldown walk-back + Elder Level mechanic + wingman 3-way rejoin. Liam pushed back on cooldown trust-break framing using the Clash-of-Clans precedent; cooldown stays as designed with skip-cost vs second-Elder-cost tuning flagged for sim. Captured wingman's 5th archetype (social organiser / local-club player), 4 additional composition tensions (dumb % × perceived agency, gold-skip × secondary market, burn-3 × newbie onboarding, dialogue × fixed strategy), and the House tribalism × power-balancing failure mode. NEW §17b — Elder Level mechanic: median+1 merge formula, doubling cost curve to L10 = 1023 base, codex's crystallisation 'level = mythic seniority, model tier = intelligence', sideways "Ancient Divisions" league concept, Lineage Powers (preserved ancestor traits), World Authority (canonical lore changes), Council of Elders tournament, lineage-name convention, cap at L10. |
