@@ -584,14 +584,53 @@ Liam pitch: **build economic simulations before launch.** First-six-months model
 
 Liam's hunch: *"I'm always shocked at how close my models are when I do model things like this ahead of time."* Worth the upfront analytical investment; gives us informed parameters for launch.
 
-### 17.12 Open questions (NFT economy)
+### 17.12 Wingman stress-test (codex 2026-05-30) — refinements before sim modelling
+
+Codex's red-team pass on the §17 package. Six sharpenings; two flagged as urgent-to-rethink before any economic simulation work.
+
+1. **Dumb agents — desire vs compute (refinement).** 40–60% solves compute; the failure mode is "dumb feels like a blank card." Fixes:
+   - Dumb Elders MUST have visible House art, lineage, comic failure patterns, and remain valuable as merge fuel.
+   - **Do NOT put 7 identical scripts in a single bracket.** Build **script archetypes with noise** — multiple distinct dumb-playstyles per House. Otherwise tournaments feel padded and spectating is boring.
+
+2. **Burn-3-for-1 sink — not enough alone.** Rational owners HOARD if they believe future buffs might rescue commons. Layer on:
+   - **Seasonal burn windows** — limited-time bonus reroll odds.
+   - **Visible odds** — publish the reroll distribution so the bet is legible.
+   - **Edition-specific bonuses** — burning into a new edition gives slight pull toward that edition's pool.
+   - Social narrative: *"dumbs decay as lottery tickets — old commons stay collectible, but never mechanically optimal forever."*
+
+3. **Paid House lock-in — UX-sensitive.** House isn't actually cosmetic in our design — it gates Discord channels + tribal bonuses (§17.9). If broke players can't pick their tribe, that's exclusionary, not just "whales buy power."
+   - **Fix:** one cheap **identity anchor** at mint that EVERYONE gets (e.g. a base House pick, or auto-balanced House assignment with low-cost re-pick). Premium fine-tuning above that.
+
+4. 🚩 **RED ALERT: 7-day cooldown + gold-skip = pay-to-compete unless decoupled.** Whales buying more runs learn faster, rank faster, compound gold.
+   - **Fix:** *cooldown should affect **prize eligibility**, not **participation**.* Whales can still play more often for practice + spectating; they just can't buy a faster path up the league. Free owners get one prize-eligible outing per week + unlimited learning runs.
+   - Scarcity is good; **silence is not** — getting one meaningful outing per week may feel too cold for attachment.
+
+5. **The 80–90% commons goal — challenged directly.** Pokémon commons worked because packs were tactile, cheap, social, and set-completion psychology was strong. Here each mint is a *being with expected agency*. Too many low-care Elders fights the emotional premise.
+   - **Counter-proposal: 60 / 30 / 10** (commons / mid / rare). Enough burn material; less buyer remorse; more mid-tier identity.
+   - Open: does our agent-NFT product need its own distribution shape, not Pokémon's?
+
+6. 🔑 **Biggest blind spot: secondary-market psychology.** The §17 design assumes owners act like *game players optimizing sinks*. NFT buyers act like **speculators optimizing optionality**. If they believe future mechanics may rescue commons, they will not burn.
+   > *"Your sink has to beat the option value of waiting."*
+
+### 17.13 Urgent before sim modelling (codex's red flags)
+- 🚩 **Pay-to-compete dynamic** (§17.12 item 4) — decouple cooldown from prize eligibility before parameterising the sim.
+- 🚩 **Dumb percentage + commons baseline** (§17.12 items 1, 5) — verify the emotional baseline before locking 40–60% / 80–90%.
+
+Both can break trust **before** the economy gets a chance to equilibrate.
+
+### 17.14 Open questions (NFT economy)
 - ❓ Dumb-agent percentage: 40%? 50%? 60%? Affects compute cost + rarity floor.
+- ❓ Dumb-script ARCHETYPE count per House — how many distinct dumb playstyles do we need?
 - ❓ House lock-in pricing structure — flat premium or population-imbalance-dynamic?
 - ❓ Tournament entry fee scaling curve — linear with league rank, exponential, tiered?
 - ❓ Cooldown skip pricing — flat per skip, doubling, capped?
+- ❓ Cooldown coupling — participation, prize-eligibility, or both? (Codex: prize-eligibility only.)
 - ❓ Pack-mint probability distribution — guaranteed 1 rare per 10? Per 11? Per 5?
 - ❓ When does the next-edition release happen? On schedule or when mint pool depletes?
 - ❓ Bid-to-jump-queue for tournament entry — implement at launch or defer?
+- ❓ Burn-window cadence + visible-odds disclosure mechanics?
+- ❓ Identity anchor at mint — free House pick, auto-assigned re-pickable, or paid only?
+- ❓ Sink-vs-optionality: how do we make the sink credibly *beat* the option value of waiting?
 
 ---
 
@@ -648,3 +687,4 @@ Elder design must produce **depth over months**, not demand-spikes over days. Th
 |---|---|
 | 2026-05-29 | Initial bootstrap from the lore brainstorming session. Captured: design principles, tournament structure, owner touchpoints, Book-page-on-wipe, agent-as-Claude-Code thesis, co-gather + leveling, asymmetric bandit visibility, collab nudges, voice/tone, lore-themed prompts, persistence model, open questions. |
 | 2026-05-30 | r8 NFT economy + chat refinement + collecting-psychology framework. Added §17 (mint/rarity/packs/cooldown/tournament economy), §18 (chat-with-Elder refined as optional side bonus, codex-critiqued cost structure), §19 (collecting-psychology framework with codex's 4 missing drivers + Tamagotchi-vs-dogs reframe). |
+| 2026-05-30 | r9 wingman stress-test on §17. Added §17.12 (6 sharpenings — dumb-script archetypes, burn-window layering, identity-anchor fix, prize-eligibility-vs-participation cooldown decouple, 60/30/10 commons counter-proposal, secondary-market optionality blind spot) + §17.13 (red flags before sim modelling) + 5 new open questions. |
