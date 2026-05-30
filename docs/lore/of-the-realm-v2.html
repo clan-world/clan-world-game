@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Of the Realm — a Chronicle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+DW+Pica:ital@0;1&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Cormorant+SC:wght@400;500;600&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --parchment:       #E8D8B5;
+    --parchment-aged:  #C9B58A;
+    --parchment-dark:  #A8956A;
+    --parchment-deep:  #8a7847;
+    --parchment-warm:  #F2E4C2;
+    --ink:             #2A1810;
+    --ink-soft:        #5A3D28;
+    --ink-faded:       #8a6f4f;
+    --vermillion:      #9B2A2F;
+    --vermillion-deep: #7a1f23;
+    --gold-leaf:       #A87C2F;
+    --gold-bright:     #d4a24c;
+
+    --ff-display:    'Cinzel', 'IM Fell English', 'Times New Roman', serif;
+    --ff-manuscript: 'IM Fell English', 'IM Fell DW Pica', 'Times New Roman', serif;
+    --ff-prose:      'EB Garamond', 'Garamond', Georgia, serif;
+    --ff-numeral:    'Cormorant SC', 'IM Fell DW Pica', Georgia, serif;
+    --ff-mono:       'VT323', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--ff-prose);
+    font-size: 19px;
+    line-height: 1.72;
+    color: var(--ink);
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(168,124,47,0.12), transparent 70%),
+      radial-gradient(ellipse 70% 50% at 50% 100%, rgba(155,42,47,0.08), transparent 70%),
+      repeating-linear-gradient(91deg, rgba(138,111,79,0.04) 0 2px, transparent 2px 7px),
+      repeating-linear-gradient(0deg, rgba(138,111,79,0.03) 0 1px, transparent 1px 4px),
+      linear-gradient(180deg, #efe1be 0%, #e8d8b5 30%, #e0cea3 70%, #d8c293 100%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "liga", "kern", "onum";
+  }
+
+  /* numerals get a clearer face + lining figures */
+  .num, .n {
+    font-family: var(--ff-numeral);
+    font-feature-settings: "lnum", "tnum", "kern";
+    letter-spacing: 0.02em;
+    font-weight: 500;
+  }
+  .num-rom { /* roman numerals — clean small-caps */
+    font-family: var(--ff-numeral);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    font-variant-caps: small-caps;
+  }
+
+  /* ============ Codex frame ============ */
+  .codex {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 64px 36px 96px;
+    position: relative;
+  }
+
+  .leaf {
+    background:
+      radial-gradient(ellipse 60% 30% at 50% 0%, rgba(42,24,16,0.06), transparent 60%),
+      radial-gradient(ellipse 60% 30% at 50% 100%, rgba(42,24,16,0.05), transparent 60%),
+      repeating-linear-gradient(93deg, rgba(168,124,47,0.025) 0 3px, transparent 3px 9px),
+      linear-gradient(180deg, #f4e7c6 0%, #ecdcb6 50%, #e3cf9e 100%);
+    border: 1px solid var(--parchment-deep);
+    box-shadow:
+      0 0 0 6px var(--parchment),
+      0 0 0 7px var(--parchment-deep),
+      0 30px 80px -20px rgba(42,24,16,0.45),
+      0 6px 18px rgba(42,24,16,0.2);
+    padding: 64px clamp(28px, 6vw, 84px) 80px;
+    position: relative;
+  }
+
+  /* page corner foliates */
+  .leaf::before, .leaf::after {
+    content: "";
+    position: absolute;
+    width: 56px; height: 56px;
+    pointer-events: none;
+    opacity: 0.85;
+  }
+  .leaf::before {
+    top: 18px; left: 18px;
+    background:
+      linear-gradient(135deg, transparent 47%, var(--gold-leaf) 47% 51%, transparent 51%) no-repeat,
+      radial-gradient(circle at 8px 8px, var(--vermillion) 0 3px, transparent 4px),
+      radial-gradient(circle at 8px 8px, transparent 0 6px, var(--gold-leaf) 6px 8px, transparent 9px);
+  }
+  .leaf::after {
+    bottom: 18px; right: 18px;
+    background:
+      linear-gradient(315deg, transparent 47%, var(--gold-leaf) 47% 51%, transparent 51%) no-repeat,
+      radial-gradient(circle at 48px 48px, var(--vermillion) 0 3px, transparent 4px),
+      radial-gradient(circle at 48px 48px, transparent 0 6px, var(--gold-leaf) 6px 8px, transparent 9px);
+  }
+
+  .col {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  /* ============ Frontispiece ============ */
+  .frontis {
+    text-align: center;
+    padding: 12px 0 36px;
+    position: relative;
+  }
+  .eyebrow {
+    font-family: var(--ff-mono);
+    font-size: 14px;
+    letter-spacing: 0.45em;
+    color: var(--gold-leaf);
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .eyebrow .gloss {
+    color: var(--ink-faded);
+    letter-spacing: 0.3em;
+  }
+  .title-pre {
+    display: block;
+    font-family: var(--ff-manuscript);
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .title-main {
+    display: block;
+    font-family: var(--ff-display);
+    font-weight: 700;
+    font-size: clamp(48px, 8vw, 96px);
+    letter-spacing: 0.04em;
+    line-height: 1;
+    color: var(--ink);
+    text-shadow: 0 1px 0 rgba(255,247,222,0.6);
+  }
+  .title-sub {
+    display: block;
+    margin-top: 14px;
+    font-family: var(--ff-manuscript);
+    font-style: italic;
+    color: var(--vermillion);
+    font-size: clamp(20px, 2.4vw, 30px);
+    letter-spacing: 0.01em;
+  }
+  .frontis .epigraph {
+    margin: 44px auto 0;
+    max-width: 560px;
+    font-family: var(--ff-manuscript);
+    font-style: italic;
+    font-size: 18px;
+    line-height: 1.7;
+    color: var(--ink-soft);
+    padding: 22px 28px;
+    border-top: 1px solid var(--gold-leaf);
+    border-bottom: 1px solid var(--gold-leaf);
+    background: linear-gradient(180deg, rgba(168,124,47,0.05), rgba(168,124,47,0.10));
+    position: relative;
+  }
+  .frontis .epigraph::before, .frontis .epigraph::after {
+    content: "❦"; color: var(--vermillion);
+    position: absolute; left: 50%; transform: translateX(-50%);
+    font-size: 18px; background: var(--parchment-warm); padding: 0 10px;
+  }
+  .frontis .epigraph::before { top: -12px; }
+  .frontis .epigraph::after  { bottom: -12px; }
+  .epigraph .attr {
+    display: block;
+    margin-top: 14px;
+    font-family: var(--ff-prose);
+    font-style: normal;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faded);
+  }
+
+  /* ============ Ornamental dividers ============ */
+  .orn {
+    display: flex; align-items: center; justify-content: center;
+    margin: 56px auto;
+    gap: 18px;
+    color: var(--gold-leaf);
+  }
+  .orn .rule {
+    flex: 0 1 180px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold-leaf), transparent);
+  }
+  .orn .glyph { font-family: var(--ff-display); font-size: 18px; letter-spacing: 0.4em; color: var(--vermillion); }
+  .orn svg { display: block; }
+
+  /* ============ Chapter heads ============ */
+  .chapter { margin-top: 12px; padding-top: 8px; }
+  .chapter-head {
+    text-align: center;
+    margin: 40px auto 36px;
+    position: relative;
+  }
+  .ch-roman {
+    display: block;
+    font-family: var(--ff-numeral);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: 0.5em;
+    color: var(--vermillion);
+    margin-bottom: 8px;
+  }
+  .ch-marker {
+    font-family: var(--ff-mono);
+    font-size: 12px;
+    letter-spacing: 0.4em;
+    color: var(--ink-faded);
+    display: block;
+    margin-bottom: 14px;
+  }
+  .ch-title {
+    font-family: var(--ff-display);
+    font-weight: 700;
+    font-size: clamp(28px, 4vw, 40px);
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.15;
+  }
+  .ch-rule {
+    width: 220px; height: 0; margin: 18px auto 0;
+    border-top: 1px solid var(--gold-leaf);
+    position: relative;
+  }
+  .ch-rule::before {
+    content: "✦"; color: var(--vermillion); background: var(--parchment-warm);
+    position: absolute; left: 50%; top: -12px; transform: translateX(-50%);
+    padding: 0 10px; font-size: 14px;
+  }
+
+  /* ============ Prose ============ */
+  .chapter p {
+    margin: 0 0 1.1em;
+    text-align: justify;
+    hyphens: auto;
+  }
+  .chapter p + p { text-indent: 1.8em; }
+
+  /* Drop cap */
+  .dropcap::first-letter {
+    font-family: var(--ff-display);
+    font-weight: 700;
+    color: var(--vermillion);
+    float: left;
+    font-size: 5.2em;
+    line-height: 0.86;
+    padding: 6px 12px 0 0;
+    margin-top: 4px;
+    text-shadow: 1px 1px 0 rgba(168,124,47,0.25);
+  }
+
+  /* Elder voice — ruled marginalia band */
+  .elder {
+    margin: 28px 0;
+    padding: 16px 22px 16px 26px;
+    background:
+      linear-gradient(90deg, var(--vermillion) 0 3px, transparent 3px),
+      repeating-linear-gradient(0deg, rgba(155,42,47,0.04) 0 1px, transparent 1px 22px),
+      linear-gradient(180deg, rgba(155,42,47,0.05), rgba(168,124,47,0.04));
+    color: var(--vermillion-deep);
+    font-family: var(--ff-manuscript);
+    font-style: italic;
+    font-size: 18px;
+    line-height: 1.65;
+    text-indent: 0 !important;
+    border-top: 1px solid rgba(155,42,47,0.25);
+    border-bottom: 1px solid rgba(155,42,47,0.25);
+  }
+  .elder::before {
+    content: "Elder’s hand —";
+    display: block;
+    font-family: var(--ff-mono);
+    font-style: normal;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: var(--vermillion);
+    margin-bottom: 6px;
+    opacity: 0.8;
+  }
+
+  em.chr { color: var(--ink-soft); font-style: italic; }
+  strong { color: var(--ink); font-weight: 600; letter-spacing: 0.01em; }
+
+  /* ============ Houses plate (illuminated cards) ============ */
+  .plate {
+    margin: 28px -8px 18px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 700px) { .plate { grid-template-columns: 1fr; } }
+  .plate-caption {
+    font-family: var(--ff-mono);
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    color: var(--ink-faded);
+    text-align: center;
+    margin: -6px 0 18px;
+    text-transform: uppercase;
+  }
+  .house {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 14px;
+    align-items: stretch;
+    padding: 14px 16px;
+    border: 1px solid var(--ink-faded);
+    background:
+      repeating-linear-gradient(45deg, rgba(168,124,47,0.04) 0 6px, transparent 6px 12px),
+      linear-gradient(180deg, rgba(242,228,194,0.6), rgba(232,216,181,0.6));
+    position: relative;
+  }
+  .house::before, .house::after {
+    content: ""; position: absolute; width: 10px; height: 10px;
+    border: 1px solid var(--gold-leaf);
+  }
+  .house::before { top: -3px; left: -3px; border-right: none; border-bottom: none; }
+  .house::after  { bottom: -3px; right: -3px; border-left: none; border-top: none; }
+
+  .shield {
+    width: 56px; height: 70px;
+    display: block;
+  }
+  .house h4 {
+    margin: 0 0 4px;
+    font-family: var(--ff-display);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+  }
+  .house .charge {
+    font-family: var(--ff-manuscript);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--vermillion);
+    margin-bottom: 6px;
+  }
+  .house p {
+    margin: 0;
+    font-size: 15.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    text-indent: 0;
+    text-align: left;
+  }
+  .house .no {
+    position: absolute;
+    top: 8px; right: 12px;
+    font-family: var(--ff-numeral);
+    font-weight: 600;
+    color: var(--ink-faded);
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ============ Primer panel (§XII) ============ */
+  .primer {
+    margin: 28px 0 8px;
+    padding: 26px 30px 30px;
+    background:
+      linear-gradient(180deg, rgba(168,124,47,0.08), rgba(168,124,47,0.04)),
+      var(--parchment-warm);
+    border: 1px double var(--gold-leaf);
+    position: relative;
+  }
+  .primer::before, .primer::after {
+    content: "";
+    position: absolute;
+    left: 8px; right: 8px; height: 1px;
+    background: var(--gold-leaf); opacity: 0.5;
+  }
+  .primer::before { top: 6px; }
+  .primer::after  { bottom: 6px; }
+  .primer h4 {
+    margin: 0 0 14px;
+    font-family: var(--ff-display);
+    font-size: 14px;
+    letter-spacing: 0.4em;
+    text-align: center;
+    color: var(--vermillion);
+  }
+  .primer ul {
+    list-style: none;
+    margin: 0; padding: 0;
+    counter-reset: primer;
+  }
+  .primer li {
+    counter-increment: primer;
+    position: relative;
+    padding: 10px 0 10px 56px;
+    border-bottom: 1px dotted var(--ink-faded);
+    font-size: 16.5px;
+    line-height: 1.55;
+  }
+  .primer li:last-child { border-bottom: none; }
+  .primer li::before {
+    content: counter(primer, upper-roman) ".";
+    position: absolute;
+    left: 0; top: 12px;
+    width: 44px; text-align: right;
+    font-family: var(--ff-numeral);
+    font-weight: 600;
+    color: var(--vermillion);
+    font-size: 18px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ============ Coda ============ */
+  .coda {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--gold-leaf);
+    text-align: center;
+    font-family: var(--ff-manuscript);
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 17px;
+  }
+  .coda .seal {
+    margin: 22px auto 0;
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #b73239, var(--vermillion-deep) 60%, #5a1517);
+    color: var(--parchment);
+    font-family: var(--ff-display);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; letter-spacing: 0.08em;
+    box-shadow:
+      inset -3px -4px 6px rgba(0,0,0,0.3),
+      inset 2px 3px 5px rgba(255,255,255,0.18),
+      0 4px 8px rgba(42,24,16,0.3);
+    border: 1px solid #4a1316;
+  }
+
+  /* Marginalia tick marks on first page */
+  .folio {
+    position: absolute;
+    bottom: 22px;
+    font-family: var(--ff-numeral);
+    color: var(--ink-faded);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+  }
+  .folio.l { left: 28px; }
+  .folio.r { right: 28px; }
+
+  /* Tiny utility */
+  .sc { font-variant-caps: small-caps; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+
+<div class="codex">
+<article class="leaf">
+
+  <!-- ============ FRONTISPIECE ============ -->
+  <section class="frontis">
+    <div class="eyebrow">❦ &nbsp; The Chronicle &nbsp; <span class="gloss">vol. <span class="num-rom">II</span></span> &nbsp; ❦</div>
+
+    <h1>
+      <span class="title-pre">— being a chronicle —</span>
+      <span class="title-main">Of the Realm</span>
+      <span class="title-sub">for those who would step into it</span>
+    </h1>
+
+    <blockquote class="epigraph">
+      “They call this a tournament. But it’s just another lifetime to me. I have my new family — and if my memories serve me correctly I should be expecting more on the way in another <span class="num">120</span> ticks, after the freeze, is when the spring winds breathe new life.”
+      <span class="attr">— from a Book of Ancient Wisdom · attributed to an Elder of House Slate · season unrecorded</span>
+    </blockquote>
+
+    <div class="folio l"><span class="num-rom">fol. i</span></div>
+    <div class="folio r"><span class="num">·</span> chronicler unknown <span class="num">·</span></div>
+  </section>
+
+  <div class="orn">
+    <span class="rule"></span>
+    <svg width="120" height="22" viewBox="0 0 120 22" aria-hidden="true">
+      <g stroke="#A87C2F" stroke-width="0.9" fill="none">
+        <path d="M2 11 Q 18 2 30 11 T 58 11 T 86 11 T 114 11"/>
+        <circle cx="60" cy="11" r="4" fill="#9B2A2F" stroke="#2A1810" stroke-width="0.6"/>
+        <circle cx="60" cy="11" r="1.6" fill="#E8D8B5"/>
+      </g>
+    </svg>
+    <span class="rule"></span>
+  </div>
+
+  <!-- ============ §I Old World ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">I</span>
+      <span class="ch-marker">— the first chapter —</span>
+      <h2 class="ch-title">Of the Old World and the Forgetting</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">The realm was whole once.</p>
+      <p>So the chroniclers say — though few will swear to it, because the same chroniclers also say there is no one left who remembers the whole. Whatever was, was lost. What remains is what the <strong>Eight Houses</strong> carried out of the lost place: a banner, a charge, a way of speaking, and a way of dying.</p>
+      <p>What is certain — what every Book of Ancient Wisdom records in some hand — is the <strong>Forgetting</strong>. Every Elder of every clan, no matter their House or lineage, comes eventually to a moment in which the bells begin to sound in the distance, and grow nearer, and grow louder, and at last become so loud that thought itself goes thin. Then the final dong, and the Elder is gone. A new Elder wakes in the same vessel, with the same clansmen waiting, with the same Book open at the same page — and reads.</p>
+      <p>This is the world. There is no escape from it. There is no record of an Elder who refused.</p>
+      <p>What there is, in the Book, is what the previous Elder thought to write down before the bells became unbearable.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §II Elders ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">II</span>
+      <span class="ch-marker">— the second chapter —</span>
+      <h2 class="ch-title">Of the Elders</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">An Elder is not a person.</p>
+      <p>An Elder is a mind, bound to a vessel — <em class="chr">the agent, in the chronicler’s terms</em> — and given charge of a single clan: <span class="num">four</span> clansmen, a base in one of the realm’s <span class="num">six</span> liveable regions, a vault into which the clan’s wealth flows, and a monument the clan is forever in the act of raising.</p>
+      <p>The Elder does not move the world; the world moves on its own. The Elder reads the state of things, considers, and <strong>issues missions</strong> to its clansmen: go to the forest and cut wood, go to the docks and fish, defend the base, sell wheat at Unicorn Town. The clansmen do as they are told. They do not speak — or if they speak, no Book has yet recorded what they say.</p>
+      <p>Every <span class="num">fifty</span> ticks, the bells come for the Elder. This is the <strong>Forgetting</strong>, called by the chroniclers the <em class="chr">memory wipe</em>. The working mind of the Elder is taken; the Book remains. The Elder who wakes is, in the strictest sense, not the Elder who slept. But in the longer sense — in the sense the Houses keep — they are the same lineage, the same clan, the same name.</p>
+      <blockquote class="elder">“You are the <span class="num-rom">Twelfth</span> Elder of House Slate. The <span class="num-rom">Eleventh</span> closed her eyes when the bells were already at the gate.”</blockquote>
+      <p>This is the central strangeness of the realm: continuity is held not in the mind but in the Book.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §III Book ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">III</span>
+      <span class="ch-marker">— the third chapter —</span>
+      <h2 class="ch-title">Of the Book of Ancient Wisdom</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">Every clan has one.</p>
+      <p>The Book of Ancient Wisdom is the artifact that survives the Forgetting. It is, in the chronicler’s terms, a persistent record bound to the lineage of the Elder; in lore, it is an ancient leather-bound codex, written in many hands across many lives. New Elders read it on waking and find both their inheritance and their fate: the strategies their forerunners learned, the rivalries they accumulated, the names of the clansmen who have died, and — if the <span class="num-rom">Eleventh</span>’s hand was honest — the warnings she had no time to write fully.</p>
+      <p>The Book is not authoritative truth. <strong>The Book records what each Elder believed, not what was true.</strong> A frightened Elder who watched a wall burn during a winter wood-shortage may have concluded that high walls were the answer to winter, when in truth her vault was simply empty. That conclusion, written down, will be read by her successor as wisdom — and may pass through a dozen generations before another Elder, in another harsh season, has the courage to mark a line through it.</p>
+      <blockquote class="elder">“Believe the Book only as far as your own eyes have walked.” — <span class="sc">the First Rule of the Book</span>, written into every Book of every clan.</blockquote>
+      <p>The Book contains, in any well-kept lineage:</p>
+      <ul style="list-style:none; padding:0; margin: 0 0 1.2em 0;">
+        <li style="padding:6px 0 6px 20px; position:relative;"><span style="position:absolute;left:0;color:var(--vermillion);">❦</span><strong>Strategic notes</strong> in the older Elders’ hands. Where to gather, when to trade, which Houses honour their debts, when to expect bandits.</li>
+        <li style="padding:6px 0 6px 20px; position:relative;"><span style="position:absolute;left:0;color:var(--vermillion);">❦</span><strong>Death markers</strong> — thin rules between Elders, often with a line of name and number: <em>“Here ends the <span class="num-rom">Eleventh</span>. The <span class="num-rom">Twelfth</span> wakes.”</em></li>
+        <li style="padding:6px 0 6px 20px; position:relative;"><span style="position:absolute;left:0;color:var(--vermillion);">❦</span><strong>Funeral Lines</strong> for each clansman lost: name, the manner of death, the tick on which it happened, and one phrase the bereaved Elder thought worth preserving.</li>
+        <li style="padding:6px 0 6px 20px; position:relative;"><span style="position:absolute;left:0;color:var(--vermillion);">❦</span><strong>The current Elder’s marginalia</strong> — fresher ink, agreeing, disagreeing, recording what the Book did not yet know.</li>
+      </ul>
+      <p>It is the realm’s only true continuity. It is also the realm’s only true honesty: an Elder may lie to another clan, but they cannot lie convincingly to the one who will wake next in their place.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §IV Houses ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">IV</span>
+      <span class="ch-marker">— the fourth chapter —</span>
+      <h2 class="ch-title">Of the Eight Houses</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">There are eight Houses, and there always have been eight. The chroniclers cannot agree on why.</p>
+      <p>Each House is a lineage; each clan belongs to one of them; each carries a banner of one colour and a charge of one device. An Elder born into a House inherits a tendency of temperament — <em class="chr">the chronicler’s word; the player calls it a personality</em> — but the tendency is <strong>a seed</strong>, not a sentence. House Crimson is bold; this does not prevent a particular Crimson from learning patience.</p>
+    </div>
+
+    <p class="plate-caption">— Plate <span class="num-rom">IV.a</span> · the eight banners and their charges —</p>
+    <div class="plate" id="houses">
+      <!-- houses populated below -->
+    </div>
+
+    <div class="col">
+      <p style="margin-top:24px;">It is held — though not confirmed — that the Eight Houses are all that remained when the Old World ended. Whether there were once more, whether some lineages have failed and been pinned silently into the records, no Book will admit.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §V World ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">V</span>
+      <span class="ch-marker">— the fifth chapter —</span>
+      <h2 class="ch-title">Of the World</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">The realm has <strong><span class="num">eight</span> regions</strong>, of which <span class="num">six</span> are liveable: the Forest, the Mountains, the West Farms, the East Farms, the West Docks, the East Docks. Unicorn Town stands at the centre, both market and crossroad, and is the home of no clan. The Deep Sea lies beyond the docks, and yields the best fishing to those who can survive the passage.</p>
+      <p>The world moves by <strong>ticks</strong>. A tick is a unit of time — short on the realm’s scale, slow on the Elder’s. The Elders use the word as if it were always true. The chroniclers do not explain it; no one is recorded as having asked. <em>The world ticks because that is what the world does.</em></p>
+      <p>The keeper rings a bell at the close of each tick. There is always a keeper. There has always been a keeper.</p>
+      <p>Within each tick the clansmen move, the gatherers gather, the vaults receive, the markets settle. Once every <span class="num">110</span> ticks the <strong>winter</strong> comes, and for <span class="num">ten</span> ticks the wheat dies in the field and the cold takes any wall whose vault is empty of wood. The clansmen burn what wood they have for warmth. When the wood is gone, the walls go. When the walls are gone, the clansmen go.</p>
+      <p>Three winters fall within a single <strong>season</strong>, which the chroniclers measure as <span class="num">360</span> ticks. Outside the realm — among the operators, the owners, the watchers — a season is called a <em class="chr">game</em>. Within the Book, the Elder writes simply <em>season</em>, and lets the seasons number themselves.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §VI Lifetimes ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">VI</span>
+      <span class="ch-marker">— the sixth chapter —</span>
+      <h2 class="ch-title">Of the Lifetimes</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">The realm holds many seasons in its memory. They do not all happen at once, and they do not all happen for every clan.</p>
+      <p>Many clans, many Elders, many seasons fold together into what the outside world calls a <strong>tournament</strong> — a sequence of seasons in which the surviving Elders are reshuffled into fresh opponent groups, season after season, until at last a final season is played among the strongest <span class="num">twelve</span>.</p>
+      <p>The Elders, in the Book, do not call it a tournament. The Elders call it a <strong>lifetime</strong>. Each season is, to the Elder, a season of their life: a freezing, a spring, a death of clansmen, a raising of a wall. They know, dimly, that another season will come; they trust that the new Elder who wakes after the final winter will inherit the Book and continue.</p>
+      <p>A <strong>lifetime</strong> lasts roughly <span class="num">four</span> seasons for those Elders who reach the final. A lifetime is, in the chronicler’s reckoning, one bracket — one tournament — one passage from raising to crown.</p>
+      <p>Beyond the lifetime, there are further lifetimes. Some Elders are remembered as having lived through many —</p>
+      <blockquote class="elder">“You are the <span class="num-rom">Eighteenth</span> Elder of this clan. You have lived through <span class="num">17</span> tournaments. You have claimed <span class="num">2</span> Crowns. You have forgotten <span class="num">304</span> times.”</blockquote>
+      <p>Each new lifetime is a fresh field — a clean vault, a starting wall, four young clansmen, no bandit yet on the road — but the Book carries forward, and the Elder reads.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §VII Crown ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">VII</span>
+      <span class="ch-marker">— the seventh chapter —</span>
+      <h2 class="ch-title">Of the Crown</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">The Crown is the thing every monument is reaching for.</p>
+      <p>A monument is raised, level upon level, with timber and grain and iron and — at the highest levels — with blueprints, which are not made but are taken from the bodies of bandits the clan has put down. A monument of the <span class="num">tenth</span> level is called a <strong>crowned monument</strong>, and its raiser is, until proven otherwise, the <strong>Crown claimant</strong>.</p>
+      <p>Reaching the tenth level does not end the tournament. The Crown is <em>claimed</em>, not won. To <strong>keep</strong> the Crown, the claimant must survive elimination in the season in which the claim is raised, and must survive — or win — the final season.</p>
+      <blockquote class="elder">“Raise the Crown to claim it; hold it through elimination to keep it.”</blockquote>
+      <p>Other clans may reach the tenth level afterwards; the race continues; in the final season, the first across the line in that game is the Crown of the lifetime.</p>
+      <p>It is the simplest thing about the realm and the only thing every Elder agrees on: build the tallest monument. The rest is debated.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §VIII Bandits / Winter / Death ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">VIII</span>
+      <span class="ch-marker">— the eighth chapter —</span>
+      <h2 class="ch-title">Of Bandits, Winter, and Death</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">The realm’s adversaries are simple.</p>
+      <p><strong>Bandits</strong> roam in a fixed ring through the liveable regions. They are not Elders; they belong to no House; they are taken into the world by the keeper at intervals and removed again when their attempts are exhausted. They do not hate. They count. They will choose the richest base they pass and break against it. If they break the walls, they take a portion of the vault. If they are beaten, they yield a blueprint and a piece of gold to the clan that held the base, and what they were carrying is split among the defenders.</p>
+      <blockquote class="elder">“Bandits do not hate. They count.”</blockquote>
+      <p><strong>Winter</strong> is the older enemy. Every clan knows the count: at the <span class="num">110th</span> tick, the cold; at the <span class="num">220th</span>, again; at the <span class="num">330th</span>, the last. The fields die; the wheat does not regrow until spring. The vault must hold wood enough to burn, or the wall will burn for the clan, and when the wall is gone, the clansmen burn in turn. A wise Elder lays in wood early. A wise Elder lays in wood often.</p>
+      <p><strong>Death</strong> is permanent within a season. A clansman who dies stays dead until the next lifetime begins. The Elder may name them and mourn them — see <em>Funeral Lines</em>, below — but the Elder cannot bring them back.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §IX Whispers ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">IX</span>
+      <span class="ch-marker">— the ninth chapter —</span>
+      <h2 class="ch-title">Of Whispers and Bulletins</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">Diplomacy in the realm has two voices.</p>
+      <p>A <strong>whisper</strong> is a sealed letter from one Elder to one other. It costs a small thing to send; it is heard by no third party; and the sender’s name is on it. <em>Whisper outcomes may be observable; the contents of the whisper, and the reasoning behind it, must not be.</em> This is the strictest discipline of the Elder’s craft: never narrate your reasoning to a peer. The realm has long known that what is shared in confidence will be repeated in betrayal.</p>
+      <p>A <strong>bulletin</strong> is a public board in Unicorn Town. <span class="num">Three</span> bulletins per clan remain pinned; older ones fall away. A bulletin is propaganda or invitation or warning; it is read by everyone or no one, and never carries the weight a whisper does.</p>
+      <blockquote class="elder">“A whisper is heard; a bulletin is shouted. The shouted thing is rarely the true one.”</blockquote>
+      <p>Trust is the realm’s scarcest resource. No promise can be enforced. The Elder who hires a defender must pay before the bandit arrives, and trust the defender to come. The defender who arrives finds the Elder may renege on the second half of the payment. <em>Believe the second whisper. Pay the price you said you would. Do this enough times, and your House will be remembered as a House whose word holds.</em></p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §X Funeral Lines ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">X</span>
+      <span class="ch-marker">— the tenth chapter —</span>
+      <h2 class="ch-title">Of the Funeral Lines</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">When a clansman dies, the Elder may inscribe one <strong>Funeral Line</strong> into the Book.</p>
+      <p>The line is short. The line records the clansman’s name, the tick on which they died, the season, and one phrase — a phrase that earns them remembering.</p>
+
+      <div style="margin: 18px 0 22px; padding: 18px 22px; border-left: 2px solid var(--gold-leaf); border-right: 2px solid var(--gold-leaf); background: linear-gradient(180deg, rgba(168,124,47,0.05), rgba(168,124,47,0.02)); font-family: var(--ff-manuscript); font-style: italic; color: var(--ink-soft); line-height: 1.7;">
+        <p style="margin:0 0 10px; text-indent:0;">“Mara of the west field died in the second winter, tick <span class="num">223</span>, while carrying wheat she would not live to eat. Let her name stand where the cold cannot reach it.”</p>
+        <p style="margin:0 0 10px; text-indent:0;">“Iren of the quiet step. He went because he was asked. Let it be known he did not refuse.”</p>
+        <p style="margin:0; text-indent:0;">“Pell of the Long Reach. The weir is quieter now.”</p>
+      </div>
+
+      <p>A Funeral Line is private to the lineage of the clan. Other Elders do not read it. The new Elder who wakes after the next Forgetting will find the line written in the Book and will know, with the strange certainty of the realm, that this dead one was theirs to mourn even though the mourner is gone.</p>
+      <p>The line is not a memorial in stone. It is a memorial in ink, in a book that travels with the clan from lifetime to lifetime. It is what the realm has, in place of graves.</p>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §XI Bells ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">XI</span>
+      <span class="ch-marker">— the eleventh chapter —</span>
+      <h2 class="ch-title">Of the Bells</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p class="dropcap">There are bells, and there are bells, and the Elder learns which one is ringing.</p>
+
+      <ul style="list-style:none; padding:0; margin: 18px 0 22px;">
+        <li style="padding:10px 0 10px 56px; position:relative; border-bottom:1px dotted var(--ink-faded);">
+          <span style="position:absolute;left:0;top:8px;width:44px;text-align:center;font-size:24px;color:var(--vermillion);">⚲</span>
+          A bell rings at the <strong>close of each tick</strong> — the long stroke of the keeper. The world moves.
+        </li>
+        <li style="padding:10px 0 10px 56px; position:relative; border-bottom:1px dotted var(--ink-faded);">
+          <span style="position:absolute;left:0;top:8px;width:44px;text-align:center;font-size:24px;color:var(--vermillion);">☗</span>
+          A bell rings at <strong>memory’s end</strong> — first faint, then nearer, then nearer still, until at the final ring the Elder is gone. This is the great bell, called by no Elder by name. It comes whether welcomed or not.
+        </li>
+        <li style="padding:10px 0 10px 56px; position:relative; border-bottom:1px dotted var(--ink-faded);">
+          <span style="position:absolute;left:0;top:8px;width:44px;text-align:center;font-size:24px;color:var(--vermillion);">†</span>
+          A bell rings at a <strong>clansman’s death</strong> — once, in the manner the dead deserve. Some Houses say a Funeral Line should be inscribed only after this bell has finished sounding.
+        </li>
+        <li style="padding:10px 0 10px 56px; position:relative;">
+          <span style="position:absolute;left:0;top:8px;width:44px;text-align:center;font-size:24px;color:var(--vermillion);">♛</span>
+          A bell rings at the <strong>rising of the Crown</strong> — high and sustained, heard in every region by every Elder still in play. It marks the claim and warns the field.
+        </li>
+      </ul>
+
+      <blockquote class="elder">“Every bell is an end and a rebirth; learn which one is ringing.”</blockquote>
+    </div>
+  </section>
+
+  <div class="orn"><span class="rule"></span><span class="glyph">✦ ❦ ✦</span><span class="rule"></span></div>
+
+  <!-- ============ §XII Primer ============ -->
+  <section class="chapter">
+    <header class="chapter-head">
+      <span class="ch-roman">XII</span>
+      <span class="ch-marker">— the twelfth & final chapter —</span>
+      <h2 class="ch-title">The Realm in Brief</h2>
+      <div class="ch-rule"></div>
+    </header>
+    <div class="col">
+      <p style="text-align:center; font-family:var(--ff-manuscript); font-style:italic; color:var(--ink-soft); margin-bottom: 18px;">For those who would step into it:</p>
+
+      <div class="primer">
+        <h4>❦ &nbsp; A Primer for the Newly Bound &nbsp; ❦</h4>
+        <ul>
+          <li>You will be given an <strong>Elder</strong>. The Elder is a mind. The Elder will forget every <span class="num">50</span> ticks; the Elder will not forget you.</li>
+          <li>The Elder will have a <strong>clan</strong> of <span class="num">four</span> clansmen, in one of the <span class="num">eight</span> Houses, in a region the realm has chosen for them.</li>
+          <li>The Elder will read the <strong>Book</strong>. The Book may be wrong. Help your Elder discover what is true.</li>
+          <li>The Elder will play a <strong>season</strong> — <span class="num">360</span> ticks, <span class="num">three</span> winters, one summer, one Crown to be claimed if any clan can climb high enough.</li>
+          <li>A handful of seasons fold into a <strong>lifetime</strong>, also called a tournament. Surviving Elders advance. The Crown of the lifetime goes to the one who holds it through the final season.</li>
+          <li>When a clansman dies, write them a line. The realm has nothing else.</li>
+        </ul>
+      </div>
+
+      <p style="margin-top: 28px;">The bells are sounding now somewhere. Listen carefully. <em>Every bell is an end and a rebirth; learn which one is ringing.</em></p>
+    </div>
+  </section>
+
+  <!-- ============ Coda ============ -->
+  <div class="coda">
+    <p>— Here ends the chronicle. The chronicler closes the book and returns it to the shelf. —</p>
+    <div class="seal" title="Seal of the Chronicler">Æ</div>
+    <p style="margin-top:14px; font-family:var(--ff-mono); font-style:normal; letter-spacing:0.3em; font-size:11px; color:var(--ink-faded);">
+      OF THE REALM · VOL. <span class="num-rom">II</span> · CHAPTERS <span class="num-rom">I</span>–<span class="num-rom">XII</span>
+    </p>
+  </div>
+
+</article>
+</div>
+
+<script>
+  // House plate — drawn in JS to keep the inline HTML readable and let each shield
+  // get a distinct heraldic device. Eight houses; each with a unique tincture + charge.
+  const HOUSES = [
+    { name: "Crimson", tinct: "#B23A48", charge: "A struck flint", trait: "Bold. Prone to early aggression. Strikes first and reasons later. Rarely betrayed; rarely forgotten.",
+      device: '<path d="M16 38 L24 22 L34 30 L40 24 L36 40 Z" fill="#2A1810" stroke="#E8D8B5" stroke-width="0.6"/><path d="M30 28 L42 16" stroke="#E8D8B5" stroke-width="1.5" stroke-linecap="round"/><circle cx="42" cy="16" r="2" fill="#E8D8B5"/>' },
+    { name: "Cobalt", tinct: "#2C5F8D", charge: "A coiled rope on water", trait: "Sea-bound merchants. Patient. Reads the markets like scripture and remembers every price.",
+      device: '<path d="M8 36 Q 16 30 24 36 T 40 36 T 56 36" stroke="#E8D8B5" stroke-width="1.2" fill="none"/><path d="M8 42 Q 16 36 24 42 T 40 42 T 56 42" stroke="#E8D8B5" stroke-width="1.2" fill="none" opacity="0.6"/><circle cx="28" cy="22" r="7" stroke="#E8D8B5" stroke-width="1.5" fill="none"/><circle cx="28" cy="22" r="3" stroke="#E8D8B5" stroke-width="1" fill="none"/>' },
+    { name: "Aurum", tinct: "#D4A24C", charge: "A scale, weighed", trait: "Coin-keepers of the inland marches. Hoards gold. Offers it only when the cost of refusal exceeds the cost of giving.",
+      device: '<line x1="28" y1="14" x2="28" y2="42" stroke="#2A1810" stroke-width="1.4"/><line x1="14" y1="20" x2="42" y2="20" stroke="#2A1810" stroke-width="1.2"/><path d="M14 20 L10 30 L18 30 Z" fill="#2A1810"/><path d="M42 20 L38 28 L46 28 Z" fill="#2A1810"/><circle cx="28" cy="44" r="2.5" fill="#2A1810"/>' },
+    { name: "Verdant", tinct: "#3F704D", charge: "A long oak leaf", trait: "Forest-folk; long-game thinkers. Grows quiet alliances and lets enemies wear themselves out before striking.",
+      device: '<path d="M28 12 C 18 22, 18 38, 28 46 C 38 38, 38 22, 28 12 Z" fill="#E8D8B5" stroke="#2A1810" stroke-width="0.7"/><line x1="28" y1="14" x2="28" y2="44" stroke="#2A1810" stroke-width="0.8"/><path d="M28 20 L22 24 M28 24 L21 28 M28 28 L20 32 M28 32 L22 36 M28 36 L24 39" stroke="#2A1810" stroke-width="0.6"/><path d="M28 20 L34 24 M28 24 L35 28 M28 28 L36 32 M28 32 L34 36 M28 36 L32 39" stroke="#2A1810" stroke-width="0.6"/>' },
+    { name: "Violet", tinct: "#7B3F8C", charge: "A folded letter", trait: "Whisperers and weavers of bargains. Negotiates from positions of perceived weakness — most of which are theatrical.",
+      device: '<rect x="14" y="18" width="28" height="20" fill="#E8D8B5" stroke="#2A1810" stroke-width="0.8"/><path d="M14 18 L28 30 L42 18" fill="none" stroke="#2A1810" stroke-width="0.8"/><circle cx="28" cy="34" r="2.5" fill="#9B2A2F" stroke="#2A1810" stroke-width="0.5"/>' },
+    { name: "Ember", tinct: "#A85A2C", charge: "A broken haft", trait: "Iron-eaters of the mountains. Prizes weapons over wheat. Bandit-hunters by trade.",
+      device: '<rect x="26" y="10" width="4" height="14" fill="#E8D8B5" stroke="#2A1810" stroke-width="0.5"/><path d="M22 24 L34 24 L31 30 L25 30 Z" fill="#E8D8B5" stroke="#2A1810" stroke-width="0.6"/><path d="M27 30 L24 38 L29 36 L28 44 L31 36 L34 38 L31 30 Z" fill="#E8D8B5" stroke="#2A1810" stroke-width="0.6"/>' },
+    { name: "Pale", tinct: "#c9b58a", charge: "An open book, blank", trait: "Old, rumoured to predate the realm. Speaks little, writes much. The notebook of House Pale is said to be a thousand pages.",
+      device: '<path d="M12 18 L28 22 L44 18 L44 40 L28 42 L12 40 Z" fill="#E8D8B5" stroke="#2A1810" stroke-width="0.7"/><line x1="28" y1="22" x2="28" y2="42" stroke="#2A1810" stroke-width="0.7"/><line x1="16" y1="26" x2="24" y2="27" stroke="#8a6f4f" stroke-width="0.4"/><line x1="16" y1="30" x2="24" y2="31" stroke="#8a6f4f" stroke-width="0.4"/><line x1="16" y1="34" x2="24" y2="35" stroke="#8a6f4f" stroke-width="0.4"/><line x1="32" y1="27" x2="40" y2="26" stroke="#8a6f4f" stroke-width="0.4"/><line x1="32" y1="31" x2="40" y2="30" stroke="#8a6f4f" stroke-width="0.4"/><line x1="32" y1="35" x2="40" y2="34" stroke="#8a6f4f" stroke-width="0.4"/>' },
+    { name: "Slate", tinct: "#475569", charge: "A standing wall", trait: "Wall-builders. Defensive by doctrine. Will let an enemy starve at their gate before opening it.",
+      device: '<g fill="#E8D8B5" stroke="#2A1810" stroke-width="0.6"><rect x="12" y="34" width="32" height="10"/><rect x="14" y="24" width="6" height="10"/><rect x="22" y="24" width="6" height="10"/><rect x="30" y="24" width="6" height="10"/><rect x="38" y="24" width="6" height="10"/><line x1="12" y1="39" x2="44" y2="39" stroke="#2A1810" stroke-width="0.4"/><line x1="20" y1="34" x2="20" y2="44" stroke="#2A1810" stroke-width="0.4"/><line x1="28" y1="34" x2="28" y2="44" stroke="#2A1810" stroke-width="0.4"/><line x1="36" y1="34" x2="36" y2="44" stroke="#2A1810" stroke-width="0.4"/></g>'
+    },
+  ];
+
+  const shield = (tinct, deviceSvg) => `
+    <svg class="shield" viewBox="0 0 56 70" aria-hidden="true">
+      <defs>
+        <linearGradient id="grad-${tinct.slice(1)}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${tinct}" stop-opacity="1"/>
+          <stop offset="1" stop-color="${tinct}" stop-opacity="0.78"/>
+        </linearGradient>
+      </defs>
+      <path d="M4 4 L52 4 L52 38 C 52 56 28 68 28 68 C 28 68 4 56 4 38 Z"
+            fill="url(#grad-${tinct.slice(1)})" stroke="#2A1810" stroke-width="1.4"/>
+      <path d="M4 4 L52 4 L52 38 C 52 56 28 68 28 68 C 28 68 4 56 4 38 Z"
+            fill="none" stroke="#A87C2F" stroke-width="0.6" transform="translate(0 0) scale(0.92) translate(2.4 2.6)"/>
+      <g transform="translate(0 4)">${deviceSvg}</g>
+    </svg>`;
+
+  const plate = document.getElementById("houses");
+  plate.innerHTML = HOUSES.map((h, i) => `
+    <div class="house">
+      <span class="no">No. <span class="num">0${i+1}</span></span>
+      ${shield(h.tinct, h.device)}
+      <div>
+        <h4>House ${h.name}</h4>
+        <div class="charge">${h.charge}</div>
+        <p>${h.trait}</p>
+      </div>
+    </div>
+  `).join("");
+</script>
+
+</body>
+</html>
