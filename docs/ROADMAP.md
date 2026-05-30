@@ -483,19 +483,27 @@ Liam's north star: **80–90% of minted NFTs should be "commons" people don't de
 
 The thing that makes Pokémon NOT work as a model: physical Pokémon commons sit in shoeboxes forever; there's no sink. Our equivalent is the burn-three-for-a-reroll mechanic — a Pokémon-like distribution with an actual sink.
 
-### 17.2 Dumb agents — the 40–60% baseline 🎯
+### 17.2 Dumb agents — ~75–80% baseline (Liam 2026-05-30) 🎯
 
-To make Pokémon distribution work without exploding compute, the bulk of minted Elders run on a **deterministic Python script**, not an LLM. The dumb-agent script follows a fixed pattern (e.g. *"send two to wheat, two to fish, wait n ticks, deposit, send four to wood, repeat; if clansmen die, ignore and continue"*). LLM-powered Elders become uncommon-to-rare by default.
+**Important framing correction (Liam 2026-05-30):** Dumb Elders are NOT "blank cards." They have full art, lineage, House identity, personality, narrative dialogue — they look and feel exactly like any other Elder. The only thing different is their **strategic play**: a fixed Python script following a deterministic pattern (e.g. *"two to wheat, two to fish, wait n ticks, deposit, four to wood, repeat; if clansmen die, ignore and continue"*).
+
+**The boring strategic play is the point** — it's exactly what drives the burn-and-reroll loop. People mint packs of 11 and *should* find that half are basically useless. That's the slot-machine moment. *"You open a pack, half are useless, but you might pull a Legendary."*
+
+**Updated tier distribution** (Liam pushing higher dumb percentage):
 
 | Tier | Substrate | Share of mint | Examples |
 |---|---|---|---|
-| Common | Dumb Python script | ~50–60% | Fixed-pattern agent that loudly fails on edge cases |
-| Uncommon | Cheap LLM in low/medium reasoning | ~25–35% | Qwen / DeepSeek / Haiku / GPT-mini |
-| Rare | Mid-tier LLM | ~10–15% | Mid-tier frontier models |
-| Epic | Frontier LLM + good harness | ~3–5% | Sonnet-4.6 + Claude Code etc. |
+| Common | Dumb Python script (full art + personality + dialogue) | **~75–80%** | Fixed-pattern strategic play; varied flavour |
+| Uncommon | Cheap LLM in low/medium reasoning | ~12–18% | Qwen / DeepSeek / Haiku / GPT-mini |
+| Rare | Mid-tier LLM | ~4–6% | Mid-tier frontier models |
+| Epic | Frontier LLM + good harness | ~1–2% | Sonnet-4.6 + Claude Code etc. |
 | Legendary | Frontier LLM + frontier model + xhigh reasoning | ~0.1% | Sonnet-4.6 / GPT-5.5 + Claude Code + xhigh thinking |
 
-Compute affordability becomes a function of the dumb-agent ratio.
+**Compute affordability** becomes a function of the dumb-agent ratio. Higher dumb % = more affordable scale.
+
+**Dumb agents in tournament play (Liam observation):** a dumb agent matched against other dumbs in a lower bracket round may genuinely survive. They're not totally useless — just not desirable.
+
+**What still stands from wingman's stress-test:** the dumb-script **archetype count** question. Even with full personality variation per Elder, if 7 dumbs in one game-instance run identical strategic patterns, spectating gets boring AND the visual reads as "padding." Build multiple distinct strategic archetypes per House (or per voice fragment) — same general dumbness, varied playstyles, so a bracket of dumbs looks like 7 different bad strategies rather than 7 identical scripts.
 
 ### 17.3 First-edition release strategy 🌱
 
@@ -584,39 +592,31 @@ Liam pitch: **build economic simulations before launch.** First-six-months model
 
 Liam's hunch: *"I'm always shocked at how close my models are when I do model things like this ahead of time."* Worth the upfront analytical investment; gives us informed parameters for launch.
 
-### 17.12 Wingman stress-test (codex 2026-05-30) — refinements before sim modelling
+### 17.12 Wingman stress-test (codex 2026-05-30) — and Liam's verdicts
 
-Codex's red-team pass on the §17 package. Six sharpenings; two flagged as urgent-to-rethink before any economic simulation work.
+Codex's red-team pass on the §17 package. Six sharpenings; Liam responded to four of them on 2026-05-30. Marking each with its disposition.
 
-1. **Dumb agents — desire vs compute (refinement).** 40–60% solves compute; the failure mode is "dumb feels like a blank card." Fixes:
-   - Dumb Elders MUST have visible House art, lineage, comic failure patterns, and remain valuable as merge fuel.
-   - **Do NOT put 7 identical scripts in a single bracket.** Build **script archetypes with noise** — multiple distinct dumb-playstyles per House. Otherwise tournaments feel padded and spectating is boring.
+1. ⚠️ **Dumb agents — "blank card" framing was wrong.** Wingman read "dumb" as cosmetically-impoverished. **Liam corrected:** dumb Elders have full art, lineage, House identity, personality, narrative dialogue — they look like any other Elder. Only their *strategic* play is the fixed script. The boring strategy IS the point (drives the burn loop).
+   - ✅ **Dumb-script ARCHETYPES still valid** — build multiple distinct strategic patterns so 7 dumbs in one bracket don't all run identical scripts. Even if individually fine, collectively-identical reads as padding to spectators.
+   - 🎯 Liam also raised the dumb percentage from 40–60% to **~75–80%** (see §17.2).
 
-2. **Burn-3-for-1 sink — not enough alone.** Rational owners HOARD if they believe future buffs might rescue commons. Layer on:
-   - **Seasonal burn windows** — limited-time bonus reroll odds.
-   - **Visible odds** — publish the reroll distribution so the bet is legible.
-   - **Edition-specific bonuses** — burning into a new edition gives slight pull toward that edition's pool.
-   - Social narrative: *"dumbs decay as lottery tickets — old commons stay collectible, but never mechanically optimal forever."*
+2. ⚠️ **Burn-sink hoarding concern — softened by Liam.** *"I don't expect people to hoard commons — and there's nothing wrong if people do, it's still good for us (they're still minting, still paying gold)."* Drop the urgent-fix framing on this one.
+   - ➕ The layering ideas (seasonal burn windows, visible odds, edition-specific bonuses, "dumbs decay as lottery tickets" narrative) **stay on the menu as optional polish**, not urgent fixes.
 
-3. **Paid House lock-in — UX-sensitive.** House isn't actually cosmetic in our design — it gates Discord channels + tribal bonuses (§17.9). If broke players can't pick their tribe, that's exclusionary, not just "whales buy power."
-   - **Fix:** one cheap **identity anchor** at mint that EVERYONE gets (e.g. a base House pick, or auto-balanced House assignment with low-cost re-pick). Premium fine-tuning above that.
+3. ⚠️ **Paid House lock-in — Liam: no problem.** Base random mint gives 1-in-8 on House; with pack minting at 11 per pack, everyone gets all 8 Houses quickly. Lock-in is for impatient players, not a class barrier. Wingman over-read the exclusion risk.
 
-4. 🚩 **RED ALERT: 7-day cooldown + gold-skip = pay-to-compete unless decoupled.** Whales buying more runs learn faster, rank faster, compound gold.
-   - **Fix:** *cooldown should affect **prize eligibility**, not **participation**.* Whales can still play more often for practice + spectating; they just can't buy a faster path up the league. Free owners get one prize-eligible outing per week + unlimited learning runs.
-   - Scarcity is good; **silence is not** — getting one meaningful outing per week may feel too cold for attachment.
+4. 🚩 **Cooldown + gold-skip = pay-to-compete** — **STILL OPEN.** Liam didn't address this in the 2026-05-30 reply. Wingman's fix (cooldown gates **prize eligibility**, not **participation**) stays on the table pending Liam's call.
 
-5. **The 80–90% commons goal — challenged directly.** Pokémon commons worked because packs were tactile, cheap, social, and set-completion psychology was strong. Here each mint is a *being with expected agency*. Too many low-care Elders fights the emotional premise.
-   - **Counter-proposal: 60 / 30 / 10** (commons / mid / rare). Enough burn material; less buyer remorse; more mid-tier identity.
-   - Open: does our agent-NFT product need its own distribution shape, not Pokémon's?
+5. ⚠️ **The 80–90% commons goal — Liam pushed it HIGHER, not lower.** Counter-proposal of 60/30/10 is rejected. Liam now wants ~75–80% dumb-tier commons + low single-digit rares. The "beings with agency" tension wingman raised is resolved by ensuring dumb Elders have full personality/art/dialogue (§17.2), so even "useless" dumbs still feel like *characters*, not blank cards.
 
-6. 🔑 **Biggest blind spot: secondary-market psychology.** The §17 design assumes owners act like *game players optimizing sinks*. NFT buyers act like **speculators optimizing optionality**. If they believe future mechanics may rescue commons, they will not burn.
-   > *"Your sink has to beat the option value of waiting."*
+6. ⚠️ **Secondary-market optionality blind spot — STILL OPEN.** Liam didn't address this either; framed as a related-but-not-urgent concern since hoarding isn't a failure mode per his §17.12 item 2 correction. Wingman's framing — *"the sink has to beat the option value of waiting"* — stays as a long-term lens for the merge-and-burn loop tuning, not a launch blocker.
 
-### 17.13 Urgent before sim modelling (codex's red flags)
-- 🚩 **Pay-to-compete dynamic** (§17.12 item 4) — decouple cooldown from prize eligibility before parameterising the sim.
-- 🚩 **Dumb percentage + commons baseline** (§17.12 items 1, 5) — verify the emotional baseline before locking 40–60% / 80–90%.
-
-Both can break trust **before** the economy gets a chance to equilibrate.
+### 17.13 Status after Liam's 2026-05-30 verdict
+- 🚩 **Pay-to-compete dynamic** (§17.12 item 4) — **still urgent.** Liam hasn't addressed; codex's prize-eligibility-vs-participation fix stands as a proposal awaiting his call.
+- ✅ **Dumb percentage + commons baseline** — **direction locked.** Liam pushed UP to ~75–80% dumb; the emotional-baseline tension resolved by giving dumbs full personality/art/dialogue (§17.2). The "blank card" risk is averted by treating dumb strategically, not cosmetically.
+- ✅ **Hoarding worry** — softened to a non-issue per Liam.
+- ✅ **Paid House lock-in** — no exclusion concern per Liam.
+- 🌱 **Secondary-market optionality** — kept as long-term tuning lens, not launch blocker.
 
 ### 17.14 Open questions (NFT economy)
 - ❓ Dumb-agent percentage: 40%? 50%? 60%? Affects compute cost + rarity floor.
@@ -688,3 +688,4 @@ Elder design must produce **depth over months**, not demand-spikes over days. Th
 | 2026-05-29 | Initial bootstrap from the lore brainstorming session. Captured: design principles, tournament structure, owner touchpoints, Book-page-on-wipe, agent-as-Claude-Code thesis, co-gather + leveling, asymmetric bandit visibility, collab nudges, voice/tone, lore-themed prompts, persistence model, open questions. |
 | 2026-05-30 | r8 NFT economy + chat refinement + collecting-psychology framework. Added §17 (mint/rarity/packs/cooldown/tournament economy), §18 (chat-with-Elder refined as optional side bonus, codex-critiqued cost structure), §19 (collecting-psychology framework with codex's 4 missing drivers + Tamagotchi-vs-dogs reframe). |
 | 2026-05-30 | r9 wingman stress-test on §17. Added §17.12 (6 sharpenings — dumb-script archetypes, burn-window layering, identity-anchor fix, prize-eligibility-vs-participation cooldown decouple, 60/30/10 commons counter-proposal, secondary-market optionality blind spot) + §17.13 (red flags before sim modelling) + 5 new open questions. |
+| 2026-05-30 | r10 Liam's verdicts on the r9 wingman sharpenings: dumb-agent "blank card" framing rejected (dumbs have full art/personality/dialogue; the boring STRATEGY is the point); dumb % raised from 40–60% to ~75–80%; hoarding softened as non-issue; paid House lock-in cleared (1-in-8 random base + pack-of-11 gives variety); cooldown pay-to-compete still open; secondary-market optionality moved from blocker to long-term lens. Slot-machine reveal moments framed as the emotional engine of the product. |
