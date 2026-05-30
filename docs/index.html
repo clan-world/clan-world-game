@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clan World — Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #2a1810;
+      --ink-soft: #5a3d28;
+      --rubric: #9b2a2f;
+      --gold: #a87c2f;
+      --paper: #f0e3c4;
+      --paper-warm: #e8d6ab;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'IM Fell English', Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 50% 30%, #1a0e07 0%, #0a0503 70%, #050201 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+      line-height: 1.6;
+    }
+    .page {
+      max-width: 720px;
+      width: 100%;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(168, 124, 47, 0.10), transparent 60%),
+        radial-gradient(ellipse at 70% 80%, rgba(168, 124, 47, 0.08), transparent 50%),
+        linear-gradient(180deg, var(--paper) 0%, var(--paper-warm) 100%);
+      padding: 4rem 3.5rem;
+      box-shadow:
+        0 30px 60px rgba(0, 0, 0, 0.6),
+        0 10px 20px rgba(0, 0, 0, 0.4),
+        inset 0 0 80px rgba(168, 124, 47, 0.08);
+      border-radius: 2px;
+      position: relative;
+    }
+    .page::before, .page::after {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: rgba(107, 68, 35, 0.15);
+      border-radius: 50%;
+      filter: blur(3px);
+    }
+    .page::before { top: 12%; right: 18%; }
+    .page::after { bottom: 22%; left: 22%; }
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid rgba(168, 124, 47, 0.35);
+      padding-bottom: 1.5rem;
+    }
+    .eyebrow {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.78rem;
+      letter-spacing: 0.28em;
+      color: var(--ink-soft);
+      margin-bottom: 0.4rem;
+    }
+    h1 {
+      font-family: 'IM Fell English', serif;
+      font-weight: 400;
+      font-size: 2.4rem;
+      letter-spacing: 0.02em;
+      color: var(--ink);
+    }
+    h1 em { color: var(--rubric); font-style: italic; }
+    .subtitle {
+      margin-top: 0.5rem;
+      font-style: italic;
+      color: var(--ink-soft);
+      font-size: 1rem;
+    }
+    h2 {
+      font-family: 'IM Fell English SC', serif;
+      font-weight: 400;
+      font-size: 1.05rem;
+      letter-spacing: 0.22em;
+      color: var(--ink-soft);
+      margin: 2.6rem 0 1.2rem;
+      border-bottom: 1px solid rgba(168, 124, 47, 0.25);
+      padding-bottom: 0.4rem;
+    }
+    .entry {
+      display: block;
+      padding: 1rem 1.2rem;
+      margin-bottom: 0.8rem;
+      text-decoration: none;
+      color: var(--ink);
+      background: rgba(168, 124, 47, 0.04);
+      border-left: 2px solid rgba(168, 124, 47, 0.4);
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .entry:hover {
+      background: rgba(168, 124, 47, 0.10);
+      border-left-color: var(--rubric);
+    }
+    .entry-title {
+      font-size: 1.15rem;
+      font-style: italic;
+      color: var(--rubric);
+    }
+    .entry-meta {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      color: var(--ink-soft);
+      margin-top: 0.25rem;
+    }
+    .entry-note {
+      margin-top: 0.5rem;
+      font-style: italic;
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+    }
+    .placeholder {
+      padding: 1rem 1.2rem;
+      margin-bottom: 0.8rem;
+      color: var(--ink-soft);
+      background: rgba(168, 124, 47, 0.02);
+      border-left: 2px dashed rgba(168, 124, 47, 0.3);
+      font-style: italic;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(168, 124, 47, 0.25);
+      text-align: center;
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.22em;
+      color: var(--ink-soft);
+    }
+    .ornament {
+      text-align: center;
+      color: var(--gold);
+      margin: 1.2rem 0;
+      letter-spacing: 0.4em;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 600px) {
+      .page { padding: 2.5rem 1.8rem; }
+      h1 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header>
+      <div class="eyebrow">✦ &nbsp; Clan World &nbsp; ✦</div>
+      <h1>The <em>Docs</em></h1>
+      <p class="subtitle">A chronicle of the world, its physics, its lore, and the records its Elders keep.</p>
+    </header>
+
+    <h2>The Book of Ancient Wisdom — sample pages</h2>
+    <p class="entry-note" style="margin-bottom: 1rem;">
+      Two independent renderings of a single page, drafted as exploration of the in-fiction artifact. Each is a different writer's voice and a different designer's eye.
+    </p>
+
+    <a class="entry" href="lore/book-of-ancient-wisdom-v1.html">
+      <div class="entry-title">Sample I — Of the Multi-Elder Palimpsest</div>
+      <div class="entry-meta">First Draft · The Third &amp; Fourth Elders · Funeral Line: Mara of the West Field</div>
+    </a>
+
+    <a class="entry" href="lore/book-of-ancient-wisdom-v2.html">
+      <div class="entry-title">Sample II — Of Counting Winters</div>
+      <div class="entry-meta">Second Draft · The Twenty-Third &amp; Twenty-Fourth of House Slate · Funeral Line: Pell of the Long Reach</div>
+    </a>
+
+    <a class="entry" href="lore/book-of-ancient-wisdom-v3.html">
+      <div class="entry-title">Sample III — Of the Catechism and the Fourth Winter</div>
+      <div class="entry-meta">Third Draft · The Eleventh &amp; Twelfth of House Slate · Funeral Line: Iren of the Quiet Step</div>
+    </a>
+
+    <h2>The Physics of the World</h2>
+    <p class="entry-note">Canonical mechanics — how time advances, how clansmen labour, how winter takes its tithe, how monuments are built, how the bracket selects survivors.</p>
+    <a class="entry" href="WORLD_PHYSICS.md">
+      <div class="entry-title">World Physics</div>
+      <div class="entry-meta">Living spec · 16 sections · Subject to refinement</div>
+    </a>
+    <a class="entry" href="WORLD_PHYSICS_CONSTANTS.md">
+      <div class="entry-title">World Physics — Constants</div>
+      <div class="entry-meta">Supporting numbers, capacities, probabilities</div>
+    </a>
+
+    <div class="ornament">✦ &nbsp; ❦ &nbsp; ✦</div>
+
+    <footer>
+      docs.clan-world.com &nbsp;·&nbsp; published from the docs branch &nbsp;·&nbsp; the bell rings every sixty seconds
+    </footer>
+  </article>
+</body>
+</html>
