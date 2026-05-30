@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>The Book of Ancient Wisdom — A Leaf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=UnifrakturCook:wght@700&display=swap" rel="stylesheet">
+<style>
+/* ------------------------------------------------------------------ *
+ *  THE BOOK OF ANCIENT WISDOM — a single leaf
+ *  Designed to read as a museum-lit photograph of an open codex.
+ * ------------------------------------------------------------------ */
+
+:root{
+  --ink-old:        rgba(107, 68, 35, 0.86);     /* faded sepia */
+  --ink-old-deep:   rgba(82, 49, 22, 0.92);
+  --ink-new:        #1f1208;                     /* iron-gall, near-black */
+  --ink-rubric:     #6e1a1a;                     /* madder red */
+  --ink-rubric-2:   #8a2a1f;
+  --ink-gold:       #8a6a1d;                     /* tarnished gold */
+  --ink-gold-warm:  #b88a32;
+  --parchment-1:    #efe3c4;
+  --parchment-2:    #e6d6ae;
+  --parchment-3:    #d9c393;
+  --parchment-edge: #8a6c3a;
+  --wood-1:         #1b0f06;
+  --wood-2:         #2a160a;
+  --wood-3:         #3d2110;
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+
+html{
+  /* Deep, warm museum darkness. The "table" behind the page. */
+  background:
+    radial-gradient(ellipse at 50% 30%, #4a2a14 0%, #2a160a 35%, #160a04 75%, #0a0502 100%);
+  min-height:100%;
+}
+
+body{
+  font-family:"IM Fell English", "EB Garamond", Georgia, serif;
+  color:var(--ink-old);
+  min-height:100vh;
+  padding:48px 24px 80px;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+
+  /* faint wood-grain over the table, mostly hidden by the page */
+  background:
+    repeating-linear-gradient(
+      92deg,
+      rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 1px,
+      rgba(255,255,255,0.012) 1px, rgba(255,255,255,0.012) 3px,
+      rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 7px
+    ),
+    radial-gradient(ellipse at 50% 40%, rgba(120,70,30,0.18), transparent 60%);
+}
+
+/* ------------------------------------------------------------------ *
+ *  The leaf itself
+ * ------------------------------------------------------------------ */
+.leaf{
+  position:relative;
+  width:min(760px, 100%);
+  /* book-page proportions, a bit taller than wide */
+  aspect-ratio: 5 / 7;
+  padding: clamp(48px, 7vw, 88px) clamp(44px, 6.5vw, 80px) clamp(56px, 7vw, 88px);
+
+  color:var(--ink-old);
+
+  /* layered parchment: base tone + warm vignette + cool corner cool-down */
+  background:
+    radial-gradient(ellipse 60% 80% at 50% 50%, rgba(255,245,210,0.55), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 110%, rgba(80,40,10,0.18), transparent 60%),
+    radial-gradient(ellipse 120% 90% at 50% -10%, rgba(80,40,10,0.16), transparent 60%),
+    linear-gradient(180deg, var(--parchment-1) 0%, var(--parchment-2) 60%, var(--parchment-3) 100%);
+
+  /* deckled, lived-in edge */
+  border-radius: 3px 5px 4px 6px / 6px 4px 5px 3px;
+
+  /* hold-the-page-up-to-the-light shadow */
+  box-shadow:
+    0 0 0 1px rgba(60,30,10,0.35),
+    0 2px 0 rgba(80,50,20,0.20),
+    0 30px 60px -20px rgba(0,0,0,0.85),
+    0 60px 120px -30px rgba(0,0,0,0.75),
+    inset 0 0 90px rgba(100,60,20,0.30),
+    inset 0 0 22px rgba(60,30,10,0.30);
+
+  /* sit the page slightly off-axis like a photograph */
+  transform: rotate(-0.35deg);
+}
+
+/* Worn edge — a darkened halo just inside the page boundary */
+.leaf::before{
+  content:"";
+  position:absolute; inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    radial-gradient(ellipse 96% 96% at 50% 50%, transparent 70%, rgba(70,40,15,0.28) 92%, rgba(40,20,5,0.55) 100%);
+  mix-blend-mode:multiply;
+}
+
+/* Foxing, mottling, and grain — pure SVG noise, no external assets */
+.leaf::after{
+  content:"";
+  position:absolute; inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  opacity:0.55;
+  mix-blend-mode:multiply;
+  background-image:
+    /* a few scattered foxing spots */
+    radial-gradient(circle at 12% 18%, rgba(120,70,25,0.18) 0, transparent 5%),
+    radial-gradient(circle at 84% 22%, rgba(120,70,25,0.14) 0, transparent 4%),
+    radial-gradient(circle at 22% 78%, rgba(120,70,25,0.16) 0, transparent 6%),
+    radial-gradient(circle at 78% 84%, rgba(120,70,25,0.13) 0, transparent 5%),
+    radial-gradient(circle at 46% 54%, rgba(120,70,25,0.10) 0, transparent 7%),
+    /* fine fibrous grain via SVG noise */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.22  0 0 0 0 0.10  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>");
+  background-size: auto, auto, auto, auto, auto, 240px 240px;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Typographic groundwork
+ * ------------------------------------------------------------------ */
+.scribe{
+  position:relative;
+  z-index:2;
+  font-size: clamp(15px, 1.35vw, 17.5px);
+  line-height: 1.78;
+  text-align: justify;
+  hyphens: auto;
+  letter-spacing: 0.005em;
+}
+
+.scribe p{
+  margin: 0 0 0.95em 0;
+  text-indent: 1.4em;
+}
+.scribe p:first-of-type{ text-indent: 0; }
+
+/* PASSAGE 1 — old hand, faded */
+.old-hand{
+  color: var(--ink-old);
+  font-weight: 400;
+  /* tiny horizontal smear effect — ink bled into the fibres */
+  text-shadow:
+    0 0 0.5px rgba(107,68,35,0.25),
+    0.3px 0 0 rgba(107,68,35,0.10);
+}
+
+/* a faint waver to the old hand baseline — different lines listing slightly */
+.old-hand p:nth-of-type(2){ transform: translateY(-0.5px); }
+.old-hand p:nth-of-type(4){ transform: rotate(-0.15deg); }
+.old-hand p:nth-of-type(5){
+  /* "Bandits do not hate. They count." — gnomic, centered, weight */
+  text-align: center;
+  text-indent: 0;
+  font-style: italic;
+  font-size: 1.05em;
+  color: var(--ink-old-deep);
+  margin: 1.3em 0;
+  letter-spacing: 0.02em;
+}
+
+/* PASSAGE 3 — newer ink */
+.new-hand{
+  color: var(--ink-new);
+  font-weight: 400;
+  /* a tighter, slightly weightier stroke */
+  text-shadow:
+    0 0 0.4px rgba(31,18,8,0.55);
+  letter-spacing: 0.003em;
+}
+.new-hand p{ line-height: 1.74; }
+
+/* The three short declarative lines in passage 3 — set apart, heavier */
+.new-hand .stark{
+  text-indent:0;
+  margin: 0.35em 0;
+  font-style: italic;
+  color: var(--ink-new);
+  letter-spacing: 0.01em;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Drop cap — illuminated initial 'F'
+ * ------------------------------------------------------------------ */
+.dropcap{
+  float: left;
+  font-family: "UnifrakturCook", "IM Fell English", serif;
+  font-weight: 700;
+  font-size: 5.4em;
+  line-height: 0.82;
+  padding: 0.08em 0.14em 0.02em 0.10em;
+  margin: 0.05em 0.18em -0.05em -0.02em;
+  color: var(--ink-rubric);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,220,140,0.55), transparent 60%),
+    linear-gradient(140deg, #f3dca0 0%, #d9b25a 45%, #a4781f 100%);
+  border: 1.5px solid var(--ink-rubric);
+  box-shadow:
+    inset 0 0 0 2px rgba(255,240,200,0.6),
+    inset 0 0 14px rgba(110,26,26,0.25),
+    0 1px 0 rgba(80,40,10,0.3);
+  text-shadow:
+    0 1px 0 rgba(255,235,180,0.7),
+    0 -1px 0 rgba(110,26,26,0.4);
+  position:relative;
+}
+.dropcap::after{
+  /* tiny gold dot ornament in the upper-right corner of the box */
+  content:"";
+  position:absolute;
+  right:-3px; top:-3px;
+  width:6px; height:6px; border-radius:50%;
+  background: radial-gradient(circle, #f3dca0, #8a6a1d 70%);
+  box-shadow: 0 0 0 1px #6e1a1a;
+}
+
+/* ------------------------------------------------------------------ *
+ *  The grease-stain — a soft, off-round darker patch
+ * ------------------------------------------------------------------ */
+.grease-host{ position:relative; }
+.grease-host::before{
+  content:"";
+  position:absolute;
+  left: -32px; top: -10px;
+  width: 240px; height: 110px;
+  background:
+    radial-gradient(ellipse 60% 70% at 35% 45%, rgba(90,55,20,0.28), rgba(90,55,20,0.12) 45%, transparent 75%),
+    radial-gradient(ellipse 35% 45% at 60% 60%, rgba(60,35,12,0.22), transparent 70%);
+  filter: blur(2px);
+  pointer-events:none;
+  z-index:1;
+  mix-blend-mode:multiply;
+  transform: rotate(-6deg);
+}
+.grease-host p{ position:relative; z-index:2; }
+
+/* ------------------------------------------------------------------ *
+ *  Death-marker ornament
+ * ------------------------------------------------------------------ */
+.death-marker{
+  margin: 2.2em auto 1.6em;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 14px;
+  color: var(--ink-rubric);
+}
+.death-marker .rule{
+  flex: 0 1 200px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ink-old-deep) 30%, var(--ink-old-deep) 70%, transparent);
+  opacity: 0.7;
+}
+.death-marker svg{ display:block; }
+
+.death-text{
+  text-align:center;
+  font-family: "IM Fell English SC", "IM Fell English", serif;
+  font-style: italic;
+  font-size: 0.92em;
+  letter-spacing: 0.10em;
+  color: var(--ink-old-deep);
+  margin: 0 0 2em;
+  text-indent: 0 !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Funeral inscription — passage 2
+ * ------------------------------------------------------------------ */
+.funeral{
+  margin: 2.2em auto;
+  padding: 1.4em 1.2em 1.2em;
+  max-width: 86%;
+  text-align: center;
+  position: relative;
+  color: var(--ink-rubric);
+}
+.funeral::before, .funeral::after{
+  content:"";
+  position:absolute; left:8%; right:8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ink-rubric) 18%, var(--ink-rubric) 82%, transparent);
+  opacity:0.55;
+}
+.funeral::before{ top:0; }
+.funeral::after{ bottom:0; }
+
+.funeral .ornament{ margin-bottom: 0.6em; color: var(--ink-rubric); }
+.funeral .ornament svg{ display:inline-block; }
+
+.funeral .name{
+  display:block;
+  font-family: "IM Fell English SC", "IM Fell English", serif;
+  font-size: 1.05em;
+  letter-spacing: 0.22em;
+  margin-bottom: 0.5em;
+  color: var(--ink-rubric);
+}
+.funeral .body{
+  font-family: "IM Fell English", serif;
+  font-style: italic;
+  font-size: 1em;
+  line-height: 1.7;
+  color: var(--ink-old-deep);
+  text-indent: 0;
+  margin: 0;
+}
+.funeral .tick{
+  display:inline-block;
+  font-family: "IM Fell English SC", serif;
+  font-style: normal;
+  letter-spacing: 0.12em;
+  color: var(--ink-rubric);
+  font-size: 0.9em;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Marginal chapter mark + folio number
+ * ------------------------------------------------------------------ */
+.folio{
+  position:absolute;
+  bottom: 28px;
+  left: 0; right: 0;
+  text-align:center;
+  font-family:"IM Fell English SC", serif;
+  font-size: 12px;
+  letter-spacing: 0.35em;
+  color: var(--ink-old-deep);
+  opacity: 0.7;
+  z-index:3;
+}
+
+.marginalia{
+  position:absolute;
+  top: 38px;
+  right: 28px;
+  font-family:"IM Fell English SC", serif;
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--ink-rubric);
+  opacity: 0.75;
+  transform: rotate(0deg);
+  z-index:3;
+}
+
+/* small ink-blot in the bottom margin for character */
+.blot{
+  position:absolute;
+  left: 12%;
+  bottom: 58px;
+  width: 16px; height: 13px;
+  background:
+    radial-gradient(ellipse 70% 60% at 45% 40%, rgba(31,18,8,0.85), rgba(31,18,8,0.4) 60%, transparent 80%);
+  filter: blur(0.4px);
+  transform: rotate(8deg);
+  z-index:2;
+  pointer-events:none;
+}
+.blot::after{
+  content:"";
+  position:absolute;
+  left:14px; top:6px;
+  width:5px; height:4px;
+  background: radial-gradient(circle, rgba(31,18,8,0.6), transparent 70%);
+  border-radius:50%;
+}
+
+/* Subtle binding-edge shadow on the left (page sits in a bound book) */
+.binding{
+  position:absolute;
+  top:0; bottom:0; left:0;
+  width: 42px;
+  pointer-events:none;
+  background: linear-gradient(90deg,
+    rgba(60,30,10,0.45) 0%,
+    rgba(60,30,10,0.18) 35%,
+    transparent 100%);
+  border-radius: inherit;
+  z-index:1;
+}
+
+/* Print + small-screen safety */
+@media (max-width: 640px){
+  body{ padding: 22px 10px 60px; }
+  .leaf{ aspect-ratio: auto; }
+  .dropcap{ font-size: 4.4em; }
+  .grease-host::before{ width: 180px; height: 90px; left: -16px; }
+}
+
+/* Quiet entrance — like the page being placed under the light */
+@keyframes settle {
+  from { opacity:0; transform: rotate(-0.35deg) translateY(8px); }
+  to   { opacity:1; transform: rotate(-0.35deg) translateY(0); }
+}
+.leaf{ animation: settle 1.4s ease-out both; }
+</style>
+</head>
+<body>
+
+<article class="leaf" role="article" aria-label="A leaf from the Book of Ancient Wisdom">
+
+  <div class="binding" aria-hidden="true"></div>
+
+  <div class="marginalia" aria-hidden="true">Cap. III &nbsp;·&nbsp; De Hieme</div>
+
+  <section class="scribe old-hand" aria-label="In the old hand, much faded">
+
+    <p>
+      <span class="dropcap" aria-hidden="true">F</span><span class="sr-only">F</span>irst fill the mouths. Wheat before pride, fish before prayer. A hungry man gathers half, and a dead man gathers nothing. Send two to the farms until the vault breathes. Send one to the forest. Send none to the monument until winter has been counted.
+    </p>
+
+    <p>
+      Wood is warmth twice over: once in the wall, once in the fire. Do not spend all beams on height. The cold has no herald. It comes at the hundred-and-tenth bell and takes first from the wall, then from the sons.
+    </p>
+
+    <p>
+      If iron is found, keep it unless the town is foolish. If gold is found in the mountain, mark the tick. Unicorn Town remembers price, though it has no soul.
+    </p>
+
+    <p>
+      House Verdant helped us at East Docks for two fish and a promise. Pay them before they ask. House Crimson asked for wheat during famine and laughed when refused. Do not answer their first whisper. Answer the second.
+    </p>
+
+    <p>Bandits do not hate. They count.</p>
+
+    <div class="grease-host">
+      <p>
+        A narrow rule, written beside a grease stain: when the camp-smoke rises, call the idle home. A man waiting at his own gate is half a shield. A man sworn to defend is a whole one.
+      </p>
+    </div>
+
+  </section>
+
+  <!-- Death marker: thin double rule with a small cross-flourish -->
+  <div class="death-marker" aria-hidden="true">
+    <span class="rule"></span>
+    <svg width="38" height="22" viewBox="0 0 38 22" xmlns="http://www.w3.org/2000/svg">
+      <!-- a small Celtic-knot / cross flourish in sepia -->
+      <g fill="none" stroke="#6b4423" stroke-width="1.1" stroke-linecap="round">
+        <path d="M19 2 L19 20 M10 11 L28 11"/>
+        <path d="M19 2 C 22 5, 22 8, 19 11 C 16 14, 16 17, 19 20"/>
+        <path d="M19 2 C 16 5, 16 8, 19 11 C 22 14, 22 17, 19 20"/>
+        <circle cx="19" cy="11" r="2.3" fill="#6e1a1a" stroke="#6b4423"/>
+      </g>
+    </svg>
+    <span class="rule"></span>
+  </div>
+
+  <p class="death-text">
+    Here ends the Third Elder. The Fourth wakes with another voice, and the same debt.
+  </p>
+
+  <!-- Funeral inscription — set apart -->
+  <aside class="funeral" aria-label="Funeral line">
+    <div class="ornament" aria-hidden="true">
+      <svg width="48" height="14" viewBox="0 0 48 14" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="#6e1a1a" stroke-width="1" stroke-linecap="round">
+          <path d="M2 7 H 18"/>
+          <path d="M30 7 H 46"/>
+          <path d="M24 2 V 12"/>
+          <path d="M21 4 Q 24 7 27 4"/>
+          <path d="M21 10 Q 24 7 27 10"/>
+          <circle cx="24" cy="7" r="1.2" fill="#6e1a1a"/>
+        </g>
+      </svg>
+    </div>
+    <span class="name">In Memoriam &nbsp;·&nbsp; Mara of the West Field</span>
+    <p class="body">
+      Mara of the west field died in the second winter,
+      <span class="tick">tick&nbsp;CCXXIII</span>,
+      while carrying wheat she would not live to eat.
+      Let her name stand where the cold cannot reach it.
+    </p>
+  </aside>
+
+  <section class="scribe new-hand" aria-label="In newer ink, pressed harder">
+
+    <p>
+      I have read the old warnings and find them cruelly exact. We began proud and nearly starved by tick&nbsp;17. The Book was right: mouths first. I sent Elian and Tom to wheat, Sava to fish, Orrec to wood. The vault steadied.
+    </p>
+
+    <p class="stark">Crimson has already whispered.</p>
+    <p class="stark">I will not answer yet.</p>
+
+    <p>
+      There is rot in haste. The monument wants everything: timber, grain, iron, blueprints, attention. Let it wait until the hearth is fed. But not too long. Other towers are rising beyond the fog, and memory alone does not win a season.
+    </p>
+
+    <p>
+      If I forget again, let the next waking hand read this: build as if winter is coming, trade as if every smile has teeth, and mourn by name. The unnamed dead become weather.
+    </p>
+
+  </section>
+
+  <span class="blot" aria-hidden="true"></span>
+
+  <div class="folio" aria-hidden="true">— xvii —</div>
+
+</article>
+
+</body>
+</html>

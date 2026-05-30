@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>The Book of Ancient Wisdom — House Slate, fol. recto</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&family=Caveat:wght@400;500;600&family=Reenie+Beanie&display=swap" rel="stylesheet">
+<style>
+  /* --------------------------------------------------------------
+     The Book of Ancient Wisdom — folio of House Slate
+     A single recto leaf, laid on a walnut tabletop.
+     Two hands. One leaving, one beginning.
+     -------------------------------------------------------------- */
+
+  :root{
+    --table-1:#1a120b;
+    --table-2:#2a1d10;
+    --table-3:#0e0905;
+
+    /* Vellum — uneven, warmer near the gutter */
+    --vellum-pale:#efe2c4;
+    --vellum-warm:#e8d6ad;
+    --vellum-shadow:#c9b585;
+    --vellum-deep:#a48a55;
+
+    /* Inks */
+    --ink-old:#3a2410;          /* iron-gall, oxidised brown */
+    --ink-old-faded:#5a3d23;
+    --ink-new:#0c0a08;           /* fresh, blacker, harder press */
+    --ink-blood:#5a1a14;         /* the funeral line, red-brown */
+    --ink-marginal:#6a4a28;
+
+    --rule:#9a7a48;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at 50% 35%, #3b2614 0%, #1a120b 55%, #0e0905 100%),
+      var(--table-1);
+    font-family:"EB Garamond", "IM Fell English", Georgia, serif;
+    color:var(--ink-old);
+    padding:6vh 2rem 8vh;
+    display:flex;
+    justify-content:center;
+    overflow-x:hidden;
+  }
+
+  /* Wood grain on the table — long horizontal striations */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    pointer-events:none;
+    background:
+      repeating-linear-gradient(
+        88deg,
+        transparent 0 9px,
+        rgba(0,0,0,.12) 9px 10px,
+        transparent 10px 23px,
+        rgba(255,220,160,.025) 23px 24px,
+        transparent 24px 41px
+      ),
+      repeating-linear-gradient(
+        92deg,
+        transparent 0 137px,
+        rgba(0,0,0,.18) 137px 139px,
+        transparent 139px 280px
+      );
+    mix-blend-mode:multiply;
+    opacity:.85;
+    z-index:0;
+  }
+  body::after{
+    content:"";
+    position:fixed; inset:0;
+    pointer-events:none;
+    background:radial-gradient(ellipse at 50% 30%, transparent 0%, transparent 40%, rgba(0,0,0,.55) 100%);
+    z-index:1;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* The page                                                       */
+  /* -------------------------------------------------------------- */
+
+  .leaf{
+    position:relative;
+    z-index:2;
+    width:min(820px, 96vw);
+    padding:5.2rem 5.5rem 5rem 7.5rem;   /* extra left padding for the gutter tally column */
+    background:
+      /* foxing — small organic stains */
+      radial-gradient(circle at 12% 8%, rgba(120,75,30,.18) 0 5px, transparent 8px),
+      radial-gradient(circle at 88% 14%, rgba(120,75,30,.14) 0 7px, transparent 11px),
+      radial-gradient(circle at 78% 92%, rgba(150,90,40,.22) 0 9px, transparent 14px),
+      radial-gradient(circle at 22% 78%, rgba(100,60,20,.14) 0 6px, transparent 10px),
+      radial-gradient(circle at 64% 48%, rgba(140,90,40,.10) 0 14px, transparent 26px),
+      /* the thumb-stain at top-left where the elder rested a hand for years */
+      radial-gradient(ellipse 60px 80px at 14% 22%, rgba(110,70,30,.32), transparent 70%),
+      /* warmth toward the gutter (left) */
+      linear-gradient(94deg, var(--vellum-shadow) 0%, var(--vellum-warm) 18%, var(--vellum-pale) 55%, var(--vellum-pale) 85%, var(--vellum-shadow) 100%),
+      var(--vellum-warm);
+
+    /* edge roughness — multiple soft shadows + a deckle clip */
+    box-shadow:
+      0 1px 0 rgba(255,240,200,.4) inset,
+      0 -2px 8px rgba(80,40,10,.25) inset,
+      0 30px 80px -20px rgba(0,0,0,.85),
+      0 60px 120px -40px rgba(0,0,0,.6),
+      0 4px 0 rgba(0,0,0,.3);
+
+    /* slight rotation — the leaf is not perfectly square on the table */
+    transform:rotate(-.35deg);
+  }
+
+  /* Deckle/torn edge — uneven clip-path */
+  .leaf{
+    clip-path:polygon(
+      0.3% 0.2%, 8% 0.0%, 22% 0.4%, 36% 0.1%, 52% 0.3%, 68% 0.0%, 82% 0.4%, 96% 0.1%, 99.7% 0.5%,
+      99.6% 14%, 99.9% 28%, 99.5% 44%, 99.8% 60%, 99.4% 76%, 99.9% 92%,
+      99.5% 99.6%, 84% 99.9%, 70% 99.5%, 54% 99.8%, 38% 99.4%, 22% 99.9%, 10% 99.5%, 0.2% 99.7%,
+      0.6% 86%, 0.1% 70%, 0.5% 54%, 0.2% 38%, 0.6% 22%, 0.1% 10%
+    );
+  }
+
+  /* Vellum grain — fine fibrous noise via layered gradients */
+  .leaf::before{
+    content:"";
+    position:absolute; inset:0;
+    pointer-events:none;
+    background:
+      repeating-linear-gradient(
+        3deg,
+        transparent 0 3px,
+        rgba(110,80,40,.025) 3px 4px,
+        transparent 4px 9px),
+      repeating-linear-gradient(
+        91deg,
+        transparent 0 5px,
+        rgba(80,50,20,.02) 5px 6px,
+        transparent 6px 13px),
+      repeating-linear-gradient(
+        177deg,
+        transparent 0 2px,
+        rgba(150,110,60,.018) 2px 3px,
+        transparent 3px 7px);
+    mix-blend-mode:multiply;
+  }
+
+  /* A vertical crease/fold-shadow near the gutter */
+  .leaf::after{
+    content:"";
+    position:absolute;
+    left:5.2rem; top:0; bottom:0; width:1px;
+    background:linear-gradient(to bottom, transparent, rgba(80,50,20,.22) 12%, rgba(80,50,20,.22) 88%, transparent);
+    pointer-events:none;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* The gutter tally — signature detail                            */
+  /* Two clans of marks: the Twenty-Third's (faded, decades of them) */
+  /* and the Twenty-Fourth's (two fresh strokes, blacker, anxious)  */
+  /* -------------------------------------------------------------- */
+
+  .tally{
+    position:absolute;
+    left:2.8rem; top:5.2rem; bottom:5rem;
+    width:2rem;
+    display:flex; flex-direction:column;
+    align-items:center;
+    pointer-events:none;
+  }
+  .tally svg{ display:block; }
+  .tally .legend{
+    margin-top:.6rem;
+    font-family:"IM Fell English", serif;
+    font-style:italic;
+    font-size:9px;
+    color:var(--ink-marginal);
+    text-align:center;
+    line-height:1.3;
+    opacity:.75;
+    writing-mode:vertical-rl;
+    transform:rotate(180deg);
+    letter-spacing:.04em;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* Header                                                         */
+  /* -------------------------------------------------------------- */
+
+  .folio-mark{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    font-family:"IM Fell English SC", serif;
+    font-size:11px;
+    letter-spacing:.18em;
+    color:var(--ink-marginal);
+    border-bottom:1px solid var(--rule);
+    padding-bottom:.5rem;
+    margin-bottom:1.8rem;
+  }
+  .folio-mark .left{ font-style:italic; letter-spacing:.12em; font-family:"IM Fell English", serif; }
+  .folio-mark .right{ font-variant:small-caps; }
+
+  /* -------------------------------------------------------------- */
+  /* The old hand (Twenty-Third)                                    */
+  /* -------------------------------------------------------------- */
+
+  .old-hand{
+    font-family:"EB Garamond", serif;
+    font-size:17.5px;
+    line-height:1.78;
+    color:var(--ink-old);
+    text-align:justify;
+    hyphens:auto;
+    /* subtle faded uneven ink */
+    text-shadow:0 0 .4px rgba(58,36,16,.4);
+  }
+  .old-hand p{ margin:0 0 1.05rem; text-indent:1.6em; }
+  .old-hand p:first-of-type{ text-indent:0; }
+
+  /* Drop cap on the very first letter — restrained, no flourish */
+  .old-hand p:first-of-type::first-letter{
+    font-family:"IM Fell English", serif;
+    font-size:3.4em;
+    line-height:.85;
+    float:left;
+    padding:.12em .12em 0 0;
+    color:var(--ink-old);
+    font-weight:500;
+  }
+
+  /* Random faded characters — single sentences gently lighter */
+  .old-hand em{ font-style:italic; color:var(--ink-old-faded); }
+  .old-hand .smudge{ background:radial-gradient(ellipse 22px 8px at 30% 60%, rgba(70,40,15,.18), transparent 70%); }
+
+  /* Crossed-out word — the seventh→six emendation */
+  .strike{
+    position:relative;
+    color:var(--ink-old-faded);
+  }
+  .strike::after{
+    content:"";
+    position:absolute;
+    left:-2px; right:-2px; top:55%;
+    height:1.5px;
+    background:var(--ink-old);
+    transform:rotate(-2deg);
+    border-radius:1px;
+  }
+
+  /* Stage directions */
+  .stage{
+    font-family:"IM Fell English", serif;
+    font-style:italic;
+    font-size:13.5px;
+    color:var(--ink-marginal);
+    line-height:1.55;
+    margin:1.6rem 0 1.1rem;
+    padding-left:1.2rem;
+    border-left:1px solid var(--rule);
+    opacity:.86;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* The break — where one hand stops and another begins            */
+  /* -------------------------------------------------------------- */
+
+  .succession{
+    margin:2rem 0 1.4rem;
+    text-align:center;
+    position:relative;
+  }
+  .succession .here-ends{
+    font-family:"IM Fell English SC", serif;
+    font-size:12px;
+    letter-spacing:.22em;
+    color:var(--ink-old);
+    display:block;
+    margin-bottom:.4rem;
+  }
+  .succession .first-words{
+    font-family:"Caveat", cursive;
+    font-size:23px;
+    color:var(--ink-new);
+    line-height:1.3;
+    transform:rotate(-.6deg);
+    display:inline-block;
+    letter-spacing:.005em;
+  }
+  /* a small inked X / cross-mark where the pen broke off */
+  .succession svg{
+    display:block;
+    margin:.4rem auto .8rem;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* The Funeral Line — inscription, set apart                      */
+  /* -------------------------------------------------------------- */
+
+  .funeral{
+    margin:2.2rem 1.8rem;
+    padding:1.4rem 1.6rem 1.2rem;
+    border-top:1px solid var(--rule);
+    border-bottom:1px solid var(--rule);
+    position:relative;
+    background:
+      linear-gradient(180deg, rgba(120,80,40,.04), rgba(120,80,40,.08));
+  }
+  .funeral::before, .funeral::after{
+    /* small printer's ornament dots in the corners */
+    content:"";
+    position:absolute;
+    width:4px; height:4px; border-radius:50%;
+    background:var(--ink-old);
+  }
+  .funeral::before{ top:-2px; left:50%; transform:translateX(-50%); }
+  .funeral::after{ bottom:-2px; left:50%; transform:translateX(-50%); }
+
+  .funeral .name{
+    font-family:"IM Fell English SC", serif;
+    font-size:18px;
+    letter-spacing:.14em;
+    color:var(--ink-blood);
+    text-align:center;
+    display:block;
+    margin-bottom:.7rem;
+  }
+  .funeral .epitaph{
+    font-family:"IM Fell English", serif;
+    font-style:italic;
+    font-size:15px;
+    line-height:1.7;
+    color:var(--ink-old);
+    text-align:center;
+    margin:0;
+  }
+  .funeral .signature{
+    display:block;
+    text-align:right;
+    margin-top:.9rem;
+    font-family:"IM Fell English", serif;
+    font-style:italic;
+    font-size:13px;
+    color:var(--ink-marginal);
+    letter-spacing:.04em;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* The new hand (Twenty-Fourth)                                    */
+  /* -------------------------------------------------------------- */
+
+  .new-hand{
+    font-family:"Caveat", cursive;
+    font-size:22px;
+    line-height:1.55;
+    color:var(--ink-new);
+    /* harder press — slight blur of wet ink */
+    text-shadow:0 0 .6px rgba(0,0,0,.55);
+    margin-top:.2rem;
+    /* the nib bites harder; very slight rotation per paragraph */
+  }
+  .new-hand p{
+    margin:0 0 .9rem;
+  }
+  .new-hand p:nth-child(odd){ transform:rotate(-.15deg); }
+  .new-hand p:nth-child(even){ transform:rotate(.12deg); }
+  .new-hand em{
+    font-style:italic;
+    color:var(--ink-new);
+    font-weight:500;
+  }
+  /* the repeated mantra at the end — visibly sinking, the ink pooling */
+  .mantra{
+    display:block;
+    font-size:24px;
+    line-height:1.45;
+  }
+  .mantra .l1{ opacity:.95; }
+  .mantra .l2{ opacity:1; transform:translateX(.3em); display:inline-block; }
+  .mantra .l3{ opacity:1; transform:translateX(.7em); display:inline-block; font-weight:500; }
+
+  /* -------------------------------------------------------------- */
+  /* Marginalia — a small bracketed note out in the right margin    */
+  /* -------------------------------------------------------------- */
+
+  .margin-note{
+    position:absolute;
+    right:1.4rem;
+    width:3.6rem;
+    font-family:"Caveat", cursive;
+    font-size:15px;
+    color:var(--ink-new);
+    line-height:1.2;
+    transform:rotate(2deg);
+    opacity:.88;
+  }
+  .margin-note.one{ top:46%; }
+  .margin-note.two{ top:71%; }
+
+  /* Tiny season-glyph in the bottom right — corresponds to "autumn" */
+  .season{
+    position:absolute;
+    right:2.2rem; bottom:2.4rem;
+    width:38px; height:38px;
+    opacity:.55;
+  }
+
+  /* Inkblot under the mantra — wet-pressed pen */
+  .inkblot{
+    position:absolute;
+    width:9px; height:6px;
+    background:radial-gradient(ellipse, rgba(0,0,0,.85), rgba(0,0,0,.15) 70%, transparent);
+    border-radius:50%;
+    transform:rotate(28deg);
+  }
+
+  /* -------------------------------------------------------------- */
+  /* Small screens — keep it readable, lose some of the spread       */
+  /* -------------------------------------------------------------- */
+  @media (max-width: 720px){
+    body{ padding:3vh .7rem 5vh; }
+    .leaf{ padding:3rem 1.6rem 3rem 4rem; transform:none; }
+    .leaf::after{ left:2.6rem; }
+    .tally{ left:.9rem; top:3rem; bottom:3rem; }
+    .old-hand{ font-size:16px; line-height:1.75; }
+    .new-hand{ font-size:20px; }
+    .funeral{ margin:1.6rem 0; }
+    .margin-note{ display:none; }
+  }
+
+  /* Page-load: ink ever so slightly fades in, like settling on the table */
+  @keyframes settle {
+    from { opacity:0; transform:rotate(-.35deg) translateY(8px); }
+    to   { opacity:1; transform:rotate(-.35deg) translateY(0); }
+  }
+  .leaf{ animation:settle 1.6s ease-out both; }
+
+</style>
+</head>
+<body>
+
+  <article class="leaf" role="article" aria-label="The Book of Ancient Wisdom, leaf of House Slate">
+
+    <!-- ============================================================
+         SIGNATURE DETAIL: the gutter tally column.
+         Twenty-Third's strokes are faded sepia, organised in fives
+         with horizontal cross-strokes marking winters survived.
+         The Twenty-Fourth's two fresh marks sit beneath, blacker.
+         ============================================================ -->
+    <div class="tally" aria-hidden="true">
+      <svg width="34" height="640" viewBox="0 0 34 640" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="oldInk" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence baseFrequency="0.9" numOctaves="2" seed="3"/>
+            <feDisplacementMap in="SourceGraphic" scale="0.6"/>
+          </filter>
+        </defs>
+
+        <!-- Twenty-Third's tally: 23 winters, grouped in fives -->
+        <!-- group 1: winters 1-5 -->
+        <g stroke="#5a3d23" stroke-width="1.4" stroke-linecap="round" fill="none" filter="url(#oldInk)" opacity="0.78">
+          <line x1="10" y1="10"  x2="10" y2="34"/>
+          <line x1="14" y1="12"  x2="14" y2="33"/>
+          <line x1="18" y1="11"  x2="18" y2="35"/>
+          <line x1="22" y1="13"  x2="22" y2="34"/>
+          <line x1="6"  y1="24"  x2="26" y2="20"/> <!-- the cross stroke = a winter survived in count of five -->
+        </g>
+        <!-- group 2: 6-10 -->
+        <g stroke="#5a3d23" stroke-width="1.4" stroke-linecap="round" fill="none" filter="url(#oldInk)" opacity="0.74">
+          <line x1="10" y1="56"  x2="10" y2="80"/>
+          <line x1="14" y1="58"  x2="14" y2="79"/>
+          <line x1="18" y1="55"  x2="18" y2="81"/>
+          <line x1="22" y1="57"  x2="22" y2="80"/>
+          <line x1="6"  y1="69"  x2="26" y2="66"/>
+        </g>
+        <!-- group 3: 11-15 -->
+        <g stroke="#5a3d23" stroke-width="1.4" stroke-linecap="round" fill="none" filter="url(#oldInk)" opacity="0.7">
+          <line x1="10" y1="102" x2="10" y2="126"/>
+          <line x1="14" y1="103" x2="14" y2="125"/>
+          <line x1="18" y1="101" x2="18" y2="127"/>
+          <line x1="22" y1="104" x2="22" y2="126"/>
+          <line x1="6"  y1="115" x2="26" y2="112"/>
+        </g>
+        <!-- group 4: 16-20 -->
+        <g stroke="#5a3d23" stroke-width="1.4" stroke-linecap="round" fill="none" filter="url(#oldInk)" opacity="0.66">
+          <line x1="10" y1="148" x2="10" y2="172"/>
+          <line x1="14" y1="150" x2="14" y2="171"/>
+          <line x1="18" y1="149" x2="18" y2="173"/>
+          <line x1="22" y1="148" x2="22" y2="172"/>
+          <line x1="6"  y1="161" x2="26" y2="158"/>
+        </g>
+        <!-- group 5: 21, 22, 23 — incomplete -->
+        <g stroke="#5a3d23" stroke-width="1.4" stroke-linecap="round" fill="none" filter="url(#oldInk)" opacity="0.62">
+          <line x1="10" y1="194" x2="10" y2="218"/>
+          <line x1="14" y1="196" x2="14" y2="217"/>
+          <line x1="18" y1="195" x2="18" y2="219"/>
+          <!-- no fourth, no fifth, no cross stroke. He stopped mid-group. -->
+        </g>
+
+        <!-- A small horizontal divider — succession -->
+        <line x1="2" y1="252" x2="30" y2="252" stroke="#3a2410" stroke-width="0.8" opacity="0.45"/>
+        <text x="16" y="248" text-anchor="middle"
+              font-family="IM Fell English SC, serif" font-size="6"
+              fill="#3a2410" opacity="0.7" letter-spacing="1">XXIV</text>
+
+        <!-- Twenty-Fourth's fresh marks — two strokes, blacker, slightly trembling -->
+        <g stroke="#0c0a08" stroke-width="1.7" stroke-linecap="round" fill="none">
+          <line x1="11" y1="262" x2="11" y2="288"/>
+          <line x1="16" y1="264" x2="15" y2="289"/>
+        </g>
+      </svg>
+    </div>
+
+    <!-- ============================================================
+         Folio mark — top of the leaf
+         ============================================================ -->
+    <header class="folio-mark">
+      <span class="left">House Slate &nbsp;·&nbsp; the codex passed</span>
+      <span class="right">folio xc &nbsp; recto</span>
+    </header>
+
+    <!-- ============================================================
+         Stage 1 — the old hand
+         ============================================================ -->
+    <p class="stage">In the old hand, much faded, the ink browned where a thumb has rested too often:</p>
+
+    <div class="old-hand">
+      <p>The first winter I lost six. The second, two. The third, none. Write that down for whoever wakes next — the arithmetic of it, not the grief. Grief does not stack in the storehouse.</p>
+
+      <p>Wood before iron. Always. Iron is a question you ask in spring; wood is the answer winter already wrote. A wall at level two is not a wall, it is a coffin with a view. Three, or do not bother.</p>
+
+      <p>The market at Unicorn Town will tell you what it wants, never what you need. Sell fish on the third day after a raid, when the Cobalt House panics and overbuys. Buy wheat when nobody is dying — that is the only time it is cheap.</p>
+
+      <p>Verdant once kept a promise. Once. Crimson will not whisper unless they need something; when they do, the price is always paid by us. Ember is honest, which makes them dangerous in a different way — they will tell you they are coming.</p>
+
+      <p>The first whisper is bait. The second is the trade. Wait for the second.</p>
+
+      <p>Bandits come from the west ridge in pairs, from the south in fours. Pairs you fight. Fours you feed — one sack of wheat at the treeline is cheaper than four funerals. Pride is a tax the Book has been paying for <span class="strike">seven</span> ninety winters. Stop paying it.</p>
+    </div>
+
+    <!-- ============================================================
+         Stage 2 — the succession (where the pen breaks off)
+         ============================================================ -->
+    <p class="stage">Here the old hand stops mid-stroke. A fresh nib begins below, blacker, the letters rounder, less sure:</p>
+
+    <div class="succession">
+      <span class="here-ends">Here ends the Twenty-Third Elder of House Slate.</span>
+
+      <!-- A small ink mark — not an ornament. The place where the pen lifted. -->
+      <svg width="44" height="14" viewBox="0 0 44 14" aria-hidden="true">
+        <path d="M2 7 Q 14 2, 22 7 T 42 7" stroke="#3a2410" stroke-width="0.8" fill="none" stroke-linecap="round" opacity="0.55"/>
+        <circle cx="22" cy="7" r="1.6" fill="#0c0a08" opacity="0.9"/>
+      </svg>
+
+      <span class="first-words">The Twenty-Fourth wakes,<br/>and reads, and is afraid.</span>
+    </div>
+
+    <!-- ============================================================
+         Stage 3 — the Funeral Line for Pell of the Long Reach
+         ============================================================ -->
+    <p class="stage">A short entry, set apart, in the careful hand reserved for the dead:</p>
+
+    <figure class="funeral">
+      <span class="name">Pell of the Long Reach</span>
+      <p class="epitaph">
+        Drowned at the weir hauling the second net, the one we did not need.<br/>
+        He was the one who laughed when the rope sang.<br/>
+        The weir is quieter now.<br/>
+        <em>Let no one fish alone on a grey morning.</em>
+      </p>
+      <span class="signature">— Twenty&#8209;Third</span>
+    </figure>
+
+    <!-- ============================================================
+         Stage 4 — the new hand, pressing harder than it needs to
+         ============================================================ -->
+    <p class="stage">Fresh ink, the new hand again, pressing harder than it needs to:</p>
+
+    <div class="new-hand">
+      <p>I have read you three times this morning. I do not know your face. I know your hand — the way your <em>w</em> leans, the way you crossed out <em>seven</em> and wrote <em>six</em>, as if the seventh was not yours to count.</p>
+
+      <p>I will keep your wood-before-iron. I will keep your second whisper.</p>
+
+      <p>I will not feed the bandits. Forgive me. I read your line about pride and I think it was <em>you</em> who was tired, not the rule that was true. We are at six clansmen. We cannot afford a sack we did not lose to a blade. If I am wrong, the Twenty-Fifth will cross me out the way you crossed out <em>seven</em>, and I will deserve it.</p>
+
+      <p>It is the second week of autumn. Aurum has gone quiet, which I am told is the sound they make before they move.</p>
+
+      <p class="mantra">
+        <span class="l1">I am laying in wood.</span><br/>
+        <span class="l2">I am laying in wood.</span><br/>
+        <span class="l3">I am laying in wood.</span>
+      </p>
+
+      <p>Pell, I did not know you. The weir was quieter this morning. I think I heard what you meant.</p>
+    </div>
+
+    <!-- Two small marginalia in the new hand, scribbled out in the right margin -->
+    <div class="margin-note one" aria-hidden="true">wood<br/>before<br/>iron</div>
+    <div class="margin-note two" aria-hidden="true">2nd<br/>whisper</div>
+
+    <!-- A tiny season-glyph: autumn — three falling marks -->
+    <svg class="season" viewBox="0 0 40 40" aria-hidden="true">
+      <g stroke="#3a2410" fill="none" stroke-width="0.9" stroke-linecap="round">
+        <path d="M8 4 Q 12 14, 8 26"/>
+        <path d="M20 8 Q 24 20, 20 32"/>
+        <path d="M32 6 Q 36 18, 32 30"/>
+        <circle cx="8" cy="32" r="1.2" fill="#3a2410"/>
+        <circle cx="20" cy="36" r="1.2" fill="#3a2410"/>
+        <circle cx="32" cy="34" r="1.2" fill="#3a2410"/>
+      </g>
+      <text x="20" y="40" text-anchor="middle" font-family="IM Fell English SC, serif" font-size="4" fill="#3a2410" letter-spacing="1">AUTUMN · WK II</text>
+    </svg>
+
+  </article>
+
+</body>
+</html>
