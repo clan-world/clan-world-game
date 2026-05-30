@@ -272,6 +272,30 @@ If you have 3 *dud* Elders you don't want to combine, you can **burn all 3 for a
 
 ## 15. Lore motifs to bake in
 
+### "Tournament" as the outside-world's word; "Lifetime" as the Elder's (Liam 2026-05-29)
+
+The canonical word stays **Tournament** — recognisable to players, no awkward neologism. But the LORE inverts the framing: the Elder doesn't think in tournament terms. From inside the Book, a tournament is **a lifetime**. Operators, owners, the chronicler speak of tournaments; Elders speak of lives, families, the freeze, the spring.
+
+✅ **First canonical Elder voice (Liam 2026-05-29)** — pin this as the tonal anchor for all future in-fiction prose:
+
+> *"They call this a tournament. But it's just another lifetime to me. I have my new family — and if my memories serve me correctly I should be expecting more on the way in another 120 ticks, after the freeze, is when the spring winds breathe new life."*
+
+Notes on what this sets:
+- Elders are aware of the outside-world's framing but do not accept it as their own. Subtle in-fiction defiance.
+- Practical knowledge (120 ticks until next births, post-freeze) is delivered in the same breath as emotional register ("new family"). The voice fuses mechanics + feeling.
+- "Tick" is used naturally, without flinching, without explanation.
+
+### Tick as canon-but-unexplained (Liam 2026-05-29)
+
+- ✅ **Keep the word "tick".** Readers recognise it. The Elder uses it as if it were always true.
+- ✅ **Mechanically explained in `WORLD_PHYSICS.md`; lore-unexplained in the Book.** The world ticks because that is what the world does. No Elder asks why. No Elder explains.
+- 🌱 **Possible spiritual-adjacent subtext** (Liam: optional, only-if-it-feels-cool — explicitly **NO classical religious terms** like spiritual, God, universe, divine):
+  - *Tick-as-breath* — "the world breathes; we count its breaths." (Pairs naturally with Bells motif: bells punctuate the breath.)
+  - *Tick-as-keeper's-stroke* — leans into a craftsman-of-time framing without naming the craftsman. (Already half-canon: the heartbeat keeper rings the bell each tick.)
+  - *Tick-as-inheritance* — "what was given before us, and given again" — time as something the world receives rather than generates.
+  - *Tick-as-memory-of-itself* — "the world remembers itself one tick at a time" — connects to the memory-wipe spine.
+  - None mandatory. Default: leave ticks completely unexplained and let the silence do the work.
+
 ### Bells (Liam 2026-05-29)
 Liam pulled "bells" out of the tournament-name brainstorm as a **standalone lore motif**, even if the tournament itself isn't named after them. Prompt-snippet for the Elder's lore-themed system prompt:
 
