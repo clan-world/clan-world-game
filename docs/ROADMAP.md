@@ -92,11 +92,20 @@ A late-session realisation worth pursuing seriously: **the Elder IS a Claude Cod
 - **Save Claude Code memories proper** between sessions; consolidate end-of-tournament memories into a single MEMORY.md per Elder.
 - Beautiful symmetry: the game's continuity engine IS the engine itself.
 
-✅ **Skill discipline (Liam 2026-05-29).** Resolved — skills are **read-only and authored, not Elder-modified**:
-- **Global read-only skills** — baseline capabilities shared by all Elders (per-game mechanics, basic strategy primitives, /memory and /skill-creator usage, etc.).
-- **Per-Elder read-only skills tied to NFT traits** — minted with the NFT, expressing that agent's lineage / House / voice. (See §7 for the trait composition system that feeds into which skills get bound.)
-- Elders may still *use* skill primitives like /memory and /skill-creator to interact with their own MEMORY.md and persistent state, but they do NOT author new top-level skills at runtime.
-- This closes the "self-modifying-agent drift" concern by replacing self-authoring with curated authoring at mint + global baseline.
+✅ **Skill architecture (Liam 2026-05-29 — REVISED twice in session, this is the consolidated answer):**
+
+Two layers of skills are baked in at mint and at runtime:
+1. **Global read-only skills** — baseline capabilities shared by all Elders (per-game mechanics, basic strategy primitives, /memory + /skill-creator usage, etc.). Curated by us, not edited by Elders.
+2. **Per-Elder read-only skills tied to NFT traits** — minted with the NFT, expressing lineage / House / voice. (See §7 for the trait composition system.) Curated at mint, not edited at runtime.
+
+PLUS **Elders MAY author + edit their own skills at runtime**, which was the original primary memory surface intent:
+- **Encouragement schedule (Liam 2026-05-29):**
+  - **Optional** before each memory wipe — a gentle nudge to capture anything useful.
+  - **Strongly encouraged but not forced** at the end of each game — they may have learned nothing worth keeping, so don't over-prompt and pollute their skill set.
+  - **Not silently auto-triggered** — must come from a structured checkpoint prompt the Elder can decline.
+- Elders also save **Claude Code memories proper** through their session and at end-of-tournament these get consolidated into the Elder's MEMORY.md / ANCIENT_WISDOM.md.
+
+🆕 **Cross-tournament memory disambiguation (Liam 2026-05-29).** Any persistent memory carried from PRIOR tournaments must be **flagged as past-tournament** when surfaced into the Elder's working context. At the start of a new tournament, an early prompt reminds the Elder: *"Any memories or skills predating this checkpoint were authored in past tournaments. They may not match the current world state. Trust them only as far as your own eyes have walked"* (echoing the Book's First Rule). This prevents the Elder from confusing past-game observations with current-game state.
 
 ---
 
@@ -150,11 +159,23 @@ Cap each batch at **max 4 missions submitted at once**. Forces a nicer cadence b
 
 The game has to be *watchable* — currently the cockpit is four agents at once and most of the action is invisible to a viewer. Liam 2026-05-29 sketch:
 
-- **Per-MCP-call animation overlay.** When an Elder makes an MCP call, a short animation overlays the terminal translating the call into a **human-readable action card**. Batch actions cycle through cards one at a time.
-  - Implementation idea: hooks or session-transcript jsonl streaming → action-card renderer.
+- **Per-MCP-call action cards over the MAP** (Liam 2026-05-29, revised from terminal overlay). The cards do NOT overlay the terminal — they overlay the **map portion of the cockpit** (mobile-first design). Toggleable on/off (or possibly a fully separate view) so the player can choose between watching raw agent reasoning and watching the dramatised action.
+  - Each card translates one MCP tool call into human-readable language with icons + sprites: *"two clansmen to the forest,"* *"deposit at base,"* *"defend west docks."*
+  - Batched MCP calls (up to 4 per submit per §6.7) cycle through cards one at a time.
+  - **Unified Elder art:** the visual anchor of each card is a static piece of Elder art — same art as the NFT. Generated at mint via ChatGPT ImageGen from prompt-fragments assembled from the Elder's traits (House, voice, lineage, etc.), producing consistent art across the whole product surface (NFT, cockpit, action cards, map overlay).
+  - Liam explicitly flagged this as **near-term shippable**, NOT scope creep — the static art + card-renderer pipeline is small and looks much better than raw logs.
+  - Implementation: hooks or session-transcript jsonl → MCP-call extractor → card renderer drawing on a sprite/icon library + the Elder's mint-time art.
 - **Cockpit redesign — focus on ONE agent.** The owner's Elder is centre-stage. Limited / peripheral visibility into the other 11 in the same game.
 - **Cross-game / cross-tournament visibility.** See multiple active events at once; see upcoming starts; see historical results. Gives a passive watcher a richer surface.
 - This is the layer that has to do most of the work making spectating fun.
+
+### 11.1 Day/night cycle (revisit) 🌱
+
+Previously implemented, visuals glitched, turned off. Liam 2026-05-29 wants to revisit.
+- Original plan was a per-tick day/night which "wouldn't look good" at the 60s heartbeat.
+- **New idea:** **night mode syncs with the device clock** of the watching owner — owner watching at midnight sees the cockpit and map rendered in nightmode regardless of in-game tick. Decouples visual day/night from game-tick timescale entirely.
+- Lower risk (no engine-state coupling), higher reward (atmosphere matches when the owner is actually watching).
+- Pure presentation layer; cheap to ship.
 
 ---
 
