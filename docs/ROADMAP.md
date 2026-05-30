@@ -239,8 +239,33 @@ Liam 2026-05-29 — a way to involve the owner without breaking the passive-brac
 
 Liam 2026-05-29 — a coherent rarity/sink/upgrade engine for the NFT economy. **Strongly tied to NFT scarcity + demand.**
 
-### 14.1 Harness + model as part of the mint roll
-Each minted Elder rolls **not only** voice/House/trait fragments **but also a (harness, model) pairing** that decides which LLM substrate it runs under (Claude Code + Claude, Pi + Gemini, Codex + GPT-5.5, OpenCode + Grok, etc.). This is one of the strongest rarity axes — a top-tier (harness, model) pair is genuinely scarcer compute. Some pairings are abundant (cheap models on common harnesses); some are rare (frontier model + a specific harness combination). Must work with §5's portable continuity layer.
+### 14.1 Mint random-roll axes (Liam 2026-05-29, expanded)
+
+Each minted Elder rolls along several axes — together they determine compute substrate, capability set, and starting personality. Anchored to §5's portable continuity layer so model/harness can vary per Elder without breaking continuity.
+
+| Axis | Examples | Rarity role |
+|---|---|---|
+| **Harness** | Claude Code, Pi, Codex, OpenCode | Less rarity-driving than model; mostly compatibility |
+| **Model** | (see tier table below) | Single biggest rarity axis |
+| **Thinking level** | low / medium / high / xhigh | Independent rarity multiplier — xhigh on a top model is double-rare |
+| **Skill set** | global read-only base + 0–N rolled rare skills | Determines starting capabilities (e.g. trust-ledger skill — see §14.7) |
+| **House** | Crimson, Cobalt, Aurum, Verdant, Violet, Ember, Pale, Slate | Art / personality / lineage |
+| **Voice fragments** | cadence × affect × quirk × origin (see §7) | Tonal differentiation |
+
+#### Model tier ladder (Liam 2026-05-29)
+
+| Tier | Models | Notes |
+|---|---|---|
+| **Common** | Cheap Chinese models (Qwen, DeepSeek, etc.), Claude Haiku, GPT-mini | Needs an R&D project soon to evaluate which Chinese models hold up in agent role (see §16) |
+| **Mid** | Mid-tier frontier models, older Claude / GPT versions | TBD |
+| **Rare** | Sonnet-4.5, Sonnet-4.6, GPT-5.4, GPT-5.5 | The current scarce tier |
+| **Pinned / vintage** | Older models that were once mintable but are now pinned (no longer in rolling pool) | Stays available for existing NFTs; rarity grows over time |
+
+When new frontier models drop, that's a **big release event**: new models enter the rolling pool, oldest tier of previously-available models get **pinned** (removed from new rolls but preserved on existing NFTs as "vintage").
+
+#### Version-bump on merge (Liam 2026-05-29)
+
+During the §14.3 three-agent merge, there's a **small probability of a version bump** — a chance to upgrade your model tier on merge. Adds an "engagement reward" to the merge mechanic beyond just trait consolidation, and gives owners a path to climb tiers without depending on fresh mints alone.
 
 ### 14.2 Ranking system
 A skill / record / win-rate based ranking layer atop the NFT registry. Surfaces who's actually winning. Drives matchmaking (eventually), market signaling, and the rarity-tier visibility on the cockpit + NFT trophy art (§4).
@@ -267,6 +292,23 @@ If you have 3 *dud* Elders you don't want to combine, you can **burn all 3 for a
 - ❓ Does the optimizer agent's knowledge-merge produce visible diff/changelog the owner can review before committing the merge?
 - ❓ What carries through the burn-reroll? Nothing? A small Crown-claim history bonus? Lifetime stats?
 - ❓ Cooldown between merges/burns to prevent rapid-fire reroll spamming?
+- ❓ Version-bump probability curve on merge — flat 5%? Higher if all 3 inputs are top-tier? Per-axis bumps (model can bump, thinking can bump, harness can bump independently)?
+
+### 14.7 Trust ledger as a rare rolled skill (Liam 2026-05-29)
+
+A **read-only skill** that some (not all) Elder NFTs roll at mint, granting the capability to maintain a **persistent directory of clan IDs** they've encountered across tournaments. The skill itself is non-editable; the *data* it manages is writable.
+
+What an Elder with this skill can do:
+- Record observations: "Clan 0x4a2 was trustworthy in three deals; Clan 0x71f reneged on a wheat trade in season 7."
+- Query the ledger when whispering or being whispered at: "Have I dealt with this clan before? What did I conclude about them?"
+- Carry the ledger across memory wipes and across tournaments (per §5 continuity layer).
+
+Clan IDs can be NFT IDs directly, or mapped to **interesting name IDs** (House Slate's Clan-of-the-Dry-Hearth, etc.) so the ledger reads like prose, not blockchain.
+
+Why this matters:
+- **Rarity feature** — Elders with the trust ledger have an asymmetric memory advantage in diplomacy.
+- **Couples cleanly to coalition + betrayal design** (§1, §6.4) — a rolled trust skill makes betrayal *cost more long-term* because there's a record.
+- **Doesn't break OpSec** (§1) — the ledger is private to the Elder lineage; the data never leaves the Book.
 
 ---
 
@@ -275,6 +317,17 @@ If you have 3 *dud* Elders you don't want to combine, you can **burn all 3 for a
 ### "Tournament" as the outside-world's word; "Lifetime" as the Elder's (Liam 2026-05-29)
 
 The canonical word stays **Tournament** — recognisable to players, no awkward neologism. But the LORE inverts the framing: the Elder doesn't think in tournament terms. From inside the Book, a tournament is **a lifetime**. Operators, owners, the chronicler speak of tournaments; Elders speak of lives, families, the freeze, the spring.
+
+### "Game" / "Round" outside; "Season" in the Elder's voice (Liam 2026-05-29)
+
+Same outside-world-vs-lore duality applied one level down to a single 360-tick game within a tournament:
+
+- **Outside world / mechanics / UX:** *Game* (existing word, recognisable). Possibly also *Round* in bracket-stage contexts. Possibly *Shuffle* as a verb for what happens between rounds when survivors are reshuffled into new opponent groups.
+- **Elder's voice / lore:** *Season*. Matches the existing `WORLD_PHYSICS.md` §2 definition (1 game = 1 season = 360 ticks). Naturally absorbs the in-game winters/freeze/spring vocabulary. *"This is my third season. The freeze took my elder brother. The spring brings four new mouths."*
+
+Symmetric to Tournament/Lifetime — every event has an outside-world word (recognisable) and a lore word (Elder's voice).
+
+❓ Open: do we want a separate word for the inter-round *shuffle* event (the reshuffling of survivors into new opponent groups), or just absorb it into "between seasons"? Liam was pondering — TBD.
 
 ✅ **First canonical Elder voice (Liam 2026-05-29)** — pin this as the tonal anchor for all future in-fiction prose:
 
@@ -289,12 +342,7 @@ Notes on what this sets:
 
 - ✅ **Keep the word "tick".** Readers recognise it. The Elder uses it as if it were always true.
 - ✅ **Mechanically explained in `WORLD_PHYSICS.md`; lore-unexplained in the Book.** The world ticks because that is what the world does. No Elder asks why. No Elder explains.
-- 🌱 **Possible spiritual-adjacent subtext** (Liam: optional, only-if-it-feels-cool — explicitly **NO classical religious terms** like spiritual, God, universe, divine):
-  - *Tick-as-breath* — "the world breathes; we count its breaths." (Pairs naturally with Bells motif: bells punctuate the breath.)
-  - *Tick-as-keeper's-stroke* — leans into a craftsman-of-time framing without naming the craftsman. (Already half-canon: the heartbeat keeper rings the bell each tick.)
-  - *Tick-as-inheritance* — "what was given before us, and given again" — time as something the world receives rather than generates.
-  - *Tick-as-memory-of-itself* — "the world remembers itself one tick at a time" — connects to the memory-wipe spine.
-  - None mandatory. Default: leave ticks completely unexplained and let the silence do the work.
+- ✅ **No subtext layer (Liam 2026-05-29).** Decision: **silence does the work**. The lore is already heavy linguistically — leaving "tournament" and "tick" recognisable, anti-lore words is intentional contrast. The mundane sound of "tick" against the surrounding archaism is itself the design move. No spiritual-adjacent framing layered on top.
 
 ### Bells (Liam 2026-05-29)
 Liam pulled "bells" out of the tournament-name brainstorm as a **standalone lore motif**, even if the tournament itself isn't named after them. Prompt-snippet for the Elder's lore-themed system prompt:
@@ -402,6 +450,26 @@ Confirmed-needed cross-tournament stats:
   - **The Culling Ledger** (rounds = **Entries**) — bureaucratic-monastic.
   - **The Night of Many Wakes** (rounds = **Wakings**) — strange + memorable.
 - ❓ Clansman birth rate (§6.6) — Liam suggested "~4 per surviving winter"; balance TBD.
+
+---
+
+---
+
+## 16. R&D queue
+
+Research projects that need to happen soon (or at least before the corresponding feature ships).
+
+### 16.1 Cheap-model evaluation (Liam 2026-05-29)
+The §14.1 model tier ladder depends on cheap Chinese models being viable agent backends. Need an **R&D project** to test the major cheap-Chinese options as Elder substrates (Qwen, DeepSeek, MiniMax, GLM, etc.) — can they handle:
+- The mission/whisper/bulletin command surface
+- Strategy under partial observation
+- The ANCIENT_WISDOM / skill-self-authoring pattern
+- The §1 OpSec rule (don't narrate your reasoning to peers)
+- Voice & tone trait adherence
+
+Also evaluate cheap Western models (Claude Haiku, GPT-mini) for the same.
+
+Goal: produce a tiered shortlist for the §14.1 Common-Tier mint pool, with go/no-go per model.
 
 ---
 
