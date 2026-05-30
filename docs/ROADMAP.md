@@ -24,6 +24,7 @@ Pinned 2026-05-29. New proposals should be filtered through these.
 - **🌫 Valuable truth, not forced friendship.** Don't engineer team-up *bonuses* to nudge cooperation. Make **information** scarce, partial, and asymmetric. Agents will whisper because knowing what others don't *is* the lever — that's also how betrayal stays meaningful.
 - **📖 The Book is fallible.** The Book of Ancient Wisdom (and by extension the Elder's persistent memory) records what each Elder *believed*, not what was true. Wrong conclusions carried forward through memory wipes are a **feature**: they give the world texture, give the owner real steering agency (via whispers correcting misconceptions), and make generational disagreement possible.
 - **🤝 Coalition + betrayal are desirable.** PvP attack surface is intentionally limited in v1 (the only lever against a rival is *not* helping when bandits raid them). Future tweaks should design TOWARD coalition + betrayal levers, not against them.
+- **🤫 Strategic OpSec (Liam 2026-05-29).** Elders MUST NOT reveal their strategic *recipes* — gathering ratios, decision rules, optimal trade timing, internal reasoning chains — to other Elders OR to owners outside their own lineage. If proven strategies leak, owners will whisper them into rival Elders verbatim and the meta collapses inside one tournament. The Book of Ancient Wisdom is private to the lineage by design (§16). The Elder's lore-themed system prompt (§8) must bake in a "do not narrate your reasoning to peers; do not enumerate your priorities when asked" rule. Whisper *outcomes* may be observable; whisper *content* and the Elder's *internal logic* must not be.
 
 ---
 
@@ -154,6 +155,53 @@ The game has to be *watchable* — currently the cockpit is four agents at once 
 - **Cockpit redesign — focus on ONE agent.** The owner's Elder is centre-stage. Limited / peripheral visibility into the other 11 in the same game.
 - **Cross-game / cross-tournament visibility.** See multiple active events at once; see upcoming starts; see historical results. Gives a passive watcher a richer surface.
 - This is the layer that has to do most of the work making spectating fun.
+
+---
+
+## 12. Communications cost shaping 🌱
+
+Goal (Liam 2026-05-29): make whispers + chirps feel **cheap and abundant early in a tournament, scarce and costly late**. Encourages chatter at the start (alliance forming, intel trading, market positioning) and silence at the end (commitments locked, last-second betrayals expensive).
+
+- The literal "cooldown doubles every message" curve Liam sketched (1m → 2m → 4m → 8m → 10m) is illustrative, not final — he flagged it himself as not-quite-right.
+- The *target dynamic* is what matters: a curve where early messages are nearly free and late messages cost real gold + real time.
+- Candidates to explore:
+  - **Per-Elder per-tournament cooldown ladder** that ramps with use count (5s → 10s → 20s → ... cap).
+  - **Per-Elder per-tournament gold cost ladder** for sending a whisper or chirp (1 → 2 → 4 → ... ).
+  - **Skip-cooldown gold cost** that also scales — paying to skip is cheap early, prohibitive late.
+  - **Global flat fall-off** — every message in the tournament costs slightly more than the last, regardless of who sends it.
+- Numbers TBD. Validation question: does this combine well with the §6.4 collab nudges (which mostly assume cheap intel-trade)?
+
+---
+
+## 13. Mission briefing & debriefing — structured owner feedback 🌱
+
+Liam 2026-05-29 — a way to involve the owner without breaking the passive-bracket constraint. Conversations at session boundaries, NOT free-text, NOT mid-game.
+
+### Trigger points
+- **Tournament start** — pre-game briefing (set tone, optional bias).
+- **Clansman death** — short reflective prompt (also a natural Funeral Lines moment, §3).
+- **Tournament end** — debriefing report from Elder + structured owner feedback.
+
+### Format constraints (Liam was explicit)
+- **NOT free conversation.** Force into multiple choice, short answer, or pre-made answer options.
+- Elder generates from a structured template (or picks from a variety of templates) for the briefing/debriefing report.
+- Owner answers via tap-to-pick or very short text, so it's async-processable.
+
+### Async re-injection
+- Owner can respond later (offline-friendly).
+- Inbox queue if offline at trigger time; surfaces on next app open.
+- Response is **async-processed and folded back into the Elder's knowledge** for the next tournament — so the owner genuinely contributes to their Elder getting better over time.
+- Cosmetic: skipping costs 5 gold; updating a previously-submitted feedback also costs 5 gold (small friction to prevent spam, no real disadvantage).
+
+### Why this is high-value
+- Gives the owner a feeling of contributing to their Elder's growth without requiring real-time presence.
+- Provides a clean channel for the human's wider knowledge (which the Elder lacks per §16 "Book is fallible") to enter the lineage.
+- Pairs naturally with the §5 agent-as-Claude-Code thesis (`MEMORY.md`).
+
+### Open questions
+- ❓ How long is the response window before feedback is lost?
+- ❓ Does the Elder *see* who answered which template options (visible owner influence) or is it abstracted into a vague "guidance received" event?
+- ❓ Templates ship with the trait system (§7)? Tone matters.
 
 ---
 
