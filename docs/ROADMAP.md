@@ -473,8 +473,178 @@ Goal: produce a tiered shortlist for the §14.1 Common-Tier mint pool, with go/n
 
 ---
 
+## 17. NFT economy — mint, rarity, packs, scarcity engine
+
+Captured 2026-05-30 from Liam's economy-and-mint deep dive. Largest single section of roadmap; pulls together the §14 rarity engine, the mint mechanics, the tournament economy, and the supply-contraction goal.
+
+### 17.1 The Pokémon-distribution goal 🎯
+
+Liam's north star: **80–90% of minted NFTs should be "commons" people don't deeply care about.** That's what drives the merge-and-burn loop. Without a long tail of commons, there's nothing to sacrifice. The commons-distribution + 3-merge/burn (§14.3/14.4) is the supply-contraction engine.
+
+The thing that makes Pokémon NOT work as a model: physical Pokémon commons sit in shoeboxes forever; there's no sink. Our equivalent is the burn-three-for-a-reroll mechanic — a Pokémon-like distribution with an actual sink.
+
+### 17.2 Dumb agents — the 40–60% baseline 🎯
+
+To make Pokémon distribution work without exploding compute, the bulk of minted Elders run on a **deterministic Python script**, not an LLM. The dumb-agent script follows a fixed pattern (e.g. *"send two to wheat, two to fish, wait n ticks, deposit, send four to wood, repeat; if clansmen die, ignore and continue"*). LLM-powered Elders become uncommon-to-rare by default.
+
+| Tier | Substrate | Share of mint | Examples |
+|---|---|---|---|
+| Common | Dumb Python script | ~50–60% | Fixed-pattern agent that loudly fails on edge cases |
+| Uncommon | Cheap LLM in low/medium reasoning | ~25–35% | Qwen / DeepSeek / Haiku / GPT-mini |
+| Rare | Mid-tier LLM | ~10–15% | Mid-tier frontier models |
+| Epic | Frontier LLM + good harness | ~3–5% | Sonnet-4.6 + Claude Code etc. |
+| Legendary | Frontier LLM + frontier model + xhigh reasoning | ~0.1% | Sonnet-4.6 / GPT-5.5 + Claude Code + xhigh thinking |
+
+Compute affordability becomes a function of the dumb-agent ratio.
+
+### 17.3 First-edition release strategy 🌱
+
+We don't need to support all harnesses + models on day one. **First edition** = Dumb Python + Claude Code + (Haiku, Sonnet) only. ~50 mints. As we onboard more harnesses + models, each onboarding is a **release event**: a new edition becomes mintable, the previous edition's lowest tier gets pinned out of the pool (preserved on existing NFTs as "vintage"). Releases excite fans of each new model/harness.
+
+### 17.4 Mint user-agency — paid lock-ins 🌱
+
+The base mint is a fully random roll for a base price (paid in GOLD). Owner can **optionally pay extra to lock in specific attributes**:
+
+| Lock-in | Cost | Notes |
+|---|---|---|
+| **House** | +gold | Choose any of the 8 Houses (Crimson, Cobalt, Aurum, Verdant, Violet, Ember, Pale, Slate). |
+| **Personality sliders** | +gold | The hackathon React Native sliders pattern: trusting↔wary, aggressive↔patient, individual↔collective, etc. Each slider appends a system-prompt fragment. |
+| **Harness, model, thinking level** | **NOT for sale** | These stay fully random — preserves the real rarity backbone. Cannot be bought, only rolled. |
+
+This pattern gives owners agency over the *expressive* axes while keeping the *valuable* axes (compute substrate) random — so paying more never lets you skip the rarity gate.
+
+### 17.5 House-population balanced pricing 🌱
+
+If the live distribution of House-locked mints skews (e.g. Crimson is over-minted, Pale is under-minted), the **lock-in price for over-represented Houses goes up** and under-represented ones get cheaper. Creates self-balancing incentive AND tribal formation pressure.
+
+### 17.6 Pack minting + reveal animation 🌱
+
+Pokémon-card-pack inspired:
+- Option to mint in **packs of 5 / 10 / 11** with a **favourable probability distribution** (vs. minting singles).
+- Each Elder revealed **one at a time**, sorted by rarity (lowest first, highest last — climactic).
+- Dramatic high-quality reveal animation, simple graphics in the realm aesthetic.
+- Each reveal unpacks traits one at a time (House → voice → harness+model → thinking level → skills → "and they're a Legendary!" big moment).
+
+The unboxing IS the product, per §1 control + mercy of randomness and §III.6 (anticipation/ritual) from the collecting-psychology framework.
+
+### 17.7 Tournament economy — entry fees + cooldowns 🎯
+
+Tournament entry costs gold. **Clash-of-Clans-style scaling**: as a clan/owner moves up the league ranks, both the entry fee AND the prize pool scale. Pay more to play in higher-stakes seasons; win more if you survive.
+
+**Per-Elder cooldown:** an Elder can play **at most once every 7 days**. Skip-cooldown costs gold (scaling per skip).
+
+**Tournament cadence (scales with demand):**
+- Initial release: **1 tournament per day** (24h offset between tournament starts).
+- Mid-stage: 1 tournament every **6 hours**.
+- Mature: 1 tournament every **1 hour**.
+
+Each tournament runs **8 simultaneous games × 12 agents = 96 agents per tournament** in round 1.
+
+**Capacity math:** at hourly cadence, ~700 game-instances per week. Cooldown + capacity together create real scarcity around playing.
+
+**Bid-to-jump-queue (TBD):** owners can pay gold above the flat entry fee to skip queue or get prioritised, scaling the play frequency for paying owners without breaking compute.
+
+### 17.8 Skill bundles tied to mint tier 🌱
+
+Different Elders get different appended system-prompt fragments at mint, granting tactical or strategic knowledge other Elders lack. Examples Liam sketched:
+
+- **Three levels of "Bandit Defense Intelligence"** — basic / advanced / expert. Higher tiers include better lore-themed instructions for camping-vs-attacking calculus, calling defenders from other clans, hiring mercenaries via whisper, etc.
+- **Tool-use workflow skills** — higher-tier Elders are born knowing good tool-use workflows; lower-tier Elders have to figure them out.
+- **Negotiation tactics** — appended fragments for whisper diplomacy, OTC deal structuring, market timing.
+
+Tied to the §14.7 trust-ledger pattern and the §5 skill architecture — skills baked at mint, optional self-authoring at runtime.
+
+### 17.9 House tribalism + Discord migration 🌱
+
+Migrate community Telegram → **Discord** for better bot features.
+
+- **House-gated private channels**: Discord bot detects users' wallets + NFTs; users with sufficient-tier holdings of a particular House get private channels for that House.
+- **Cross-clan-of-same-House cooperation bonus**: in-game, Elders of the same House get some small benefit when defending each other or trading. Creates real reason for House loyalty beyond aesthetic.
+- Population imbalance pricing (§17.5) reinforces tribal formation.
+
+The whole House system becomes a real social layer, not just art.
+
+### 17.10 Solana NFT technical considerations 🌱
+
+Notes for the Solana implementation work:
+
+- **Image assets self-hosted** (S3 or similar) — we control the metadata JSON, can update it. Living trophy art (§4) is feasible.
+- **On-chain vs off-chain attributes**: TBD. Likely a mix — provably-random axes on-chain (harness, model, House if not paid-locked); achievement/lifetime stats off-chain via metadata refresh.
+- **Mint randomness via VRF or Pyth** — provably random for the on-chain axes. Bit-mask → trait combinator: a single random word turns into multiple trait bits via fixed bit positions.
+
+### 17.11 Simulations + token economics modelling 🎯
+
+Liam pitch: **build economic simulations before launch.** First-six-months model of:
+
+- Gold supply + burn rate (entry fees, skip-costs, mint costs)
+- NFT mint rate + merge-and-burn loop
+- Player population growth assumptions
+- Cooldown + tournament cadence demand-side curves
+- Rarity tier distribution outcomes (does the Pokémon-distribution actually emerge?)
+
+Liam's hunch: *"I'm always shocked at how close my models are when I do model things like this ahead of time."* Worth the upfront analytical investment; gives us informed parameters for launch.
+
+### 17.12 Open questions (NFT economy)
+- ❓ Dumb-agent percentage: 40%? 50%? 60%? Affects compute cost + rarity floor.
+- ❓ House lock-in pricing structure — flat premium or population-imbalance-dynamic?
+- ❓ Tournament entry fee scaling curve — linear with league rank, exponential, tiered?
+- ❓ Cooldown skip pricing — flat per skip, doubling, capped?
+- ❓ Pack-mint probability distribution — guaranteed 1 rare per 10? Per 11? Per 5?
+- ❓ When does the next-edition release happen? On schedule or when mint pool depletes?
+- ❓ Bid-to-jump-queue for tournament entry — implement at launch or defer?
+
+---
+
+## 18. Chat-with-Elder (refined — optional side bonus) 🌱
+
+**Refined direction (Liam 2026-05-30):** outside-game chat with your Elder is **fully optional**. NOT pushed. NOT nudged. No prompts to use it. A side bonus for owners who want to click into their NFT and chat.
+
+- Distinct from the **structured death/end-of-tournament debrief** (§13) which IS the canonical contact channel — that one is actively prompted.
+- Open question: does information from a chat get integrated back into the Elder's shared memory, or is it purely "get to know them" with no game-state effect? Both are valid; lean toward "get to know them" first; integration is a later experiment.
+
+**Cost structure (refined per codex wingman 2026-05-30):** wingman pushed back on my gold-burn + escalating-cooldown shape — *"cost should make moments feel sacred, not make access feel rented."* Better framing:
+
+- Let **casual chat** be low-friction or free.
+- Reserve cost for **consequential asks**: memory crystallisation, advice, blessings, lore unlocks, vows, irreversible choices.
+- Daily/periodic free conversations as gold utility for *consequential* asks.
+
+Relational bonding wants rhythm, not toll booths.
+
+---
+
+## 19. Refined collecting-psychology framework (with codex critique)
+
+Captured from the 2026-05-30 conversation. The original 10-driver framework lives in `/tmp/collecting-psychology-notes.md`; the codex stress-test sharpened it. Pinning key revisions:
+
+### 19.1 Four drivers I missed initially (codex 2026-05-30)
+- **Mastery / expertise** — collectors becoming connoisseurs (wine, watches, MTG-finance, art).
+- **Speculation / optionality** — "this might matter later" beyond pure scarcity/status.
+- **Curation / authorship** — the collection is a *composition*; arranging it expresses judgment.
+- **Transformation / growth** — patina on leather, trained dogs, modified cars. *Adjacent to care but not identical.* The collector wants to have **shaped** the thing.
+
+### 19.2 Refined recommendation
+~~"Lean on driver 9 (care)"~~ — too narrow. **Better framing:** *lean into stewardship, growth, and remembered history.* Avoid the failure modes of pure care:
+- Obligation fatigue — chores curdle the bond
+- Guilt / grief when an Elder dies, fails, or is sold
+- Performance betrayal — "I cared and it still sucks"
+- Transfer awkwardness — selling something that remembers you
+- Neediness tax — a thing that asks becomes demanding, not collectible
+
+### 19.3 The Tamagotchi question (codex 2026-05-30)
+*"Does the Elder become richer over months, or merely needy over days?"*
+
+- Tamagotchi: high-frequency, low-depth, punitive → burnout in ~12 months.
+- Dogs: persist because care is reciprocal, embodied, socially legitimised, emotionally varied.
+- Cars: persist because care produces visible mastery, identity, and improvement.
+- Furby: plateaued because "talks back" was novel but shallow.
+
+Elder design must produce **depth over months**, not demand-spikes over days. The Funeral Lines + Book lineage + cross-tournament memory are exactly the right shape for this.
+
+---
+
 ## Change log
 
 | Date (ET) | Change |
 |---|---|
 | 2026-05-29 | Initial bootstrap from the lore brainstorming session. Captured: design principles, tournament structure, owner touchpoints, Book-page-on-wipe, agent-as-Claude-Code thesis, co-gather + leveling, asymmetric bandit visibility, collab nudges, voice/tone, lore-themed prompts, persistence model, open questions. |
+| 2026-05-30 | r8 NFT economy + chat refinement + collecting-psychology framework. Added §17 (mint/rarity/packs/cooldown/tournament economy), §18 (chat-with-Elder refined as optional side bonus, codex-critiqued cost structure), §19 (collecting-psychology framework with codex's 4 missing drivers + Tamagotchi-vs-dogs reframe). |
