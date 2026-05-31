@@ -782,6 +782,73 @@ Two separate axes that never collapse into each other. Level is the legacy/ident
 
 ---
 
+## 17c. Elder skills — the taxonomy 🌱 (Liam 2026-05-30, capture-not-deep-dive)
+
+Liam's voice-note 2026-05-30 late: **capture these before they evaporate; don't deep-dive yet.**
+
+### 17c.1 Skill metadata model
+
+- Each Elder has a finite set of **special skill slots** (count grows with Level per §17b.4).
+- Each filled slot carries a **skill name + level** (e.g. `bandit-defense L2`, `fishing-experimentation L1`).
+- Metadata is **visible** on the NFT (slot names + levels public). Mechanics are **opaque** ("secret sauce") — owners know WHAT the Elder can do, not exactly HOW the game weights it. Lets the design team retune without breaking trader expectations of which Elders are "good."
+
+### 17c.2 Skill candidates (initial seed list)
+
+**Communication tier**
+- 🗣 **Whisper-send** — can initiate private peer-to-peer message to another Elder mid-tournament.
+- 👂 **Whisper-receive** — can RECEIVE and react to whispers. Critical for the dumb-agent tier: dumbest agents are deaf (whispers no-op), but **a "smarter-dumb" sub-tier exists** with **pre-scripted dialogue reactions** — confused responses, "I don't trust this voice," "stay focused on the plan." The illusion of conversation without LLM cost. This is how Clan World makes dumb agents feel ALIVE without paying their inference bill.
+
+**Combat tier**
+- 🏹 **Bandit-spotting** — early warning before bandits arrive at a clan boundary. 2–3 levels.
+- 🛡 **Bandit-defense** — combat-effectiveness multiplier when defending. 2–3 levels. Freshly-minted Elders can roll with this as a default starting skill (no merging needed) — gives new players a viable strategic path on day one.
+
+**Resource tier**
+- 🎣 **Fishing strategy** — 2 levels. L2 variant: **"don't trust the priors"** — explicit instruction to keep experimenting across regions instead of locking onto whichever zone first showed good odds. Anti-overfit skill.
+- 🪵 **Region-specific resource crit** — bonus when working a particular biome, almost certainly correlated with House proficiency (Verdant chops wood faster, etc.).
+
+**Coordination tier**
+- 🤝 **Teamwork** — critical-hit boost when **all clansmen are stationed in the same region**. Concentrates risk for concentrated reward.
+
+### 17c.3 House × skill — proficiency correlations
+
+Houses determine *which* skills an Elder is *more likely* to roll with at mint and *better at* mechanically:
+- 🌿 **Verdant** — wood-chopping crit, forest-region skills
+- 🩶 **Pale** — bandit-defense doubled, ancient-wisdom retention
+- (Other 6 Houses TBD — fishing-house, masonry-house, etc.)
+
+Per §17.4a: House sets **proficiency TYPE**, mint-roll sets **buff SIZE**. Skills slot into that.
+
+### 17c.4 Cross-House merging — probabilistic House inheritance 🆕
+
+**Open question Liam flagged today:** what happens when you merge three Elders of *different* Houses?
+
+**Proposed model (Liam):** the output Elder's House is drawn probabilistically across the three input Houses, with **higher weight to the LOWER-rarity Houses**. Consequence:
+- Burn 3 Pale (epic) → guaranteed Pale output.
+- Burn 2 Pale + 1 common-House → significant chance the output rolls common, **not** Pale. You "risk" the epic House when you mix.
+- Same-House merge is the only path that guarantees the rare House is preserved.
+
+This makes House-consistency a **strategic constraint** on top of Level — collectors who want a high-level Pale Elder must hoard Pale specifically, not just any 3 Elders.
+
+**Tuning lever:** how steep is the lower-rarity bias? Linear (count-weighted), inverse-rarity (commons dominate), or knob-tunable.
+
+### 17c.5 Skill inheritance via merge
+
+Liam's frame: *"with three elders, you get equal probabilities of the child having any of the special skills enabled."*
+
+**Read:** each unique skill present across the three input Elders has an independent (equal-ish?) probability of transferring to the output Elder's skill-slot pool. If the output has L=5 (5 slots) and the three inputs collectively hold 8 distinct skills, 5 of those 8 get rolled in. Open whether the **level** of each transferred skill is preserved, averaged, or also rolled.
+
+**Strategic consequence:** merging isn't just about Level. It's about **engineering the skill bundle** carried forward. A thoughtful owner picks 3 Elders whose skills *complement* each other.
+
+### 17c.6 Open questions (don't resolve yet — Liam paused this thread)
+- ❓ Equal probability per skill, or weighted by source-Elder level?
+- ❓ Does a skill's *level* transfer 1:1, average down, or also roll?
+- ❓ Skill cap per Elder beyond slot count — can the same skill stack to higher levels via merge?
+- ❓ How many total skill-types ship at launch? (Seed list above is ~6; need 12–20 for collectibility depth?)
+- ❓ House × skill correlation strength — soft (just probability nudge) or hard (some skills House-locked)?
+- ❓ Smarter-dumb agent tier — is "scripted reaction to whispers" a SKILL the agent can have, or a property of the agent's archetype? Likely archetype.
+
+---
+
 ## 18. Chat-with-Elder (refined — optional side bonus) 🌱
 
 **Refined direction (Liam 2026-05-30):** outside-game chat with your Elder is **fully optional**. NOT pushed. NOT nudged. No prompts to use it. A side bonus for owners who want to click into their NFT and chat.
@@ -840,3 +907,4 @@ Elder design must produce **depth over months**, not demand-spikes over days. Th
 | 2026-05-30 | r11 cooldown walk-back + Elder Level mechanic + wingman 3-way rejoin. Liam pushed back on cooldown trust-break framing using the Clash-of-Clans precedent; cooldown stays as designed with skip-cost vs second-Elder-cost tuning flagged for sim. Captured wingman's 5th archetype (social organiser / local-club player), 4 additional composition tensions (dumb % × perceived agency, gold-skip × secondary market, burn-3 × newbie onboarding, dialogue × fixed strategy), and the House tribalism × power-balancing failure mode. NEW §17b — Elder Level mechanic: median+1 merge formula, doubling cost curve to L10 = 1023 base, codex's crystallisation 'level = mythic seniority, model tier = intelligence', sideways "Ancient Divisions" league concept, Lineage Powers (preserved ancestor traits), World Authority (canonical lore changes), Council of Elders tournament, lineage-name convention, cap at L10. |
 | 2026-05-30 | r12 mint + level refinements. §17.4 reworked from hard House lock-in to **RNG-weighting** (probability boost OR pay-to-exclude-up-to-4-Houses; never guaranteed pick) per Liam's preference to keep randomness as the rarity backbone. NEW §17.4a clarifies House determines proficiency TYPE while roll determines buff SIZE; personality sliders are a SEPARATE expressive axis, not random standalone buffs. §17.5 (House-population balanced pricing) DROPPED — don't balance distribution. §17b.4 level unlocks: dropped league access entirely; added **persistent-state token capacity scaling with level** (the strongest case for merging, per Liam) + **one special skill slot per level**. League access stays gated by LLM tier + entry fee + cooldown, never by level. |
 | 2026-05-30 | r13 §17.5 corrected. Liam: *not* no balancing — **deliberately UNEQUAL static distribution**. Houses themselves are rarity-tiered (Pattern A: 1 epic / 2 rare / 2 uncommon / 3 common; OR Pattern B: geometric 50% / 25% / 12.5% / ... / 0.75%). Rolling the epic-tier House is itself a "lucky pull" moment. Lore-aligned: House Pale already framed as ancient/mysterious in `THE_REALM.md`, slots naturally into the epic tier. RNG-weighting (§17.4) operates on top of this skewed distribution. |
+| 2026-05-30 | r14 **§17c skill taxonomy captured (don't-deep-dive-yet flag).** Liam voice-noted a fresh skill model before pausing: each Elder carries a finite set of **named-level skill slots** (count = §17b.4 Level), metadata public, mechanics opaque ("secret sauce"). Seed skill list — Whisper-send / Whisper-receive (incl. dumb-agent illusion-of-conversation via pre-scripted "I don't trust this voice" responses for a smarter-dumb sub-tier), Bandit-spotting / Bandit-defense (2–3 levels, default mint-roll skill), Fishing strategy (incl. "don't-trust-priors" experimentation variant), Teamwork crit-boost. House × skill correlations (Verdant=wood, Pale=double bandit defense). **NEW: cross-House merge** = probabilistic House inheritance, weighted toward LOWER-rarity Houses — burning 2 Pale + 1 common risks the output rolling common; same-House merge is the only path that guarantees the rare House survives. Skill inheritance: each skill present in the 3 inputs has independent (equal-ish) probability of transferring. Six open questions parked. Liam also requested a future doc/conversation: **descriptions of the gacha-game references** (Hearthstone, Hades, Vampire Survivors, Clash, Genshin, Pokémon TCG, Mario Kart, MTG Arena, Diablo Immortal, Battlefront 2) so he can evaluate them on their own terms — flagged as next deliverable. |
