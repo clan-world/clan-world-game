@@ -532,9 +532,41 @@ This pattern gives owners *directional influence* over expressive axes while kee
 
 The result: every House feels distinct AND every Elder within a House feels different.
 
-### 17.5 No population balancing (Liam 2026-05-30) ❌
+### 17.5 Houses have built-in rarity tiers (Liam 2026-05-30, refined) 🎯
 
-Earlier proposal of dynamic House-population pricing has been **dropped**. Let the distribution fall where it falls. Rationale: rarity comes from rolls; population imbalance is just another rarity signal (the under-minted House is the genuinely rarer one); the §17.14 power-balancing mechanisms (diminishing cooperation returns, underdog bonuses, seasonal House resets, etc.) handle the gameplay risk without warping the mint economy.
+**Not equal distribution. Not dynamically-balanced distribution. Deliberately UNEQUAL distribution baked into the mint RNG.** Houses themselves are tiered into rarity classes, so simply rolling the rare-tier House is a Pokémon-style "ooh, an epic" moment, separate from proficiency size / harness / model / level rolls.
+
+Two candidate distribution shapes Liam sketched:
+
+**Pattern A — Tier-class distribution:**
+
+| Class | # of Houses | Each at | Combined |
+|---|---|---|---|
+| Epic | 1 | ~8% | ~8% |
+| Rare | 2 | ~12% | ~24% |
+| Uncommon | 2 | ~18% | ~36% |
+| Common | 3 | ~10–11% | ~32% |
+
+**Pattern B — Geometric decay:**
+
+| House (in rarity order) | Probability |
+|---|---|
+| 1 | 50% |
+| 2 | 25% |
+| 3 | 12.5% |
+| 4 | 6.25% |
+| 5 | 3% |
+| 6 | 1.5% |
+| 7 | 1% |
+| 8 | 0.75% |
+
+Pattern B is much steeper — one House dominates; Houses 7–8 are *legendary*-rare. Pattern A is gentler, like collectible-card-game tiers. Tuning territory; final shape TBD.
+
+**Lore alignment:** rare/epic Houses should be the ones already framed as ancient or mysterious in lore. Per `THE_REALM.md`, House Pale is already *"old, rumoured to predate the realm; speaks little, writes much; the notebook of House Pale is said to be a thousand pages."* That maps cleanly onto an epic-tier slot.
+
+**Interaction with §17.4 RNG-weighting:** the base random roll is the SKEWED distribution above, **NOT uniform 1-in-8**. Pay-to-weight and pay-to-exclude operate on top of the skewed distribution. Excluding the 4 common Houses to fish for the epic still doesn't guarantee a hit — it just narrows the lottery.
+
+**No dynamic population balancing.** Earlier proposal of imbalance-pricing dropped. The §17.14 power-balancing mechanisms handle gameplay-side risk if any House gets coordinated dominance, but the *mint distribution itself* stays statically skewed by design.
 
 ### 17.6 Pack minting + reveal animation 🌱
 
@@ -807,3 +839,4 @@ Elder design must produce **depth over months**, not demand-spikes over days. Th
 | 2026-05-30 | r10 Liam's verdicts on the r9 wingman sharpenings: dumb-agent "blank card" framing rejected (dumbs have full art/personality/dialogue; the boring STRATEGY is the point); dumb % raised from 40–60% to ~75–80%; hoarding softened as non-issue; paid House lock-in cleared (1-in-8 random base + pack-of-11 gives variety); cooldown pay-to-compete still open; secondary-market optionality moved from blocker to long-term lens. Slot-machine reveal moments framed as the emotional engine of the product. |
 | 2026-05-30 | r11 cooldown walk-back + Elder Level mechanic + wingman 3-way rejoin. Liam pushed back on cooldown trust-break framing using the Clash-of-Clans precedent; cooldown stays as designed with skip-cost vs second-Elder-cost tuning flagged for sim. Captured wingman's 5th archetype (social organiser / local-club player), 4 additional composition tensions (dumb % × perceived agency, gold-skip × secondary market, burn-3 × newbie onboarding, dialogue × fixed strategy), and the House tribalism × power-balancing failure mode. NEW §17b — Elder Level mechanic: median+1 merge formula, doubling cost curve to L10 = 1023 base, codex's crystallisation 'level = mythic seniority, model tier = intelligence', sideways "Ancient Divisions" league concept, Lineage Powers (preserved ancestor traits), World Authority (canonical lore changes), Council of Elders tournament, lineage-name convention, cap at L10. |
 | 2026-05-30 | r12 mint + level refinements. §17.4 reworked from hard House lock-in to **RNG-weighting** (probability boost OR pay-to-exclude-up-to-4-Houses; never guaranteed pick) per Liam's preference to keep randomness as the rarity backbone. NEW §17.4a clarifies House determines proficiency TYPE while roll determines buff SIZE; personality sliders are a SEPARATE expressive axis, not random standalone buffs. §17.5 (House-population balanced pricing) DROPPED — don't balance distribution. §17b.4 level unlocks: dropped league access entirely; added **persistent-state token capacity scaling with level** (the strongest case for merging, per Liam) + **one special skill slot per level**. League access stays gated by LLM tier + entry fee + cooldown, never by level. |
+| 2026-05-30 | r13 §17.5 corrected. Liam: *not* no balancing — **deliberately UNEQUAL static distribution**. Houses themselves are rarity-tiered (Pattern A: 1 epic / 2 rare / 2 uncommon / 3 common; OR Pattern B: geometric 50% / 25% / 12.5% / ... / 0.75%). Rolling the epic-tier House is itself a "lucky pull" moment. Lore-aligned: House Pale already framed as ancient/mysterious in `THE_REALM.md`, slots naturally into the epic tier. RNG-weighting (§17.4) operates on top of this skewed distribution. |
