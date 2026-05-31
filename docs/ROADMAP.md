@@ -509,21 +509,32 @@ The thing that makes Pokémon NOT work as a model: physical Pokémon commons sit
 
 We don't need to support all harnesses + models on day one. **First edition** = Dumb Python + Claude Code + (Haiku, Sonnet) only. ~50 mints. As we onboard more harnesses + models, each onboarding is a **release event**: a new edition becomes mintable, the previous edition's lowest tier gets pinned out of the pool (preserved on existing NFTs as "vintage"). Releases excite fans of each new model/harness.
 
-### 17.4 Mint user-agency — paid lock-ins 🌱
+### 17.4 Mint user-agency — paid RNG-weighting (refined Liam 2026-05-30) 🌱
 
-The base mint is a fully random roll for a base price (paid in GOLD). Owner can **optionally pay extra to lock in specific attributes**:
+The base mint is a fully random roll for a base price (paid in GOLD). Owner can **optionally pay extra to influence — but never guarantee — specific attributes**. Randomness stays as the rarity backbone.
 
-| Lock-in | Cost | Notes |
+| Influence | Cost | Notes |
 |---|---|---|
-| **House** | +gold | Choose any of the 8 Houses (Crimson, Cobalt, Aurum, Verdant, Violet, Ember, Pale, Slate). |
-| **Personality sliders** | +gold | The hackathon React Native sliders pattern: trusting↔wary, aggressive↔patient, individual↔collective, etc. Each slider appends a system-prompt fragment. |
+| **House — probability boost** | +gold | Increase the chance of rolling a chosen House (e.g. +25–50% weight). Still not guaranteed. |
+| **House — exclusion** | +gold | Pay to eliminate up to 4 Houses from the RNG. Narrows from 1-in-8 to at most 1-in-4. **Still no guaranteed pick.** Preserves randomness for the remaining roll. |
+| **Personality sliders** | +gold | Hackathon React Native sliders pattern (trusting↔wary, aggressive↔patient, individual↔collective, etc.). Sliders append system-prompt fragments. **NOT tied to random buffs** — those come from House proficiency type + roll for buff size (see §17.4a). |
 | **Harness, model, thinking level** | **NOT for sale** | These stay fully random — preserves the real rarity backbone. Cannot be bought, only rolled. |
 
-This pattern gives owners agency over the *expressive* axes while keeping the *valuable* axes (compute substrate) random — so paying more never lets you skip the rarity gate.
+This pattern gives owners *directional influence* over expressive axes while keeping the *valuable* axes (compute substrate) random. Whales never get a guaranteed House and never skip the rarity gate.
 
-### 17.5 House-population balanced pricing 🌱
+### 17.4a House → proficiency type; rolled buff size (Liam 2026-05-30)
 
-If the live distribution of House-locked mints skews (e.g. Crimson is over-minted, Pale is under-minted), the **lock-in price for over-represented Houses goes up** and under-represented ones get cheaper. Creates self-balancing incentive AND tribal formation pressure.
+**Personality sliders are NOT random standalone buffs.** Two separate axes:
+
+1. **House determines proficiency TYPE** — what kind of buff this Elder gets. Verdant → wood-related; Cobalt → trade/fishing; Aurum → gold; Ember → iron/bandits; etc. Type is fixed by House.
+2. **Roll determines buff SIZE** — same House, different magnitudes. A Verdant might roll a +5% wood-crit OR a +15% wood-crit. Same proficiency, different magnitude.
+3. **Personality sliders sit ABOVE** — they're a paid-customisable system-prompt overlay separate from the House proficiency. Tonal/behavioural, not numeric.
+
+The result: every House feels distinct AND every Elder within a House feels different.
+
+### 17.5 No population balancing (Liam 2026-05-30) ❌
+
+Earlier proposal of dynamic House-population pricing has been **dropped**. Let the distribution fall where it falls. Rationale: rarity comes from rolls; population imbalance is just another rarity signal (the under-minted House is the genuinely rarer one); the §17.14 power-balancing mechanisms (diminishing cooperation returns, underdog bonuses, seasonal House resets, etc.) handle the gameplay risk without warping the mint economy.
 
 ### 17.6 Pack minting + reveal animation 🌱
 
@@ -701,17 +712,20 @@ The `1+1+3 → L2` pattern actively downgrades the L3 input. Codex flag: this is
 
 Two separate axes that never collapse into each other. Level is the legacy/identity/ritual axis. Model tier is the competitive-power axis. Trying to let level grant competitive advantage re-creates pay/burn-to-win optics.
 
-### 17b.4 Concrete level unlocks
+### 17b.4 Concrete level unlocks (refined Liam 2026-05-30)
+
+**Capacity scaling — the strongest case for merging (Liam 2026-05-30):**
+- 🎯 **Persistent-state token capacity scales with level.** This is the headline reason to climb. Higher-level Elders can save **more knowledge, scripts, notes, observations** into their persistent state (ANCIENT_WISDOM + scratchpad + memory). Level 1: small cap; Level 10: large cap. Carries between games, between tournaments, between forgettings. Genuine gameplay scaling, not just flavour — a level-10 Elder enters its tournament loaded with everything 9 generations learned, not just a thicker Book.
+- 🎯 **Special skill slot per level.** Each level adds one custom skill slot beyond baseline. Level 5 Elder: 5 custom skill slots; Level 10: 10. Owner-curated and Elder-self-authored skills compete for the slot count, so higher level = more strategic depth carried.
 
 **Expressive depth (level-gated, not competitive):**
 - **Chat with Elder** depth scales with level. Lower-level Elders give brief / basic responses; higher-level Elders hold richer conversations, can crystallise memories, can pass blessings to clansmen.
 - **The Book gets thicker.** Higher-level Elders have visibly bigger Books of Ancient Wisdom — more pages, more remembered Funeral Lines from past lifetimes, more lineage-depth flavour seeded into the system prompt.
 - **Visible NFT art evolution.** A ring/halo/badge that grows. Each merge-up is a slot-machine reveal moment.
-- **Skill slot growth.** Level 1 carries baseline + 1 rolled rare; level 5 carries baseline + 5. Ties to §17.8 skill-bundles-at-mint.
 
-**Sideways league access (codex's "Ancient Divisions" idea):**
-- High-level Elders can enter special tournament formats with **cosmetic prestige, council voting, lore stakes** — but NOT raw ladder advantage.
-- Prevents level from becoming pay/burn-to-win while still rewarding lineage progression.
+❌ **League access — DROPPED (Liam 2026-05-30).** Earlier proposal that level gates league access is abandoned. League access is gated by LLM-tier + tournament entry fee + cooldown, NOT by level. Keeps level firmly on the "mythic seniority" axis, never on the "competitive ladder" axis. See codex's crystallisation in §17b.3.
+
+❌ **"Ancient Divisions" sideways tournaments — DOWNGRADED.** Initially proposed by codex as a sideways tournament format gated by level. Kept in the doc as an idea for later but not currently in scope; if it ships, it's a cosmetic/lore tournament with no ladder consequence.
 
 **🆕 Lineage Powers (codex 2026-05-30):** higher-level Elders **preserve traits from sacrificed ancestors** — voice fragments, battle memories, old titles, rivalries, scars, prophecies. Level means accumulated ancestry, not just XP. Each merge LITERALLY pulls a phrase, a voice quirk, a remembered grudge from each sacrificed Elder into the resulting one. Over 10 levels, an Elder accumulates a CHORUS of voices.
 
@@ -792,3 +806,4 @@ Elder design must produce **depth over months**, not demand-spikes over days. Th
 | 2026-05-30 | r9 wingman stress-test on §17. Added §17.12 (6 sharpenings — dumb-script archetypes, burn-window layering, identity-anchor fix, prize-eligibility-vs-participation cooldown decouple, 60/30/10 commons counter-proposal, secondary-market optionality blind spot) + §17.13 (red flags before sim modelling) + 5 new open questions. |
 | 2026-05-30 | r10 Liam's verdicts on the r9 wingman sharpenings: dumb-agent "blank card" framing rejected (dumbs have full art/personality/dialogue; the boring STRATEGY is the point); dumb % raised from 40–60% to ~75–80%; hoarding softened as non-issue; paid House lock-in cleared (1-in-8 random base + pack-of-11 gives variety); cooldown pay-to-compete still open; secondary-market optionality moved from blocker to long-term lens. Slot-machine reveal moments framed as the emotional engine of the product. |
 | 2026-05-30 | r11 cooldown walk-back + Elder Level mechanic + wingman 3-way rejoin. Liam pushed back on cooldown trust-break framing using the Clash-of-Clans precedent; cooldown stays as designed with skip-cost vs second-Elder-cost tuning flagged for sim. Captured wingman's 5th archetype (social organiser / local-club player), 4 additional composition tensions (dumb % × perceived agency, gold-skip × secondary market, burn-3 × newbie onboarding, dialogue × fixed strategy), and the House tribalism × power-balancing failure mode. NEW §17b — Elder Level mechanic: median+1 merge formula, doubling cost curve to L10 = 1023 base, codex's crystallisation 'level = mythic seniority, model tier = intelligence', sideways "Ancient Divisions" league concept, Lineage Powers (preserved ancestor traits), World Authority (canonical lore changes), Council of Elders tournament, lineage-name convention, cap at L10. |
+| 2026-05-30 | r12 mint + level refinements. §17.4 reworked from hard House lock-in to **RNG-weighting** (probability boost OR pay-to-exclude-up-to-4-Houses; never guaranteed pick) per Liam's preference to keep randomness as the rarity backbone. NEW §17.4a clarifies House determines proficiency TYPE while roll determines buff SIZE; personality sliders are a SEPARATE expressive axis, not random standalone buffs. §17.5 (House-population balanced pricing) DROPPED — don't balance distribution. §17b.4 level unlocks: dropped league access entirely; added **persistent-state token capacity scaling with level** (the strongest case for merging, per Liam) + **one special skill slot per level**. League access stays gated by LLM tier + entry fee + cooldown, never by level. |
