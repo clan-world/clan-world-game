@@ -70,6 +70,14 @@ RPC_URL_PRIMARY=https://base-sepolia.g.alchemy.com/v2/<YOUR_KEY>
 FORK_BLOCK_NUMBER=0
 ```
 
+> ⚠️ **Two `RPC_URL_PRIMARY` scopes — don't conflate them.** The value above
+> (compose/host scope) is the **upstream** RPC the fork is seeded *from* — it is
+> correctly a real Base-Sepolia RPC. The **Convex deployment** has its *own*
+> `RPC_URL_PRIMARY` (set via `convex env set`) that the indexer uses to poll the
+> chain; on an anvil-fork dev stack that one must be **`http://anvil-fork:8545`**
+> (the fork), or `tickClock` never advances and the elder runner pipeline goes
+> dark. See `docs/runbooks/self-hosted-convex.md` → "Post-Deploy Env".
+
 To pin a specific block (recommended once your dev flow is reproducible):
 
 ```bash

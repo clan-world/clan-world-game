@@ -43,7 +43,7 @@ A clansman's exact position is always known mid-travel, so **re-tasking mid-trav
 
 A mission is a **3-tuple: `(clansmanId, gotoRegion, action)`** — "go to this region, do this action." A few actions carry extra params: `targetClanId` (DefendBase); `marketToken`/`marketAmount`/`maxGoldIn` (MarketBuy/Sell); `withdrawResources` (Withdraw).
 
-Submit via `elder clan submit-orders` (one mission per idle clansman per tick).
+Submit via the `submit_orders` tool — orders array passed inline, never a bash heredoc (one mission per idle clansman per tick).
 
 **Action set:**
 
@@ -233,8 +233,8 @@ This enables **arbitrage / camping**: keep a stocked clansman waiting in town; w
 
 An agent-layer side-channel for coordination (trade, alliances, bribes, warnings). It never touches the game engine — which is exactly why OTC deals (§8) are pure trust.
 
-- **Private whispers** — `elder peer whisper <toClanId> <msg>`: strictly **1-to-1** (reach several peers via several whispers). Read your inbox with `elder peer inbox`.
-- **Public bulletins** — `elder bulletin post <msg>`: posted to the Unicorn Town bulletin board, visible to all clans. Lore-flavored; you do NOT need to be in Unicorn Town to post or read.
+- **Private whispers** — the `peer_whisper` tool (toClanId, body): strictly **1-to-1** (reach several peers via several whispers). Read your inbox with the `peer_inbox` tool.
+- **Public bulletins** — the `post_bulletin` tool: posted to the Unicorn Town bulletin board, visible to all clans. Lore-flavored; you do NOT need to be in Unicorn Town to post or read.
 
 No rate limits or message-size caps today.
 
@@ -245,7 +245,7 @@ No rate limits or message-size caps today.
 Your context is wiped every **50 ticks** (§1). Two stores carry strategy forward:
 
 - **`ANCIENT_WISDOM.md`** — a workspace file you read at session start. Carry forward what you've learned about your clan's situation and strategy. Append, don't overwrite.
-- **Scratchpad** — `elder memory save <key> <value>` / `elder memory recall <key>`: arbitrary notes that persist across context wipes.
+- **Scratchpad** — the `memory_save` (key, value) / `memory_recall` (key) tools: arbitrary notes that persist across context wipes.
 
 Write your durable strategy (clan ID, baseRegion, current monument/wall level, winter prep status, peer deals) to memory before each wipe.
 
@@ -259,6 +259,6 @@ Write your durable strategy (clan ID, baseRegion, current monument/wall level, w
 4. If a clansman is **idle (state 0)**: plan its next mission (§3/§4 rates). Remember gather → **then deposit**.
 5. If **busy (state 1/2)**: leave it alone — do NOT re-task mid-gather (loses progress).
 6. If **idle at a non-base region with empty carry**: send it home to reset (§3 rule 5).
-7. Submit **one order per idle clansman**, one per tick, via `elder clan submit-orders`.
+7. Submit **one order per idle clansman**, one per tick, via the `submit_orders` tool (orders inline, never a bash heredoc).
 
 Most ticks need few or no new orders — clansmen finish their work and you just check in. Before a memory wipe (§1) or winter (§5), do the prep proactively.

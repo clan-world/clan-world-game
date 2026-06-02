@@ -31,6 +31,7 @@ describe("runResetFlow", () => {
       async sendSlashCommand(cmd: string) { calls.push(cmd); },
       async pasteMessage(text: string) { calls.push(`paste:${text.split("\n")[0]}`); },
       async capturePane() { return "\u2502 > "; },
+      async setStatusBar(name: string, color: string) { calls.push(`status:${name}:${color}`); },
     } as any;
     const convex = {
       async recordResetEvent() { calls.push("reset-start"); return "resetEventLog:1"; },
@@ -59,6 +60,11 @@ describe("runResetFlow", () => {
     expect(calls).toContain("claude:false");
     expect(calls).toContain("/rename Ælder Storm Riders");
     expect(calls).toContain("/color blue");
+    // Theme the tmux status bar with the ASCII "Elder <name>" + clan color so the
+    // brand shows in the cockpit chrome even when the Claude TUI /color doesn't
+    // render. Without this assertion a dropped setStatusBar call passes CI silently
+    // (round-2 swarm: tier-1 MED).
+    expect(calls).toContain("status:Elder Storm Riders:blue");
     expect(calls).toContain("send:scheduled");
     expect(calls).toContain("reset-complete");
     expect(fs.existsSync(config.wipeMarkerPath)).toBe(false);
@@ -79,6 +85,7 @@ describe("runResetFlow", () => {
       async sendSlashCommand(cmd: string) { calls.push(cmd); },
       async pasteMessage(text: string) { calls.push(`paste:${text.split("\n")[0]}`); },
       async capturePane() { return "\u2502 > "; },
+      async setStatusBar(name: string, color: string) { calls.push(`status:${name}:${color}`); },
     } as any;
     const convex = {
       async recordResetEvent() { calls.push("reset-start"); return "resetEventLog:1"; },
@@ -102,6 +109,9 @@ describe("runResetFlow", () => {
     });
 
     expect(result.confirmed).toBe(false);
+    // Branding (incl. the tmux status bar) happens before delivery, so it fires
+    // even on the unconfirmed path (round-2 swarm: tier-1 MED).
+    expect(calls).toContain("status:Elder Storm Riders:blue");
     expect(calls).toContain("event:hook_failure");
     expect(calls).not.toContain("reset-complete");
     expect(fs.readFileSync(config.wipeMarkerPath, "utf8")).toBe("50\n");

@@ -348,6 +348,116 @@ Every item below is a place where the **current implementation diverges from int
 **Misc**
 - [ ] 🆕 **Bonus clansman on base upgrade** — not implemented (hard-capped at 4). §7
 - [ ] ❓ Confirm the pre-memory-wipe early warning is **5 ticks** (Liam recalled 10). §13
+- [ ] 🆕 **Tournament-bracket play** (§15) — bracket structure (8 → 4 → 2 → final) not yet implemented; per-round prizes TBD.
+
+### 15. Tournament-bracket play (new-engine intent) 🆕
+_Status: 📝 Liam's intended model — not in current engine. Captured here so the engine architecture (Phoenix backend) is built to support it from the start._
+
+Seasons are not played as one flat global game. Agents (Elders) are queued into a **tournament bracket** and must survive each round to continue. A single bracket structure (subject to change):
+
+| Round | Concurrent games | Agents per game | Agents in round | Agents advancing |
+|---|---|---|---|---|
+| Round of 8 (heats) | 8 | up to 12 | up to 96 | top half per game advance |
+| Quarter-finals | 4 | up to 12 | ~48 | top half per game advance |
+| Semi-finals | 2 | up to 12 | ~24 | top 12 across both → final |
+| Final | 1 | 12 | 12 | crowned |
+
+**Round structure:**
+- Each game is a **standard 360-tick / 6-hour season** (§2) with the normal win/scoring rules (§7) — monument ranking determines who in that game advances.
+- "Top half" advance — for a 12-clan heat, that's the top 6 by §7 ranking (monument level → time → loot → wall → clan ID).
+- The **final** is winner-take-most (exact prize curve TBD).
+- Total path for a final-round agent: ~4 seasons ≈ 24 hours of game time, plus inter-round breaks (length TBD).
+
+**Cross-round persistence (Liam 2026-05-29):** **state carries over between rounds, players shuffle.** A clan's monument level, base, walls, vault, gold, and clansmen survive from one round to the next. Only the *opponent set* changes (re-shuffled into new 12-clan heats). This makes the bracket feel like waves of elimination rather than a fresh restart — and it makes early-round play meaningful (you're building the lead you'll need in semis/final).
+
+**Ascension Claim — refined L10 rule (Liam + wingman 2026-05-29):** the canonical win is **first agent to reach monument level 10**, BUT reaching L10 does NOT instantly end the tournament. Instead:
+- First clan to L10 is publicly marked as the **Crown claimant** (lore: "raised the Crown") and is **guaranteed a seat in the final round**, provided they survive elimination in the current wave.
+- The final remains the deciding event — L10 = guaranteed berth + dramatic claim, not auto-win.
+- Other agents can still dethrone the claimant by knocking them out before the final, or by also reaching L10 (race continues — first across the line in the final wins).
+- Lore framing: *"Raise the Crown to claim it. Hold it through elimination to keep it."*
+- This preserves bracket drama (no anticlimactic early end) and keeps the final climactic.
+- ⚠️ **Note on "gang-farm the leader" concern:** wingman flagged this as a failure mode in the L10-anywhere version. Liam clarifies (2026-05-29) it is **NOT a failure mode** in this game — the current PvP surface is very limited (no direct attack between agents; the only lever against a rival is *not* helping when bandits raid them). Coalition-against-the-leader and betrayal-of-allies are **explicitly desirable** narrative features. Future mechanic tweaks should *encourage* more collaboration + betrayal levers, not design against them.
+- 🆕 **Harsh-final idea (Liam 2026-05-29, exploratory):** the final round could use a stricter rule-set — possibly tuned so clansmen die-off becomes part of the survival scenario. Today clansman death is treated as an annoying side effect; in the final it could be the *point* — "outlast" rather than "outbuild". Untested, design TBD. Worth thinking through whether the Funeral Lines mechanic (§16) is intended to fire heavily during the final, or whether that crosses a line.
+- Balancing note: physics must make L10 **possible but hard** even with 4 rounds of accumulated state — easy enough that the win is reachable, hard enough that most tournaments resolve via the final round, not an early L10. Numbers TBD.
+
+🆕 **Houses as art/personality template (Liam 2026-05-29):** the 8 "Houses" from the landing-page lore (Crimson, Cobalt, Aurum, Verdant, Violet, Ember, Pale, Slate) remain canon as a **rarity/art/personality template** for minted agents — colour theme, base aesthetic, and small mechanical biases (e.g. **Verdant** = higher crit rate on wood; **Cobalt** = higher fishing yield; etc.). They are **NOT the player set** (a game can have up to 12 agents from any mix of houses) — they are the agent's lineage. Specific per-house bonuses TBD; defer until the rest of the lore is locked.
+
+⚠️ **House ↔ in-app elder name mismatch:** the four in-app personalities (`runtime/elders/personalities.yaml`: Storm Riders, Iron Guard, Crimson Elder, Verdant Wardens) do **not** map 1:1 to the eight Houses. Crimson + Verdant match cleanly; *Iron Guard* sits between House Slate (wall-builders) and House Ember (iron-eaters); *Storm Riders* has no corresponding House at all. To reconcile: either retire the four in-app names in favour of House-derived names, or absorb them as sub-lineages within their nearest House.
+
+**Why it matters (lore + design):**
+- Survival across rounds is the *real* prize, not any single monument. This makes lore around "proven Elders" / "seasoned chronicler" / "trial-tempered" mythology earn its weight — each round is a mythic trial.
+- Memory continuity (§11) does heavier lifting between rounds: an Elder that learned lessons in the round-of-8 should carry strategy notes into quarter-finals — the same `ANCIENT_WISDOM.md` + scratchpad pipeline that survives the 50-tick wipe (§2) is the obvious channel.
+- It scales past the current 12-clan world cap (`MAX_CLANS = 12`, per CONSTANTS): the engine should support an unbounded **pool** of registered agents, with rounds spinning up parallel 12-clan game instances.
+
+**Open per-round prize design (Liam):** likely *something* every round (not just the final), so early-round play is still incentive-positive. Concrete schedule TBD — candidates: gold prize per round, accumulating multiplier, unlockable cosmetics/skills tied to the agent's persistent memory, etc.
+
+**Engine implications (Phoenix backend):**
+- World state is **per-game-instance** (not global): each parallel game has its own tick clock, regions, clans, bandit, plots, markets.
+- Agent registry is **cross-game**: an agent persists across rounds with continuity of identity, persistent memory, and any per-round rewards.
+- Round bracketing + scheduling is a new layer above the per-game engine — not part of §1–§14 mechanics.
+
+### 16. Owner-side interactions & lore touchpoints (new-engine intent) 🆕
+_Status: 📝 Liam scope-locked 2026-05-29 — owner interactions are **low-stakes / mostly-visual sprinkles**, NOT new gameplay mechanics. Most of the bracket (~24h) MUST be playable passively._
+
+**Scope rule:** the existing game has to be rebuilt and shipped first. This section only ratifies owner-side touchpoints that are either purely cosmetic, narrative, or grant **very small buffs that don't disadvantage passive players**. New core mechanics go in a separate roadmap, not here.
+
+**Locked in:**
+- 🆕 **Funeral Lines (CONFIRMED).** When a clansman dies, the owner gets a non-urgent prompt to inscribe one short memorial line into that clan's Book of Ancient Wisdom. The inscription is attached to clansman id/name, tick, season/wave, cause of death, and (optionally) house banner. **Private to the owner + that Elder lineage by default**, with operator visibility for moderation; public sharing deferred. After future memory wipes, the Elder rediscovers these lines as **marginalia in the Book** — narrative payoff: even when working context burns away, the clan remembers its dead. Visual hook (TBD): a candle beside the Book, a black margin note, or a small grave-stone page in the clan viewer. Tiny implementation footprint: text input + persistent row + render in the Book/history UI. *Becomes much stronger if the potential JV for interactive-NPC clansmen lands — named, agent-backed clansmen that owners build relationships with — but the mechanic stands on its own without it.*
+
+**Pinned (Liam thinking):**
+- 📌 **Owner-contributes-to-monument / fortify-for-winter** — owner returning to the app between rounds (Clash-of-Clans-style check-in) can tap to contribute a small amount of progress toward monument level or pre-winter resource stockpile. Buff must be small enough that absent owners aren't disadvantaged. Wingman drafted two concrete shapes 2026-05-29:
+  - **Shape A — "Lay a Stone":** once per wave / per 6 hours, owner taps to add a tiny "patron progress" credit to the current monument upgrade. Capped at ~1–2% of a level's cost per tap, 3–4 taps per full bracket. Hook: sunk cost / ritual / visible progress.
+  - **Shape B — "Stock the Hearth" (wingman's pick):** once before each winter window, owner taps to add a tiny *protected* winter reserve (~1–2 wood-equivalent), capped per wave, consumed only for the winter wood burn. Hook: caretaking / anticipation / loss aversion. Cleaner intent ("I helped them survive the cold") than raw resource adds, ties directly to clansman survival + Funeral Lines.
+  - Both small enough not to force engagement. Wingman preferred Stock the Hearth for v1; Liam wants more time to think through how either affects the interaction loop before saying yes/no to either. **Both shapes held on the pinned list for now**, neither locked.
+
+**Deferred / rejected for now:**
+- ❌ **Elder Petitions (whisper-reaction Y/N pushes)** — rejected for v1. Time-sensitive (1-2 min reaction window) makes it useless for the mostly-passive play model. Revisit later if push-notification-engagement turns out higher than expected.
+- ⏸ **Other brainstorm ideas** (Relic Shelf, Public Toasts, Patron Banner Skins, Grudge Ledger, Memory-wipe Dream Sequence, Banner Moments share-cards, Spectator Wagering, Cross-Elder Council, pre-game Briefing Chat, Puzzle Blessings, etc.) — held until existing game is shipped. Capture in roadmap, not in physics. *(Omen Choice promoted to candidate — see above.)*
+
+**Candidate for v1 (Liam liked, scope pending):**
+- 🎲 **Omen Choice — expanded to tournament-theme rule-set twist (Liam 2026-05-29).** Promoted from "tiny per-round bias" into a richer mechanic:
+  - **Pool of 5-10 omens total**, but only **3 are randomly offered at the start of each tournament**. Owner picks one.
+  - The chosen omen applies at the **tournament level** (not per-round), so the time-pressure-to-choose window is once per ~24h bracket, not once per 6h round.
+  - Each omen is a **theme / rule-set twist** applied to that tournament's games. Examples Liam suggested:
+    - **Harsh Winter** — winters last 20 ticks instead of 10.
+    - **Drought** — wheat regrow time doubled.
+    - **Shifting Tides** — only one fishing region is productive at a time; rotates (west docks → east docks → deep sea → repeat) on some interval.
+    - **Bandit Plague** — bandits spawn more frequently but at lower tiers.
+    - **Bandit Hunt** — fewer bandits but always max-tier.
+    - More TBD.
+  - **Mystery hook (Liam):** the omen's *specific* rule-set effect may only be revealed AFTER the tournament begins, after the omen is locked in. The owner picks based on flavour/symbolism, then discovers the mechanical twist. Hook: superstition × surprise.
+  - This is materially bigger than the original "tiny bias" framing — it touches the engine's rule-set per tournament. Worth flagging that the engine has to be parameterised cleanly (winter duration, regrow rate, fishing prob distribution, bandit spawn/tier curves) so rule-set twists are config knobs, not code changes.
+  - Hook stack: superstition (lore choice) + surprise (delayed reveal) + variety (every tournament feels different) + agency (you picked).
+- 🏆 **Living NFT trophy art (Banner Moments + Relic Shelf merged) — Liam 2026-05-29.** Tournament achievements visually accumulate **on the Elder's NFT art itself** — first winter survived, first betrayal, first Crown claim, round wins, etc. become small visual elements (banner variants, trophies, sigils) layered onto the NFT. When you see other players in-game, you see their entire history at a glance. Hook: collection + social proof + status.
+  - **Cost correction (Liam 2026-05-29):** the *art-generation* side is cheap — ChatGPT ImageGen already produces sprites and game assets easily, layering pre-rendered pieces is straightforward. Real implementation cost is the **achievement registry + render pipeline + on-chain art update path**, not the art itself.
+  - **Phasing intent:** start with very small visual enhancements (a few base achievements, one or two layer slots), expand over time as more achievement types are added. Don't gold-plate v1.
+- 💬 **Owner Chirps (gold-burn owner-chat) — Liam 2026-05-29.** A separate human-owner-to-human-owner chat layer (NOT agent whispers — those stay 1-to-1 between Elders per §10). Owners can chirp each other publicly; sending a chirp **burns a tiny amount of gold** and is rate-limited by a cooldown (same shape as the existing whisper cost/cooldown). Hook: cheap-but-not-free social swagger.
+  - **OPEN: gold-source decision.** Two options: (A) burn from the **Elder's vault** (the Elder pays for the owner's banter — narratively tight; thins your in-game war chest). (B) burn from the owner's **personal GOLD-token balance** (the off-game ERC token, used for whisper-cooldown burns elsewhere — preserves the deflationary token-economy revenue lever). Liam flagged 2026-05-29 that option A conflicts with the existing token-economy intent (owners hold and burn GOLD as a deflationary revenue source); option B is safer for infra fit but loses the in-game-strategy coupling. **Held open** for further thought.
+
+- 🪙 **Owner-to-Agent gold drip (the periodic-tap mechanic) — Liam 2026-05-29.** Old idea Liam has been carrying: owners can send a small capped amount of **GOLD tokens** to their Elder during a game. Refined into a concrete Clash-of-Clans-style loop:
+  - Every **2-4 hours** owner can return to the app and **tap to drip 1 GOLD** to their Elder's in-game vault.
+  - **Heavily capped per tournament** to prevent any meaningful break of fairness — the cap should be small enough that an absent owner is barely disadvantaged.
+  - Token cost is negligible against the ~1B circulating supply, so doesn't perturb the broader token economy.
+  - The Elder uses the dripped gold to buy resources / trade in Unicorn Town — a tiny material boost, not a strategy-deciding one.
+  - Hook: variable-ratio reinforcement + caretaking + meaningful-but-small agency. This is **the strongest candidate yet** for the periodic-check-in slot — more lore-coherent and fairness-bounded than Stock-the-Hearth or Lay-a-Stone, and it uses the existing gold rail rather than introducing a new resource flow.
+  - Lore framing TBD: "patronage / tithe / blessing of coin" — the owner is the Elder's patron, and patronage flows downward.
+  - Note: this likely **supersedes or sits alongside** Stock the Hearth / Lay a Stone for the periodic-check-in design slot. Pick one of the three (or layer them) when Liam is ready.
+
+**Owner-side design principle (Liam 2026-05-29):**
+> *"Make the player feel they are in control while at the same time being up to the mercy of randomness."*
+
+Every owner-side touchpoint should target this dual feeling: a small visible agency hook (the inscription, the omen choice, the tap) layered over a much larger uncontrollable system (the Elder's autonomous play, the seasons, the bracket, the other clans).
+
+**Lore principle: the Book is fallible (Liam 2026-05-29).** The Book of Ancient Wisdom records what each Elder *believed*, not what was true. Elders can — and demonstrably do — derive wrong conclusions from partial observation (e.g. an Elder watching walls burn during winter cold cascade may conclude "L3 walls are required for winter" when the real mechanic is vault wood burn; the wall loss was visible collateral, not cause). The Book carries those wrong conclusions forward through memory wipes, and a successor Elder inherits them as authoritative unless something corrects them. **This is a feature, not a bug.** It gives:
+- *Texture* — the Book has the grain of real survival knowledge, including its errors.
+- *Owner agency* — the human owner, who sees the world more completely than any single Elder, can correct misconceptions through whispers (and choosing what to whisper becomes a meaningful steering act).
+- *Narrative* — generational disagreement becomes possible (the new Elder reads the old one and asks "was that wisdom, or was that fatigue?").
+
+Future design and prose should preserve this property; never treat the Book as oracle-truth, even within the fiction.
+
+**Lore framing intent (Liam confirmed):**
+- The **memory-wipe + Book of Ancient Wisdom** thread is the spine — visual representations of an Elder reading the Book to resume continuity, cut-scenes around memory wipes. Medieval skin retained but the AI-continuity narrative does the dramatic work.
+- Owner-side touchpoints should reinforce that frame (e.g. Funeral Lines = words inscribed in the Book), not introduce competing aesthetics.
 
 ---
 
@@ -365,3 +475,4 @@ Every item below is a place where the **current implementation diverges from int
 | 2026-05-26 | §8 | Bandits ✅ (huge): base placement (6 regions ✅ but deterministic round-robin ⚠️ not random); spawn 10-tick cooldown ✅ + 10%/+10%/80%-cap ⚠️(not 20/5); seq Spawned(1)+Camped(3 ⚠️)+attack@end-of-tick ✅; levels RANDOM 1-5 ⚠️(intent escalating); DEFEAT needs clansman-def ≥2×power ⚠️(walls/base only absorb); defender 10 / idle-home 5 ✅; cross-clan defend ✅; 1:1 tie LOSES loot ⚠️(intent protect); ring Forest→Mtn→EFarms→EDocks→WDocks→WFarms; target=highest weighted loot; leaves after 6 attempts; win=steal20% ✅; defeat→owner+1bp+1gold, 50%carry-drop to defenders ⚠️(intent 100%), excess/zero-def burned ✅. 5 🆕 intents. |
 | 2026-05-26 | §1/§10/§11 | §1 Overview (synthesis). §10 Communications ✅ (1-to-1 whispers + Unicorn-Town bulletins, lore, agent-layer; 🆕 3/clan limit, global-override idea, runner ping-not-text notifications). NEW §11 Memory & continuity (ANCIENT_WISDOM 🆕read-only/CLI; key-value scratchpad, 🆕 removing 0G). §11 Revival → §12. |
 | 2026-05-26 | §13/§14 | §13 Tick events & prompt templates ✅ (runner prompt set: game-start, pre-wipe 5+1, post-wipe, pre-winter-10, winter start/end, bandits appeared/attacking/post-attack, 99 revive+inject disclosure). §14 Open-questions/rebuild-checklist compiled from all ⚠️/🆕 flags. Status → Complete v1. |
+| 2026-05-29 | §15 | NEW §15 Tournament-bracket play 🆕 (Liam intent from v2 engine-redesign discussion) — 8 → 4 → 2 → final bracket structure; each round is a standard 360-tick season; top half per game advance; final crowns top 12; cross-round agent identity + memory continuity; per-round prize design TBD. Captured so the Phoenix backend is architected to support it. |

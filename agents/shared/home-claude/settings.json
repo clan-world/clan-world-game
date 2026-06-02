@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Shared CC permission base for every Elder container. Bind-mounted R/O at /home/elder/.claude/settings.json. Deny rules apply to the agent's tool calls (Read/Write/Edit/Bash), NOT the CC harness itself — the harness still reads/writes credentials and project state to run normally. NOTE: absolute filesystem paths use the `//path` double-slash convention per CC permissions docs (single leading slash is interpreted as project-relative). Tilde-expanded `~/.claude/...` and double-slash `//home/elder/.claude/...` both listed to defeat path-resolution variance.",
+  "_comment": "Shared CC permission base for every Elder container. Bind-mounted R/O at /home/elder/.claude/settings.json. Deny rules apply to the agent's tool calls (Read/Write/Edit/Bash), NOT the CC harness itself \u2014 the harness still reads/writes credentials and project state to run normally. NOTE: absolute filesystem paths use the `//path` double-slash convention per CC permissions docs (single leading slash is interpreted as project-relative). Tilde-expanded `~/.claude/...` and double-slash `//home/elder/.claude/...` both listed to defeat path-resolution variance.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -15,6 +15,8 @@
     ]
   },
   "permissions": {
+    "_defaultMode_comment": "dontAsk: any tool call NOT in `allow` is auto-DENIED instead of showing an interactive permission prompt. An autonomous elder has no human to answer prompts, so an 'ask' modal would freeze it indefinitely. With dontAsk only the allow-list (+ read-only Bash) runs; everything else fails fast and the elder moves on. NOTE: this does NOT suppress CC's hardcoded 'expansion obfuscation' confirmation modal (brace-with-quote bash) — that is avoided by using the mcp__elder tools instead of bash heredoc for game actions.",
+    "defaultMode": "dontAsk",
     "deny": [
       "Read(.credentials.json)",
       "Read(~/.claude/.credentials.json)",
@@ -90,7 +92,8 @@
       "Edit(//tmp/**)",
       "Bash(elder *)",
       "Bash(date)",
-      "Bash(date *)"
+      "Bash(date *)",
+      "mcp__elder"
     ]
   }
 }

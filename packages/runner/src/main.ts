@@ -30,6 +30,21 @@ async function main(): Promise<void> {
         ? (started.startupState.lastReceivedTick ?? -1)
         : started.startupState.tickClock.tick)
       : (started.startupState.lastReceivedTick ?? started.startupState.tickClock.tick - 1);
+    // Separate cursor for wipe handling: advances whenever a reset FIRES
+    // (confirmed or not), so an unconfirmed reset (the session is already
+    // killed + relaunched fresh) does not re-fire the wipe on every wake and
+    // livelock. (codex R1 HIGH)
+    //
+    // A startup-decision reset (kind === "reset") ALSO fires runResetFlow, so
+    // seed the cursor to the current tick in that case. Otherwise an
+    // UNCONFIRMED startup reset leaves lastTickDelivered (hence this cursor)
+    // behind the just-handled wipe boundary, and the first live-loop wake
+    // re-fires a redundant SECOND wipe of the freshly-relaunched session.
+    // Mirror the live-loop's advance-regardless-of-confirm: kind === "reset"
+    // IS the startup resetFired signal (round-2 swarm: codex HIGH + tier-1 MED).
+    let lastWipeHandledTick = started.decision.kind === "reset"
+      ? started.startupState.tickClock.tick
+      : lastTickDelivered;
     for await (const aux of convex.watchAuxiliary(ac.signal)) {
       if (ac.signal.aborted) break;
       const deps = {
@@ -43,7 +58,14 @@ async function main(): Promise<void> {
         if (aux.pendingMessages.length > 0) await handlePendingMessages(deps, aux);
         continue;
       }
-      const result = await handleAuxiliaryUpdate(deps, aux);
+      const result = await handleAuxiliaryUpdate(deps, aux, lastWipeHandledTick);
+      // Advance the wipe cursor whenever a reset fired, confirmed or not: the
+      // session was already killed + relaunched, so re-firing the wipe on the
+      // next wake would livelock. A failed continuity-prompt delivery recovers
+      // via the next normal tick (codex R1 HIGH).
+      if (result.resetFired) {
+        lastWipeHandledTick = aux.tickClock.tick;
+      }
       // Only advance the "delivered" cursor on confirmed receipt — if the
       // hook didn't write tickReceiveLog within the resend cap, the next
       // tick subscription wake-up will see this tick still un-delivered and

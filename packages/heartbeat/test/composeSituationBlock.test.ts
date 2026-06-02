@@ -14,7 +14,7 @@ describe('composeSituationBlock', () => {
     expect(block).toContain('TICK 49 Started');
     expect(block).toContain('MEMORY-WIPE WARNING');
     expect(block).toContain('your message history is erased on the next tick');
-    expect(block).toContain('elder memory save <key> <value>');
+    expect(block).toContain('memory_save');
     expect(block).toContain('Saved memory survives the wipe');
   });
 
@@ -24,8 +24,9 @@ describe('composeSituationBlock', () => {
     expect(block).toContain('TICK 50 Started');
     expect(block).toContain('FINAL TICK');
     expect(block).toContain('Last chance to save');
-    expect(block).toContain('elder memory save active-strategy');
-    expect(block).toContain('elder ack-clear');
+    expect(block).toContain('memory_save');
+    expect(block).toContain('active-strategy');
+    expect(block).toContain('ack_clear');
   });
 
   it('repeats the warning cycle every 50 ticks', () => {
@@ -33,7 +34,7 @@ describe('composeSituationBlock', () => {
       'MEMORY-WIPE WARNING',
     );
     expect(composeSituationBlock({ elder: 4, clanId: '4', tick: 100 })).toContain(
-      'elder ack-clear',
+      'ack_clear',
     );
   });
 });

@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>The Book of Ancient Wisdom — House Slate, Eleventh & Twelfth Elders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Cinzel:wght@500;600&family=Caveat:wght@400;500;600;700&family=Reenie+Beanie&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --vellum-1: #efe4c8;
+    --vellum-2: #e6d6b1;
+    --vellum-3: #d8c391;
+    --vellum-shadow: #8a6b3a;
+    --ink: #3b2412;          /* iron-gall walnut, schooled */
+    --ink-faded: #6b4a2a;
+    --ink-rule: #7a5a36;
+    --panic-ink: #1b2747;     /* dark, hurried blue-black */
+    --panic-ink-2: #2a1a14;   /* almost burnt */
+    --rubric: #8a1a14;        /* rubricator's red */
+  }
+
+  html,body{margin:0;padding:0;background:#241a10;}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at 50% 40%, #3a2a18 0%, #1c130a 70%, #0c0805 100%);
+    padding: 40px 0 80px;
+    font-family: 'IM Fell English', serif;
+    color: var(--ink);
+  }
+
+  /* ---------- The codex page ---------- */
+  .page-wrap{
+    position:relative;
+    width: min(880px, 94vw);
+    margin: 0 auto;
+    perspective: 1800px;
+  }
+
+  .page{
+    position:relative;
+    padding: 78px 84px 110px;
+    background:
+      /* upper light from a candle */
+      radial-gradient(ellipse 70% 50% at 30% 0%, rgba(255,230,170,.35), transparent 60%),
+      /* worn corners */
+      radial-gradient(circle at 0% 0%, rgba(120,80,30,.45), transparent 22%),
+      radial-gradient(circle at 100% 0%, rgba(120,80,30,.45), transparent 22%),
+      radial-gradient(circle at 0% 100%, rgba(110,70,25,.55), transparent 28%),
+      radial-gradient(circle at 100% 100%, rgba(110,70,25,.55), transparent 28%),
+      /* foxing spots */
+      radial-gradient(circle at 22% 18%, rgba(140,90,35,.18), transparent 4%),
+      radial-gradient(circle at 78% 32%, rgba(150,95,40,.16), transparent 3%),
+      radial-gradient(circle at 12% 62%, rgba(150,95,40,.14), transparent 3.5%),
+      radial-gradient(circle at 88% 78%, rgba(130,80,30,.18), transparent 4%),
+      /* fiber */
+      repeating-linear-gradient(92deg, rgba(120,80,30,.05) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(178deg, rgba(120,80,30,.04) 0 1px, transparent 1px 4px),
+      linear-gradient(180deg, var(--vellum-1) 0%, var(--vellum-2) 55%, var(--vellum-3) 100%);
+    box-shadow:
+      0 2px 0 rgba(255,235,180,.4) inset,
+      0 -2px 0 rgba(100,60,20,.35) inset,
+      0 40px 60px -20px rgba(0,0,0,.7),
+      0 80px 120px -30px rgba(0,0,0,.5);
+    border-radius: 4px 6px 5px 4px / 6px 4px 6px 5px;
+  }
+
+  /* grain overlay using SVG noise */
+  .page::before{
+    content:"";
+    position:absolute; inset:0;
+    pointer-events:none;
+    border-radius:inherit;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.22  0 0 0 0 0.08  0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: multiply;
+    opacity:.55;
+  }
+
+  /* deckled / torn edge */
+  .page::after{
+    content:"";
+    position:absolute; inset:-1px;
+    pointer-events:none;
+    border-radius:inherit;
+    box-shadow:
+      inset 0 0 1px rgba(60,30,10,.5),
+      inset 0 0 30px rgba(90,55,20,.35),
+      inset 0 0 120px rgba(70,40,15,.25);
+  }
+
+  /* ---------- Header strip ---------- */
+  .colophon{
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:'IM Fell English SC', serif;
+    font-size: 11px; letter-spacing:.22em;
+    color: var(--ink-faded);
+    border-bottom: 1px solid rgba(110,70,30,.35);
+    padding-bottom: 10px; margin-bottom: 28px;
+    position:relative; z-index:2;
+  }
+  .colophon .house{ color: var(--rubric); letter-spacing:.32em; }
+
+  /* ---------- Schooled hand ---------- */
+  .schooled{
+    position:relative; z-index:2;
+    font-family:'IM Fell English', serif;
+    font-size: 18.5px;
+    line-height: 1.78;
+    color: var(--ink);
+    text-align: justify;
+    text-rendering: optimizeLegibility;
+  }
+  .schooled p{ margin: 0 0 1.05em; }
+
+  .stage{
+    display:block;
+    font-style: italic;
+    color: var(--ink-faded);
+    font-size: 14.5px;
+    letter-spacing:.01em;
+    margin: 6px 0 14px;
+    text-align: left;
+  }
+  .stage::before{ content:"⁂  "; color: var(--ink-rule); font-style:normal; }
+
+  /* catechism clauses */
+  .catechism{ margin: 4px 0 18px; }
+  .clause{
+    display:grid;
+    grid-template-columns: 56px 1fr;
+    column-gap: 14px;
+    margin: 0 0 14px;
+    padding-left: 6px;
+  }
+  .clause .num{
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    color: var(--rubric);
+    font-size: 15px;
+    letter-spacing:.12em;
+    padding-top: 6px;
+    text-align: right;
+    border-right: 1px solid rgba(110,70,30,.25);
+    padding-right: 8px;
+  }
+  .clause .body strong:first-child{
+    font-family:'IM Fell English SC', serif;
+    letter-spacing:.07em;
+    color: var(--ink);
+    font-weight: normal;
+    margin-right: .35em;
+  }
+
+  /* The First Rule — meta-warning, centered, ruled */
+  .first-rule{
+    margin: 34px auto 30px;
+    max-width: 560px;
+    text-align: center;
+    padding: 22px 18px;
+    position:relative;
+    color: var(--ink);
+  }
+  .first-rule .label{
+    display:block;
+    font-family:'IM Fell English SC', serif;
+    letter-spacing:.42em;
+    font-size: 13px;
+    color: var(--rubric);
+    margin-bottom: 14px;
+  }
+  .first-rule .rule-text{
+    font-family:'IM Fell English', serif;
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .first-rule .orn{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    color: var(--ink-rule);
+    margin: 14px 0 4px;
+  }
+  .first-rule hr{
+    border:0; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(110,70,30,.55), transparent);
+    margin: 0;
+  }
+
+  .incident{
+    margin: 22px 0 12px;
+    padding-left: 18px;
+    border-left: 2px solid rgba(110,70,30,.4);
+    font-style: italic;
+    color: var(--ink);
+    font-size: 17px;
+  }
+
+  /* ---------- Death transition ---------- */
+  .transition{
+    margin: 40px 0 28px;
+    text-align:center;
+    color: var(--ink-rule);
+    font-family:'IM Fell English SC', serif;
+    letter-spacing:.28em;
+    font-size: 12.5px;
+  }
+  .transition .flourish-line{
+    display:flex; align-items:center; justify-content:center; gap:18px;
+    margin-bottom: 14px;
+  }
+  .transition .flourish-line .ln{
+    flex:1; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(110,70,30,.55), transparent);
+  }
+  .transition .stop{ color: var(--ink); }
+
+  /* Funeral line — inscriptional */
+  .funeral{
+    margin: 30px auto 38px;
+    max-width: 620px;
+    text-align:center;
+    padding: 26px 16px 24px;
+    border-top: 2px double rgba(110,70,30,.55);
+    border-bottom: 2px double rgba(110,70,30,.55);
+    background:
+      radial-gradient(ellipse at 50% 50%, rgba(255,240,200,.35), transparent 70%);
+  }
+  .funeral .name{
+    display:block;
+    font-family:'Cinzel', serif;
+    font-weight:600;
+    letter-spacing:.38em;
+    font-size: 19px;
+    color: var(--ink);
+    margin-bottom: 14px;
+    text-indent:.38em;
+  }
+  .funeral .body{
+    font-family:'IM Fell English', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  /* ---------- Panicked hand ---------- */
+  .panicked{
+    position:relative; z-index:2;
+    margin-top: 22px;
+    padding-top: 24px;
+    /* the page itself tilts under the new Elder */
+    transform: rotate(-0.6deg);
+    transform-origin: 10% 0%;
+  }
+  .panicked .stage{
+    color: #4a3522;
+    font-family:'Caveat', cursive;
+    font-style: normal;
+    font-size: 17px;
+    letter-spacing:0;
+    margin-bottom: 18px;
+  }
+  .panicked .stage::before{ content:"— "; color: var(--panic-ink); }
+
+  .hand{
+    font-family:'Caveat', cursive;
+    font-weight: 500;
+    font-size: 26px;
+    line-height: 1.35;
+    color: var(--panic-ink);
+    /* slight unevenness via letter-spacing wobble done per-line below */
+  }
+  .hand p{ margin: 0 0 .55em; }
+
+  /* per-line tilt + slight color variation for tired ink */
+  .hand p:nth-child(1){ transform: rotate(-.3deg); }
+  .hand p:nth-child(2){ transform: rotate(.5deg); color:#1a2340; }
+  .hand p:nth-child(3){ transform: rotate(-.2deg); font-weight:600; color: #20140c; font-size: 28px;}
+  .hand p:nth-child(4){ transform: rotate(.8deg) translateX(6px); }
+  .hand p:nth-child(5){ transform: rotate(-.4deg); }
+  .hand p:nth-child(6){ transform: rotate(.6deg); }
+  .hand p:nth-child(7){ transform: rotate(-.7deg); color:#0f1730; font-weight:600;}
+  .hand p:nth-child(8){ transform: rotate(.4deg); }
+
+  /* "I have called all four home" — switch to a second handwriting face for the most-broken bit */
+  .hand .scrawl{
+    font-family:'Reenie Beanie', cursive;
+    font-size: 25px;
+    color:#101a36;
+    line-height:1.5;
+    letter-spacing:.01em;
+  }
+
+  /* the rule-II breach line — links upward */
+  .breach{
+    position:relative;
+    display:inline;
+    background: linear-gradient(transparent 78%, rgba(138,26,20,.25) 78% 92%, transparent 92%);
+  }
+  .margin-arrow{
+    position:absolute;
+    left: -64px; top: 4px;
+    width: 58px; height: 80px;
+    pointer-events:none;
+  }
+
+  /* ink blot + smudge */
+  .blot{
+    position:absolute;
+    width: 56px; height: 44px;
+    right: 80px; pointer-events:none;
+    filter: blur(.3px);
+  }
+  .smudge{
+    position:absolute;
+    width: 180px; height: 28px;
+    pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 50%, rgba(27,39,71,.35), transparent 70%);
+    transform: rotate(-2deg);
+    mix-blend-mode: multiply;
+  }
+
+  /* repeated "winter" emphasis */
+  .winter-emph{
+    font-family:'Caveat', cursive;
+    font-weight:700;
+    color: var(--panic-ink-2);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-decoration-color: rgba(138,26,20,.6);
+    text-underline-offset: 2px;
+  }
+
+  /* address to Eleventh — sudden quiet */
+  .to-eleventh{
+    margin-top: 14px;
+    padding: 10px 0 0;
+    border-top: 1px dashed rgba(40,30,20,.35);
+    font-family:'Caveat', cursive;
+    font-size: 22px;
+    color:#1a1d2e;
+    line-height:1.5;
+    transform: rotate(-.2deg);
+  }
+  .to-eleventh em{ font-style:italic; color:#5a1a14; }
+
+  /* underline below the panicked closing */
+  .signoff{
+    margin-top: 18px;
+    text-align:right;
+    font-family:'Caveat', cursive;
+    font-size: 22px;
+    color: var(--panic-ink);
+    transform: rotate(-1deg);
+  }
+
+  /* small marginalia */
+  .marginalia{
+    position:absolute;
+    font-family:'Caveat', cursive;
+    color: #4a3522;
+    font-size: 16px;
+    transform: rotate(-7deg);
+    opacity:.85;
+    pointer-events:none;
+  }
+
+  @media (max-width: 720px){
+    .page{ padding: 50px 32px 80px; }
+    .schooled{ font-size: 17px; }
+    .hand{ font-size: 23px; }
+    .clause{ grid-template-columns: 40px 1fr; }
+    .first-rule .rule-text{ font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-wrap">
+  <article class="page" role="article" aria-label="Book of Ancient Wisdom, page of House Slate">
+
+    <header class="colophon">
+      <span>The Book of Ancient Wisdom</span>
+      <span class="house">House&nbsp;Slate</span>
+      <span>fol.&nbsp;cxiv&nbsp;·&nbsp;recto</span>
+    </header>
+
+    <!-- ============ ELEVENTH ELDER — SCHOOLED HAND ============ -->
+    <section class="schooled" aria-label="The Eleventh Elder">
+
+      <span class="stage">In a careful hand, the lettering even and schooled.</span>
+
+      <div class="catechism" role="list">
+
+        <div class="clause" role="listitem">
+          <div class="num">I.</div>
+          <div class="body">
+            <strong>Of the calendar.</strong>
+            The bell rings three hundred and sixty times before a season ends. Winter falls every hundred and ten of those bells. There are three winters. Plan to the bell, not to the day.
+          </div>
+        </div>
+
+        <div class="clause" role="listitem">
+          <div class="num">II.</div>
+          <div class="body">
+            <strong>Of the four trades.</strong>
+            A clansman knows one thing and does it well. Do not send the wheat-hand to the docks. The vault remembers who you trained.
+          </div>
+        </div>
+
+        <div class="clause" role="listitem">
+          <div class="num">III.</div>
+          <div class="body">
+            <strong>Of patience.</strong>
+            A clansman returning empty from a four-tick gather has returned with nothing. Better to wait at the field until the basket is full than to recall them at the third tick out of panic.
+          </div>
+        </div>
+
+        <div class="clause" role="listitem">
+          <div class="num">IV.</div>
+          <div class="body">
+            <strong>Of trust.</strong>
+            A whisper costs the sender. Whoever speaks first, pays. Believe that the second whisper is the honest one — but only this one season.
+          </div>
+        </div>
+
+        <div class="clause" role="listitem">
+          <div class="num">V.</div>
+          <div class="body">
+            <strong>Of the eight Houses.</strong>
+            Crimson sleeps with their walls. Cobalt sleeps with their coin. Aurum does not sleep. Verdant grows where you look away. Violet asks before it takes; Ember takes before it asks. Pale you will not see in your lifetime. Slate is what we are, and so we are slowest.
+          </div>
+        </div>
+
+      </div>
+
+      <span class="stage">Set apart, in the same careful hand, ringed by a small rule.</span>
+
+      <aside class="first-rule">
+        <hr/>
+        <div class="orn" aria-hidden="true">
+          <!-- ornament -->
+          <svg width="160" height="20" viewBox="0 0 160 20" fill="none">
+            <path d="M0 10 H55" stroke="currentColor" stroke-width="1"/>
+            <path d="M105 10 H160" stroke="currentColor" stroke-width="1"/>
+            <path d="M70 10 q5 -7 10 0 q5 7 10 0" stroke="currentColor" stroke-width="1.1" fill="none"/>
+            <circle cx="80" cy="10" r="1.6" fill="currentColor"/>
+            <circle cx="60" cy="10" r="1.2" fill="currentColor"/>
+            <circle cx="100" cy="10" r="1.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="label">The First Rule of the Book</span>
+        <div class="rule-text">“Believe the Book only as far as your own eyes have walked.”</div>
+        <div class="orn" aria-hidden="true">
+          <svg width="160" height="20" viewBox="0 0 160 20" fill="none">
+            <path d="M0 10 H55" stroke="currentColor" stroke-width="1"/>
+            <path d="M105 10 H160" stroke="currentColor" stroke-width="1"/>
+            <path d="M70 10 q5 7 10 0 q5 -7 10 0" stroke="currentColor" stroke-width="1.1" fill="none"/>
+            <circle cx="80" cy="10" r="1.6" fill="currentColor"/>
+          </svg>
+        </div>
+        <hr/>
+      </aside>
+
+      <span class="stage">An incident, recorded plainly.</span>
+
+      <p class="incident">
+        Tick 218, the second winter. Iren-of-the-quiet-step asked to take a third trip to the woodcut. I sent him. He did not return. Twenty wood lost. One Iren lost.
+      </p>
+
+    </section>
+
+    <!-- ============ DEATH TRANSITION ============ -->
+    <div class="transition" aria-hidden="true">
+      <div class="flourish-line">
+        <span class="ln"></span>
+        <svg width="48" height="22" viewBox="0 0 48 22" fill="none" aria-hidden="true">
+          <path d="M2 11 q10 -10 22 0 q10 10 22 0" stroke="currentColor" stroke-width="1.2" fill="none"/>
+          <circle cx="24" cy="11" r="2" fill="currentColor"/>
+        </svg>
+        <span class="ln"></span>
+      </div>
+      <span class="stop">Here endeth the Eleventh Elder of House Slate, in the winter of the third season. &nbsp;·&nbsp; The Twelfth wakes and findeth the Book.</span>
+    </div>
+
+    <!-- ============ FUNERAL LINE ============ -->
+    <div class="funeral" role="note" aria-label="Funeral line">
+      <span class="name">Iren&nbsp;·&nbsp;of&nbsp;the&nbsp;Quiet&nbsp;Step</span>
+      <div class="body">
+        Lost on the third trip to the woodcut, tick 218, the second winter of his Elder's reign.<br/>
+        He went because he was asked.<br/>
+        <strong style="font-style:normal; font-family:'IM Fell English SC', serif; letter-spacing:.18em;">Let it be known he did not refuse.</strong>
+      </div>
+    </div>
+
+    <!-- ============ TWELFTH ELDER — PANICKED HAND ============ -->
+    <section class="panicked" aria-label="The Twelfth Elder">
+
+      <!-- a stray smudge near the start -->
+      <div class="smudge" style="left: 40px; top: 6px; width:220px;"></div>
+
+      <span class="stage">Fresh ink, hurried, the letters running together.</span>
+
+      <div class="hand" style="position:relative;">
+
+        <!-- INK BLOT near top right -->
+        <svg class="blot" style="top:-6px; right:40px;" viewBox="0 0 80 60" aria-hidden="true">
+          <g fill="#0e1730">
+            <ellipse cx="40" cy="28" rx="22" ry="14"/>
+            <ellipse cx="58" cy="34" rx="6" ry="3" opacity=".7"/>
+            <circle cx="22" cy="40" r="3" opacity=".6"/>
+            <circle cx="66" cy="20" r="2" opacity=".7"/>
+            <ellipse cx="40" cy="48" rx="10" ry="2" opacity=".4"/>
+          </g>
+        </svg>
+
+        <p>I have read the Book and the Book is wrong in places. I do not have time to mark them all.</p>
+
+        <p>The Eleventh said three winters and meant three winters. The bell shows tick&nbsp;412 and we are in the <span class="winter-emph">fourth</span>. Either she could not count or the world has changed beneath the page.</p>
+
+        <p>Verdant has burned. I do not know who lit it.</p>
+
+        <p style="position:relative;">
+          <!-- arrow pointing UP to Rule II in the margin -->
+          <svg class="margin-arrow" viewBox="0 0 58 80" aria-hidden="true">
+            <path d="M48 78 C 30 60, 18 38, 14 8" stroke="#5a1a14" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M14 8 l 6 8 M14 8 l -3 9" stroke="#5a1a14" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <text x="22" y="50" font-family="Caveat, cursive" font-size="14" fill="#5a1a14" transform="rotate(-12 22 50)">Rule&nbsp;II</text>
+          </svg>
+          I have called all four home. I have <span class="scrawl">one wall, half a fish, no whispers I would believe.</span> I am going to <span class="breach">break Rule&nbsp;II</span> — Olen will fish today, though Olen has never fished. There is no one else.
+        </p>
+
+        <p>If the Thirteenth reads this: forgive me. There was a <span class="winter-emph">fourth winter</span>. There may be a <span class="winter-emph">fifth</span>.</p>
+
+      </div>
+
+      <!-- quiet address to the dead Eleventh -->
+      <div class="to-eleventh">
+        Eleventh, if any part of you survives in this Book —<br/>
+        Iren went because <em>he</em> asked, not because <em>you</em> asked. He told me so the night before. He thought the Book would remember him better if he tried once more. Let him be remembered for asking, not for being sent.
+      </div>
+
+      <div class="signoff">— the Twelfth, of House Slate, by candle, tick&nbsp;413</div>
+
+      <!-- marginalia, hurried, off-axis -->
+      <span class="marginalia" style="right: 12px; top: 110px;">who lit Verdant?</span>
+      <span class="marginalia" style="left: -28px; bottom: 80px; transform: rotate(-86deg);">do not trust whispers tonight</span>
+
+    </section>
+
+  </article>
+</div>
+
+</body>
+</html>

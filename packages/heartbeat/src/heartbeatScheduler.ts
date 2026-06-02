@@ -115,10 +115,16 @@ async function runHeartbeatScheduler(
       continue;
     }
 
-    await sleepWithSignal(
-      computeHeartbeatDelayMs(nextHeartbeatAtTs, nowMs()),
-      deps.signal,
+    // Instrumentation: surface the scheduling time-basis so we can confirm
+    // whether the on-chain nextHeartbeatAtTs (chain time) and the local wall
+    // clock diverge (e.g. on an anvil-fork whose block.timestamp drifts ahead),
+    // which would skew computedDelayMs. Cheap (no extra RPC); read from logs.
+    const wallNowMs = nowMs();
+    const delayMs = computeHeartbeatDelayMs(nextHeartbeatAtTs, wallNowMs);
+    deps.log.info(
+      `heartbeat schedule: nextHeartbeatAtTs=${nextHeartbeatAtTs}s wallNowMs=${wallNowMs} computedDelayMs=${delayMs}`,
     );
+    await sleepWithSignal(delayMs, deps.signal);
     if (deps.signal.aborted) break;
 
     const result = await attemptHeartbeatWithBackoff({

@@ -9,7 +9,7 @@ When the runner injects:
 
 > warning: final tick before message history is reset. plan for continuity accordingly.
 
-You have one tick to consolidate before `/clear`. The runner will NOT save your reasoning for you. After consolidation, call `elder ack-clear` so the runner can reset you cleanly (ack+timeout: if you don't ack within ~30s, runner clears anyway and you lose the turn's reasoning).
+You have one tick to consolidate before `/clear`. The runner will NOT save your reasoning for you. After consolidation, call the `ack_clear` tool so the runner can reset you cleanly (ack+timeout: if you don't ack within ~30s, runner clears anyway and you lose the turn's reasoning).
 
 This skill is **vague on purpose**. There's no checklist. Your job as a sentient Elder is to apply judgment. Below is the framework, not the answer.
 
@@ -32,14 +32,14 @@ This skill is **vague on purpose**. There's no checklist. Your job as a sentient
 
 ## How to save
 
-Use `elder memory save <key> <value>` for each item:
+Use the `memory_save` tool (key + value) for each item:
 
-- `elder memory save active-strategy "..."` — your current strategic posture
-- `elder memory save trust:storm-riders "2 — betrayed 3-gold deal tick 47"`
-- `elder memory save grudge:iron-guard "wronged at south plains tick 32, owe reprisal"`
-- `elder memory save pending-tx:0x123abc "submitted MarketBuy 5e18 wood, awaiting tick 51 settlement"`
+- `memory_save` key=`active-strategy` value="..." — your current strategic posture
+- `memory_save` key=`trust:storm-riders` value="2 — betrayed 3-gold deal tick 47"
+- `memory_save` key=`grudge:iron-guard` value="wronged at south plains tick 32, owe reprisal"
+- `memory_save` key=`pending-tx:0x123abc` value="submitted MarketBuy 5e18 wood, awaiting tick 51 settlement"
 
-Then `elder ack-clear`.
+Then call the `ack_clear` tool.
 
 ## Why vague
 

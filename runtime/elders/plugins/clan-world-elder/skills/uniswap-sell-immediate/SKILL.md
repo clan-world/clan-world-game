@@ -35,8 +35,10 @@ The actual gold received depends on pool depth at execution time.
 
 ## Output to remember
 
-```bash
-elder memory save sell-immediate:wood:tick-N "sold 5e18 wood for 3.1e18 gold, pool slippage 8% — acceptable for tempo"
+Call `memory_save` with key `sell-immediate:wood:tick-N` and value like:
+
+```
+sold 5e18 wood for 3.1e18 gold, pool slippage 8% — acceptable for tempo
 ```
 
 ---

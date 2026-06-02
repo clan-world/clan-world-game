@@ -1,6 +1,6 @@
 {
   "elder-1": { "displayName": "Storm Riders", "color": "blue", "glyph": "⚡" },
-  "elder-2": { "displayName": "Iron Guard", "color": "olive", "glyph": "⛨" },
+  "elder-2": { "displayName": "Iron Guard", "color": "cyan", "glyph": "⛨" },
   "elder-3": { "displayName": "Crimson", "color": "red", "glyph": "✦" },
   "elder-4": { "displayName": "Verdant Wardens", "color": "green", "glyph": "❦" }
 }

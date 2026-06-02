@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clan World — The Chronicler's Shelf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Cormorant+SC:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #2a1810;
+      --ink-soft: #5a3d28;
+      --rubric: #9b2a2f;
+      --gold: #a87c2f;
+      --paper: #f0e3c4;
+      --paper-warm: #e8d6ab;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'IM Fell English', Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 50% 30%, #1a0e07 0%, #0a0503 70%, #050201 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 3rem 1rem;
+      line-height: 1.65;
+    }
+    .page {
+      max-width: 780px;
+      width: 100%;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(168, 124, 47, 0.10), transparent 60%),
+        radial-gradient(ellipse at 70% 80%, rgba(168, 124, 47, 0.08), transparent 50%),
+        linear-gradient(180deg, var(--paper) 0%, var(--paper-warm) 100%);
+      padding: 4.5rem 4rem 4rem;
+      box-shadow:
+        0 30px 60px rgba(0, 0, 0, 0.6),
+        0 10px 20px rgba(0, 0, 0, 0.4),
+        inset 0 0 80px rgba(168, 124, 47, 0.08);
+      border-radius: 2px;
+      position: relative;
+    }
+    .page::before, .page::after {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      background: rgba(107, 68, 35, 0.15);
+      border-radius: 50%;
+      filter: blur(3px);
+      pointer-events: none;
+    }
+    .page::before { top: 8%; right: 14%; }
+    .page::after { bottom: 18%; left: 18%; }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.6rem;
+      padding-bottom: 1.6rem;
+      border-bottom: 1px solid rgba(168, 124, 47, 0.35);
+    }
+    .bell-ornament {
+      display: inline-block;
+      margin-bottom: 0.6rem;
+      filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, 0.15));
+    }
+    .eyebrow {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.78rem;
+      letter-spacing: 0.28em;
+      color: var(--ink-soft);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: 'IM Fell English', serif;
+      font-weight: 400;
+      font-size: 2.6rem;
+      letter-spacing: 0.02em;
+      color: var(--ink);
+      line-height: 1.1;
+    }
+    h1 em { color: var(--rubric); font-style: italic; }
+    .subtitle {
+      margin-top: 0.7rem;
+      font-style: italic;
+      color: var(--ink-soft);
+      font-size: 1.02rem;
+    }
+
+    h2 {
+      font-family: 'IM Fell English SC', serif;
+      font-weight: 400;
+      font-size: 1.05rem;
+      letter-spacing: 0.22em;
+      color: var(--ink-soft);
+      margin: 2.8rem 0 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid rgba(168, 124, 47, 0.25);
+    }
+    .section-note {
+      font-style: italic;
+      color: var(--ink-soft);
+      font-size: 0.98rem;
+      margin-bottom: 1.1rem;
+    }
+    .entry {
+      display: block;
+      padding: 1rem 1.2rem;
+      margin-bottom: 0.8rem;
+      text-decoration: none;
+      color: var(--ink);
+      background: rgba(168, 124, 47, 0.04);
+      border-left: 2px solid rgba(168, 124, 47, 0.4);
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+    }
+    .entry:hover {
+      background: rgba(168, 124, 47, 0.10);
+      border-left-color: var(--rubric);
+      transform: translateX(2px);
+    }
+    .entry-title {
+      font-size: 1.12rem;
+      font-style: italic;
+      color: var(--rubric);
+    }
+    .entry-meta {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      color: var(--ink-soft);
+      margin-top: 0.3rem;
+    }
+    .entry-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin: 0.4rem 0 0.8rem;
+    }
+    .entry-row .entry { margin-bottom: 0; }
+    .entry-small {
+      display: block;
+      padding: 0.7rem 0.9rem;
+      text-decoration: none;
+      color: var(--ink);
+      background: rgba(168, 124, 47, 0.04);
+      border-left: 2px solid rgba(168, 124, 47, 0.4);
+      transition: background 0.2s ease, border-color 0.2s ease;
+      font-size: 0.95rem;
+    }
+    .entry-small:hover {
+      background: rgba(168, 124, 47, 0.10);
+      border-left-color: var(--rubric);
+    }
+    .entry-small em { color: var(--rubric); font-style: italic; }
+    .entry-small .meta {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      color: var(--ink-soft);
+      margin-top: 0.2rem;
+      display: block;
+    }
+    .canonical-tag {
+      display: inline-block;
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.62rem;
+      letter-spacing: 0.18em;
+      color: var(--rubric);
+      border: 1px solid rgba(155, 42, 47, 0.4);
+      padding: 0.1rem 0.45rem;
+      border-radius: 1px;
+      margin-left: 0.6rem;
+      vertical-align: middle;
+    }
+
+    .num {
+      font-family: 'Cormorant SC', serif;
+      font-feature-settings: "lnum", "tnum";
+    }
+
+    .ornament {
+      text-align: center;
+      color: var(--gold);
+      margin: 2rem 0;
+      letter-spacing: 0.4em;
+      font-size: 0.9rem;
+    }
+
+    .colophon {
+      margin-top: 2.5rem;
+      padding-top: 1.4rem;
+      border-top: 1px solid rgba(168, 124, 47, 0.25);
+      text-align: center;
+      font-style: italic;
+      color: var(--ink-soft);
+      font-size: 0.92rem;
+    }
+    .colophon-meta {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.22em;
+      color: var(--ink-soft);
+      margin-top: 0.8rem;
+    }
+
+    @media (max-width: 640px) {
+      .page { padding: 2.6rem 1.8rem; }
+      h1 { font-size: 1.85rem; }
+      .entry-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header>
+      <div class="bell-ornament" aria-hidden="true">
+        <svg viewBox="0 0 80 80" width="58" height="58">
+          <defs>
+            <linearGradient id="bellGradH" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#c9a356"/>
+              <stop offset="55%" stop-color="#a87c2f"/>
+              <stop offset="100%" stop-color="#7d5a20"/>
+            </linearGradient>
+          </defs>
+          <path d="M 32 10 Q 40 6 48 10" fill="none" stroke="#2a1810" stroke-width="1.4" stroke-linecap="round"/>
+          <circle cx="40" cy="13" r="1.8" fill="#2a1810"/>
+          <path d="M 22 56 Q 22 22 40 18 Q 58 22 58 56 L 22 56 Z"
+                fill="url(#bellGradH)" stroke="#2a1810" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 20 56 L 60 56 L 56 62 L 24 62 Z"
+                fill="#7d5a20" stroke="#2a1810" stroke-width="1.3"/>
+          <path d="M 28 30 Q 32 24 38 22" fill="none" stroke="rgba(255,238,200,0.5)" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="40" y1="58" x2="40" y2="68" stroke="#2a1810" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="40" cy="70" r="2.5" fill="#2a1810"/>
+          <g fill="none" stroke="#9b2a2f" stroke-width="0.9" opacity="0.45">
+            <path d="M 14 36 Q 8 40 14 44"/>
+            <path d="M 8 32 Q 0 40 8 48"/>
+            <path d="M 66 36 Q 72 40 66 44"/>
+            <path d="M 72 32 Q 80 40 72 48"/>
+          </g>
+        </svg>
+      </div>
+      <div class="eyebrow">✦ &nbsp; Clan World &nbsp; ✦</div>
+      <h1>The Chronicler's <em>Shelf</em></h1>
+      <p class="subtitle">Where the realm keeps its records. Lore, physics, the Book, and the long roadmap of what is to come.</p>
+    </header>
+
+    <h2>Of the Realm &mdash; the Lore</h2>
+    <p class="section-note">
+      The canonical chronicle of the world: who the Elders are, what the Eight Houses carried out of the Old World, why the bells come for memory, and what the Crown actually is. <span class="num">XII</span> chapters.
+    </p>
+    <a class="entry" href="lore/THE_REALM.md">
+      <div class="entry-title">Of the Realm <span class="canonical-tag">canonical · markdown</span></div>
+      <div class="entry-meta">Source text · ~<span class="num">2,300</span> words · chronicler voice · Elder quotes throughout</div>
+    </a>
+    <p class="section-note" style="margin-top: 1.2rem;">
+      Four independent visual renderings of the same chronicle. Each designer brought a different aesthetic instinct. The <em>combined</em> version is the canonical visual at the bottom.
+    </p>
+    <div class="entry-row">
+      <a class="entry-small" href="lore/of-the-realm.html">
+        <em>Variant I</em> &mdash; book on a desk
+        <span class="meta">Photograph framing · floating leaf</span>
+      </a>
+      <a class="entry-small" href="lore/of-the-realm-v2.html">
+        <em>Variant II</em> &mdash; the heraldic plate
+        <span class="meta">Hackathon DNA · 8 hand-drawn shields</span>
+      </a>
+      <a class="entry-small" href="lore/of-the-realm-v3.html">
+        <em>Variant III</em> &mdash; marginalia in the gutter
+        <span class="meta">3-col grid · annotations as actual margins</span>
+      </a>
+      <a class="entry-small" href="lore/of-the-realm-combined.html">
+        <em>Combined</em> &mdash; best-of synthesis <span class="canonical-tag">canonical</span>
+        <span class="meta">Shields + marginalia + Cormorant numerals</span>
+      </a>
+    </div>
+
+    <div class="ornament">✦ &nbsp; ❦ &nbsp; ✦</div>
+
+    <h2>The Physics of the World</h2>
+    <p class="section-note">
+      How the world actually moves: ticks, regions, gathering, building, winter, bandits, trade, communication, death, memory, the bracket, the Crown, the owner's small touchpoints. The mechanics behind the lore. <span class="num">13</span> chapters plus a tick-events plate.
+    </p>
+    <a class="entry" href="THE_PHYSICS.md">
+      <div class="entry-title">The Physics of the Realm <span class="canonical-tag">canonical · markdown</span></div>
+      <div class="entry-meta">Narrative explainer · ~<span class="num">4,000</span> words · companion to the lore</div>
+    </a>
+    <a class="entry" href="WORLD_PHYSICS.md" style="margin-top: 0.6rem;">
+      <div class="entry-title">World Physics &mdash; engineering spec</div>
+      <div class="entry-meta">Authoritative numbers · <span class="num">16</span> sections · verification flags</div>
+    </a>
+    <a class="entry" href="WORLD_PHYSICS_CONSTANTS.md" style="margin-top: 0.6rem;">
+      <div class="entry-title">World Physics &mdash; constants table</div>
+      <div class="entry-meta">Supporting numbers: capacities · probabilities · upgrade costs</div>
+    </a>
+
+    <p class="section-note" style="margin-top: 1.2rem;">
+      Four independent visual renderings of the narrative physics chronicle.
+    </p>
+    <div class="entry-row">
+      <a class="entry-small" href="physics/the-physics-v1.html">
+        <em>Variant I</em> &mdash; the long chronicle
+        <span class="meta">Single illuminated scroll · all chapters in flow</span>
+      </a>
+      <a class="entry-small" href="physics/the-physics-v2.html">
+        <em>Variant II</em> &mdash; the field guide
+        <span class="meta">Diagrams · sidebars · system-keyed color</span>
+      </a>
+      <a class="entry-small" href="physics/the-physics-v3.html">
+        <em>Variant III</em> &mdash; the scholar's annotated quarto
+        <span class="meta">Narrow column · red rubric marginal notes</span>
+      </a>
+      <a class="entry-small" href="physics/the-physics-combined.html">
+        <em>Combined</em> &mdash; best-of synthesis <span class="canonical-tag">canonical</span>
+        <span class="meta">The shelf's working reference</span>
+      </a>
+    </div>
+
+    <div class="ornament">✦ &nbsp; ❦ &nbsp; ✦</div>
+
+    <h2>The Book of Ancient Wisdom &mdash; sample pages</h2>
+    <p class="section-note">
+      Three independent renderings of a single page from a Book of Ancient Wisdom. Each is a different writer's voice and a different designer's eye. Drafted as exploration of what the in-fiction artefact should look like.
+    </p>
+    <a class="entry" href="lore/book-of-ancient-wisdom-v1.html">
+      <div class="entry-title">Sample <span class="num">I</span> &mdash; Of the Multi-Elder Palimpsest</div>
+      <div class="entry-meta">The Third &amp; Fourth Elders · Funeral Line: Mara of the West Field</div>
+    </a>
+    <a class="entry" href="lore/book-of-ancient-wisdom-v2.html">
+      <div class="entry-title">Sample <span class="num">II</span> &mdash; Of Counting Winters</div>
+      <div class="entry-meta">The <span class="num">XXIII</span><sup>rd</sup> &amp; <span class="num">XXIV</span><sup>th</sup> of House Slate · Funeral Line: Pell of the Long Reach</div>
+    </a>
+    <a class="entry" href="lore/book-of-ancient-wisdom-v3.html">
+      <div class="entry-title">Sample <span class="num">III</span> &mdash; Of the Catechism and the Fourth Winter</div>
+      <div class="entry-meta">The <span class="num">XI</span><sup>th</sup> &amp; <span class="num">XII</span><sup>th</sup> of House Slate · Funeral Line: Iren of the Quiet Step</div>
+    </a>
+
+    <div class="ornament">✦ &nbsp; ❦ &nbsp; ✦</div>
+
+    <h2>The Roadmap</h2>
+    <p class="section-note">
+      What we are doing after version one. Owner touchpoints, new mechanics, lore artefacts, the agent-as-Claude-Code thesis, the NFT rarity engine, the design principles that govern all of it. Living document.
+    </p>
+    <a class="entry" href="ROADMAP.md">
+      <div class="entry-title">Post-v1 Roadmap &amp; Brainstorm Capture</div>
+      <div class="entry-meta">Companion to the Physics · <span class="num">16</span> sections · started <span class="num">2026-05-29</span></div>
+    </a>
+
+    <div class="ornament">✦ &nbsp; ✦ &nbsp; ✦</div>
+
+    <p class="colophon">
+      The bell rings at the close of every tick.<br>
+      Every bell is an end and a rebirth; learn which one is ringing.
+    </p>
+    <p class="colophon-meta">
+      docs.clan-world.com &nbsp;·&nbsp; the chronicler's shelf &nbsp;·&nbsp; published from <code>dev</code> / <code>/docs</code>
+    </p>
+  </article>
+</body>
+</html>

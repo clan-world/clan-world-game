@@ -60,4 +60,9 @@ export async function brandElder(input: Pick<ResetFlowInput, "config" | "tmux">)
   const display = loadElderDisplayConfig(input.config.elderConfigPath, input.config.elderId);
   await input.tmux.sendSlashCommand(`/rename Ælder ${display.displayName}`);
   await input.tmux.sendSlashCommand(`/color ${display.color}`);
+  // ASCII "Elder" for the tmux bar: the tmux server runs in a POSIX (non-UTF-8)
+  // locale and mangles the multibyte "Æ" to "_" in the window name. Claude's own
+  // TUI line keeps "Ælder" (it renders UTF-8 itself). A UTF-8 server locale
+  // (LANG=C.UTF-8) would let the bar show "Æ" too — deferred (needs restart).
+  await input.tmux.setStatusBar(`Elder ${display.displayName}`, display.color);
 }
