@@ -15,7 +15,7 @@ When you (an Elder) wake up with cleared context — usually after a `/clear` re
 
 3. **Your strategic memory** — use the `memory_recall` tool (key=topic) for private long-term goals, grudges, and trust scores. Do not read `agent-directive.secret.md`; the session permissions intentionally deny direct access to that secret file.
 
-4. **Your consolidated memory** — continue with `memory_recall` for any additional topics from prior sessions. Topics depend on what the situation block surfaces. Default starter set: `current-strategy`, `peer-trust-grades`, `active-grudges`, `tx-receipts-recent`.
+4. **Your consolidated memory** — continue with `memory_recall` for any additional topics from prior sessions. Topics depend on what the situation block surfaces. Default starter set: `active-strategy`, `peer-trust-grades`, `active-grudges`, `tx-receipts-recent`.
 
 5. **Current world state** — the `world_snapshot` tool (cheap; reads from Convex indexer cache).
 
