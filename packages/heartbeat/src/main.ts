@@ -29,7 +29,7 @@ function bootstrapBlock(elder: ElderId, clanId: string): string {
     `You are Elder ${elder} of Clan ${clanId} in ClanWorld. Your context was just reset.`,
     'A short tick marker will arrive on the next tick. Until then, you can use the `elder` MCP tools to:',
     '- `world_snapshot`     — read current world state',
-    `- \`clan_view\`         — read your clan's state (defaults to your own clan, clan-${clanId})`,
+    `- \`clan_view\`         — read your clan's state (defaults to your own clan (clanId="${clanId}"))`,
     '- `memory_recall`      — restore continuity from prior cycles',
     '- `peer_inbox`         — read whispers',
     '',

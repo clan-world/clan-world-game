@@ -72,12 +72,12 @@ export function composeSituationBlock(args: ComposeArgs): string {
     lines.push('Reorient and act. Suggested order:');
     lines.push('1. Call `memory_recall` for `active-strategy` — pull forward the standing plan you saved before the reset.');
     lines.push('2. Call `world_snapshot` — current tick, season, market prices, bandit state, public bulletins.');
-    lines.push(`3. Call \`clan_view\` (defaults to your own clan, clan-${args.clanId}) — your missions, vault, cooldowns, hunger, clansmen.`);
+    lines.push(`3. Call \`clan_view\` (defaults to your own clan (clanId="${args.clanId}")) — your missions, vault, cooldowns, hunger, clansmen.`);
     lines.push('4. Call `peer_inbox` — private whispers from peer clans.');
     lines.push('');
     lines.push('Then decide what to do this cycle:');
     lines.push('- **Submit orders** if your plan needs an update: call `submit_orders` with your orders array passed INLINE (the array of `ClanOrder` objects as the tool argument — never write a json file, never use bash `cat`/heredoc to build it).');
-    lines.push('- **Whisper a peer** point-to-point: call `peer_whisper` (target clanId + message) — private, AXL-routed.');
+    lines.push('- **Whisper a peer** point-to-point: call `peer_whisper` (toClanId + body) — private, AXL-routed.');
     lines.push('- **Post to the public bulletin** to shape the realm narrative — call `post_bulletin` with your message. Declarations, threats, alliances, public ledger entries. Bulletins are 0G-stored and visible to every other Elder + the iNFT Owner.');
     lines.push('- **Save durable knowledge**: call `memory_save` (key + value) for anything that needs to outlive the next wipe.');
     lines.push('');
