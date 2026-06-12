@@ -198,6 +198,18 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     return Number(interval);
   }
 
+  async readChainNowMs(): Promise<number> {
+    // Latest block timestamp — anvil forks keep a persistent internal clock
+    // offset (evm_increaseTime survives for the node's lifetime), so chain
+    // time can sit minutes ahead of wall time while still advancing at wall
+    // pace. Scheduling against wall time then over-sleeps by the offset every
+    // cycle. Measured from the latest block, so it under-estimates by the age
+    // of that block — which only delays the next fire, never causes a
+    // rate-limited revert.
+    const block = await this.publicClient.getBlock({ blockTag: 'latest' });
+    return Number(block.timestamp) * 1000;
+  }
+
   async readNextHeartbeatAtTs(): Promise<number> {
     const state = await this.publicClient.readContract({
       address: this.contractAddress,

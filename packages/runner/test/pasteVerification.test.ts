@@ -36,6 +36,41 @@ describe("paste verification", () => {
     }
   });
 
+  it("pre-paste treats the Claude Code >=2.1.x placeholder hint as an empty prompt", async () => {
+    // CC 2.1.x renders a hint INSIDE the empty input box (`❯ Try "..."`); it
+    // vanishes on first real keystroke. Without isEmptyPrompt accepting it,
+    // every tick paste died with ready_probe_timeout (live 2026-06-12 outage).
+    // Mutation-tested 2026-06-12: reverting the isEmptyPrompt fix fails this.
+    const tmux = mockTmux([pane("Claude is ready", '│ ❯ Try "fix typecheck errors"')]);
+    await expect(prePasteReady(tmux)).resolves.toBe(true);
+  });
+
+  it("pre-paste does NOT treat unquoted Try-prefixed REAL input as ready", async () => {
+    // Guards the hint matcher's precision: a user/runner message that merely
+    // starts with `Try` (no quoted suffix) is genuine typed input, not a hint.
+    vi.useFakeTimers();
+    const tmux = mockTmux([pane("Claude is thinking", "│ ❯ Try the eastern pass")]);
+    const promise = prePasteReady(tmux);
+    await vi.advanceTimersByTimeAsync(READY_PROBE_TIMEOUT_MS);
+    await expect(promise).resolves.toBe(false);
+  });
+
+  it("post-paste treats the placeholder hint as submitted (input returned to empty)", async () => {
+    const tmux = mockTmux([pane("Submitted", '│ ❯ Try "how does foo work?"')]);
+    await expect(postPasteSubmitted(tmux)).resolves.toBe(true);
+    expect(tmux.sendKeys).not.toHaveBeenCalled();
+  });
+
+  it("post-paste does NOT treat unquoted Try-prefixed stuck input as submitted", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([pane("Submitted?", "│ ❯ Try the eastern pass")]);
+    const promise = postPasteSubmitted(tmux);
+    await vi.advanceTimersByTimeAsync(
+      POST_PASTE_INITIAL_SETTLE_MS + STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES,
+    );
+    await expect(promise).resolves.toBe(false);
+  });
+
   it("pre-paste does NOT treat a non-empty ❯ input (busy) as ready", async () => {
     vi.useFakeTimers();
     const tmux = mockTmux([pane("Claude is thinking", "│ ❯ draft the orders")]);

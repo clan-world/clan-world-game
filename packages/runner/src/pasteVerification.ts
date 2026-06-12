@@ -43,7 +43,29 @@ export async function postPasteSubmitted(tmux: TmuxSink): Promise<boolean> {
 }
 
 function hasReadyPrompt(pane: string): boolean {
-  return inputRegion(pane).some((line) => inputPromptText(line) === "");
+  return inputRegion(pane).some((line) => isEmptyPrompt(inputPromptText(line)));
+}
+
+/**
+ * Claude Code >=2.1.x renders a placeholder hint INSIDE the empty input box
+ * (e.g. `❯ Try "fix typecheck errors"`). The hint vanishes the moment real
+ * text is typed, so a hint-bearing prompt IS an empty prompt. Without this,
+ * the readiness probe reads the hint as typed text and every per-tick paste
+ * dies with ready_probe_timeout — the same silent-pipeline failure mode as
+ * the stale ">"-only glyph regex documented on inputPromptText (caught live
+ * 2026-06-12 after the elder image refresh bundled Claude Code 2.1.175).
+ *
+ * Precision boundary (assessed, not accidental): a lone `Try "..."` line of
+ * REAL stuck input would also match, but no current path can produce one —
+ * ttyd is read-only (operators cannot type into the box) and the runner's
+ * own writes are multi-line situation blocks, envelope-wrapped messages, or
+ * slash commands, never a single quoted Try-line. Hint copy verified against
+ * Claude Code 2.1.175 (ASCII double quotes); revisit if a CLI bump restyles
+ * the hint — this probe family breaks on TUI copy changes, see test file.
+ */
+function isEmptyPrompt(text: string | null): boolean {
+  if (text === null) return false;
+  return text === "" || /^Try ".+"$/.test(text);
 }
 
 /**
@@ -59,7 +81,7 @@ function isInputSubmitted(pane: string): boolean {
     .map(inputPromptText)
     .filter((text): text is string => text !== null);
   if (promptLines.length === 0) return false;
-  return promptLines.every((text) => text.length === 0);
+  return promptLines.every((text) => isEmptyPrompt(text));
 }
 
 function inputRegion(pane: string): string[] {
