@@ -61,6 +61,16 @@ describe("paste verification", () => {
     expect(tmux.sendKeys).not.toHaveBeenCalled();
   });
 
+  it("post-paste does NOT treat unquoted Try-prefixed stuck input as submitted", async () => {
+    vi.useFakeTimers();
+    const tmux = mockTmux([pane("Submitted?", "│ ❯ Try the eastern pass")]);
+    const promise = postPasteSubmitted(tmux);
+    await vi.advanceTimersByTimeAsync(
+      POST_PASTE_INITIAL_SETTLE_MS + STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES,
+    );
+    await expect(promise).resolves.toBe(false);
+  });
+
   it("pre-paste does NOT treat a non-empty ❯ input (busy) as ready", async () => {
     vi.useFakeTimers();
     const tmux = mockTmux([pane("Claude is thinking", "│ ❯ draft the orders")]);

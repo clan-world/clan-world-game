@@ -54,6 +54,14 @@ function hasReadyPrompt(pane: string): boolean {
  * dies with ready_probe_timeout — the same silent-pipeline failure mode as
  * the stale ">"-only glyph regex documented on inputPromptText (caught live
  * 2026-06-12 after the elder image refresh bundled Claude Code 2.1.175).
+ *
+ * Precision boundary (assessed, not accidental): a lone `Try "..."` line of
+ * REAL stuck input would also match, but no current path can produce one —
+ * ttyd is read-only (operators cannot type into the box) and the runner's
+ * own writes are multi-line situation blocks, envelope-wrapped messages, or
+ * slash commands, never a single quoted Try-line. Hint copy verified against
+ * Claude Code 2.1.175 (ASCII double quotes); revisit if a CLI bump restyles
+ * the hint — this probe family breaks on TUI copy changes, see test file.
  */
 function isEmptyPrompt(text: string | null): boolean {
   if (text === null) return false;
