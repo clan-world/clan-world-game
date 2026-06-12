@@ -16,12 +16,24 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => onSignal('SIGINT'));
 
   const convex = createConvexClient();
+  const heartbeatCaller = new RunnerCastHeartbeat(configFromEnv());
+
+  // On anvil forks the chain clock can carry a persistent offset from wall
+  // time (see readChainNowMs). nextHeartbeatAtTs is chain time, so schedule
+  // against a chain-anchored clock when enabled; otherwise wall clock.
+  let nowMs: (() => number) | undefined;
+  if (process.env['HEARTBEAT_SCHEDULE_FROM_CHAIN'] === '1') {
+    const offsetMs = (await heartbeatCaller.readChainNowMs()) - Date.now();
+    console.log(`[heartbeat-loop] chain-clock scheduling enabled; offsetMs=${offsetMs}`);
+    nowMs = () => Date.now() + offsetMs;
+  }
 
   startHeartbeatScheduler({
-    heartbeatCaller: new RunnerCastHeartbeat(configFromEnv()),
+    heartbeatCaller,
     convex,
     signal: abort.signal,
     runnerId: process.env['RUNNER_ID'] ?? 'clanworld-heartbeat-loop',
+    nowMs,
   });
 
   await new Promise<void>(resolve => {
