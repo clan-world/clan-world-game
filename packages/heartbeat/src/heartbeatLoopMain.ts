@@ -66,7 +66,17 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch(err => {
-  console.error('[heartbeat-loop] fatal:', err);
-  process.exit(1);
-});
+// Only run when executed directly — not when imported (tests import
+// resolveSchedulerNowMs; an unguarded main() would process.exit(1) the
+// test runner). Same pattern as packages/agents/src/cli.ts.
+const isMain =
+  process.argv[1] !== undefined &&
+  (process.argv[1].endsWith('/heartbeatLoopMain.ts') ||
+    process.argv[1].endsWith('/heartbeatLoopMain.js'));
+
+if (isMain) {
+  main().catch(err => {
+    console.error('[heartbeat-loop] fatal:', err);
+    process.exit(1);
+  });
+}
