@@ -25,7 +25,7 @@ pragma solidity ^0.8.34;
 
 library ClanWorldConstants {
     // World cadence
-    uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 60;
+    uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 20;
     // First winter opens at tick 110; ticks [100,110) remain pre-winter runway.
     uint64 internal constant WINTER_START_TICK = 110;
     uint64 internal constant WINTER_DURATION_TICKS = 10;
@@ -48,20 +48,20 @@ library ClanWorldConstants {
     uint256 internal constant FISH_CAP = 8e18;
 
     // Gathering yields
-    uint256 internal constant WOOD_YIELD_PER_TICK = 1e18;
+    uint256 internal constant WOOD_YIELD_PER_TICK = 2e18;
     uint256 internal constant WOOD_BASE_YIELD = WOOD_YIELD_PER_TICK;
     /// @dev Crit effect is multiplicative (yield *= 2), not additive. This constant is the added amount when viewed
     ///      as base + bonus, but the implementation uses `yield *= 2` for clarity.
     uint256 internal constant WOOD_CRIT_BONUS = WOOD_YIELD_PER_TICK;
     uint16 internal constant WOOD_CRIT_BPS = 1000; // 10%
 
-    uint256 internal constant IRON_BASE_YIELD = 5e17; // 0.5e18 — total per call (= IRON_YIELD_PER_TICK * 4)
-    uint256 internal constant IRON_YIELD_PER_TICK = IRON_BASE_YIELD / 4; // 1.25e17
+    uint256 internal constant IRON_BASE_YIELD = 1e18; // 1e18 — total per call (= IRON_YIELD_PER_TICK * 4)
+    uint256 internal constant IRON_YIELD_PER_TICK = IRON_BASE_YIELD / 4; // 2.5e17
     uint16 internal constant GOLD_FROM_IRON_BPS = 200; // 2%
     uint256 internal constant GOLD_FROM_IRON_AMOUNT = 1e18;
 
-    uint256 internal constant WHEAT_YIELD_PER_TICK = 5e18; // 20e18 total / 4 ticks
-    uint256 internal constant FISH_YIELD_PER_TICK = 25e16; // 1e18 total / 4 ticks
+    uint256 internal constant WHEAT_YIELD_PER_TICK = 10e18; // 40e18 total / 4 ticks
+    uint256 internal constant FISH_YIELD_PER_TICK = 50e16; // 2e18 total / 4 ticks
 
     uint16 internal constant FISH_DOCKS_BPS = 2500; // 25%
     uint16 internal constant FISH_DEEP_BPS = 7500; // 75%
