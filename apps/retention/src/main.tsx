@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
-import { createWalletClient, custom, http } from 'viem';
+import { createWalletClient, custom } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { mainnet } from 'viem/chains';
 import amethystSpire from '../../web/public/bases/amethyst-spire-lv3.png';
@@ -89,6 +89,7 @@ const USER_ID_KEY = 'clanworld.retention.prototype.userId';
 const TWENTY_HOURS_MS = 20 * 60 * 60 * 1000;
 const STREAK_BONUSES = [3, 7, 15, 21, 25, 30];
 const DEMO_EVM_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f094538e9b7f1ecb4f26dcb5f9969de231120439';
+const DEMO_SIGNING_ENABLED = import.meta.env.DEV || import.meta.env.VITE_RETENTION_ENABLE_DEMO_SIGNING === 'true';
 
 const REWARD_IMAGES: Record<string, string> = {
   dawnWatch,
@@ -346,8 +347,10 @@ function App() {
     setWalletErrors((current) => ({ ...current, [kind]: '' }));
 
     try {
+      if (mode === 'demo' && !DEMO_SIGNING_ENABLED) throw new Error('Demo signing is disabled for this build.');
       const signed = await signWallet(kind, mode, requestedAddress);
       const response = await post<{ profile: CampaignProfile }>('/api/wallet/verify', {
+        userId: profile.id || undefined,
         walletKind: kind,
         address: signed.address,
         nonce: signed.nonce,
@@ -391,7 +394,9 @@ function App() {
   };
 
   const requestEvmAddress = async () => {
-    if (!window.ethereum) throw new Error('No EVM wallet detected. Use demo sign or install a wallet.');
+    if (!window.ethereum) {
+      throw new Error(DEMO_SIGNING_ENABLED ? 'No EVM wallet detected. Use demo sign or install a wallet.' : 'No EVM wallet detected.');
+    }
     const accounts = (await window.ethereum.request({ method: 'eth_requestAccounts' })) as string[];
     const address = accounts[0];
     if (!address) throw new Error('No EVM account selected.');
@@ -405,7 +410,9 @@ function App() {
   };
 
   const requestSolanaAddress = async () => {
-    if (!window.solana?.connect) throw new Error('No Solana wallet detected. Use demo sign or install a wallet.');
+    if (!window.solana?.connect) {
+      throw new Error(DEMO_SIGNING_ENABLED ? 'No Solana wallet detected. Use demo sign or install a wallet.' : 'No Solana wallet detected.');
+    }
     const account = await window.solana.connect();
     return account.publicKey.toString();
   };
@@ -581,6 +588,7 @@ function App() {
               onChange={setEvmInput}
               onVerify={() => verifyWallet('evm', 'wallet')}
               onDemo={() => verifyWallet('evm', 'demo')}
+              demoEnabled={DEMO_SIGNING_ENABLED}
             />
             <WalletRow
               label="Solana"
@@ -592,6 +600,7 @@ function App() {
               onChange={setSolanaInput}
               onVerify={() => verifyWallet('solana', 'wallet')}
               onDemo={() => verifyWallet('solana', 'demo')}
+              demoEnabled={DEMO_SIGNING_ENABLED}
             />
           </section>
 
@@ -765,12 +774,13 @@ type WalletRowProps = {
   wallet?: WalletProfile;
   state: RequestState;
   error: string;
+  demoEnabled: boolean;
   onChange: (value: string) => void;
   onVerify: () => void;
   onDemo: () => void;
 };
 
-function WalletRow({ label, placeholder, value, wallet, state, error, onChange, onVerify, onDemo }: WalletRowProps) {
+function WalletRow({ label, placeholder, value, wallet, state, error, demoEnabled, onChange, onVerify, onDemo }: WalletRowProps) {
   const loading = state === 'loading';
 
   return (
@@ -802,9 +812,11 @@ function WalletRow({ label, placeholder, value, wallet, state, error, onChange, 
             'Connect'
           )}
         </button>
-        <button className="secondaryButton" type="button" onClick={onDemo} disabled={loading || Boolean(wallet)}>
-          Demo Sign
-        </button>
+        {demoEnabled ? (
+          <button className="secondaryButton" type="button" onClick={onDemo} disabled={loading || Boolean(wallet)}>
+            Demo Sign
+          </button>
+        ) : null}
       </div>
     </div>
   );

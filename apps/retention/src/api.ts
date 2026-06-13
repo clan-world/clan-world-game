@@ -62,13 +62,18 @@ type Db = {
   nonces: Record<string, NonceRecord>;
 };
 
+type ApiResult = {
+  status: number;
+  body: unknown;
+};
+
 type RewardDefinition = {
   key: string;
   name: string;
   rarity: Rarity;
 };
 
-const PORT = Number(process.env.PORT || 38740);
+const PORT = Number(process.env.RETENTION_API_PORT || process.env.PORT || 38742);
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DB_PATH = resolve(APP_ROOT, 'runtime/retention-prototype-db.json');
 const MAX_BODY_BYTES = 16 * 1024;
@@ -92,6 +97,7 @@ const REWARDS: RewardDefinition[] = [
 ];
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+let dbWriteQueue = Promise.resolve();
 
 const emptySocial = (): SocialProfile => ({ handle: '', status: 'idle' });
 
@@ -107,16 +113,27 @@ const readDb = async (): Promise<Db> => {
 
 const writeDb = async (db: Db) => {
   await mkdir(dirname(DB_PATH), { recursive: true });
-  const tmp = `${DB_PATH}.${process.pid}.tmp`;
+  const tmp = `${DB_PATH}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(tmp, JSON.stringify(db, null, 2));
   await rename(tmp, DB_PATH);
 };
 
+const updateDb = async <T,>(mutate: (db: Db) => Promise<T> | T) => {
+  const task = dbWriteQueue.then(async () => {
+    const db = await readDb();
+    const result = await mutate(db);
+    await writeDb(db);
+    return result;
+  });
+  dbWriteQueue = task.then(
+    () => undefined,
+    () => undefined,
+  );
+  return task;
+};
+
 const json = (res: ServerResponse, status: number, body: unknown) => {
   res.writeHead(status, {
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers': 'content-type',
     'content-type': 'application/json',
   });
   res.end(JSON.stringify(body));
@@ -125,20 +142,36 @@ const json = (res: ServerResponse, status: number, body: unknown) => {
 const readJson = async (req: IncomingMessage) =>
   new Promise<Record<string, unknown>>((resolveBody, reject) => {
     let body = '';
+    let settled = false;
     req.on('data', (chunk: Buffer) => {
+      if (settled) return;
       body += chunk.toString('utf8');
-      if (body.length > MAX_BODY_BYTES) reject(new Error('Request too large'));
+      if (body.length > MAX_BODY_BYTES) {
+        settled = true;
+        req.destroy();
+        reject(new Error('Request too large'));
+      }
     });
     req.on('end', () => {
+      if (settled) return;
+      settled = true;
       try {
         resolveBody(body ? JSON.parse(body) : {});
       } catch {
         reject(new Error('Invalid JSON'));
       }
     });
+    req.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
   });
 
-const clientKey = (req: IncomingMessage) => `${req.socket.remoteAddress ?? 'local'}:${req.url ?? '/'}`;
+const clientKey = (req: IncomingMessage) => {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  return `${req.socket.remoteAddress ?? 'local'}:${url.pathname}`;
+};
 
 const isRateLimited = (req: IncomingMessage) => {
   const key = clientKey(req);
@@ -178,7 +211,11 @@ const verifySolana = (address: string, message: string, signature: unknown) => {
 };
 
 const findUserByWallet = (db: Db, kind: WalletKind, address: string) =>
-  Object.values(db.users).find((user) => user[kind]?.address.toLowerCase() === address.toLowerCase());
+  Object.values(db.users).find((user) => {
+    const registered = user[kind]?.address;
+    if (!registered) return false;
+    return kind === 'evm' ? registered.toLowerCase() === address.toLowerCase() : registered === address;
+  });
 
 const defaultUser = (id: string): UserProfile => ({
   id,
@@ -201,6 +238,12 @@ const getPacificDay = (date = new Date()) =>
     month: '2-digit',
     day: '2-digit',
   }).format(date);
+
+const getPreviousPacificDay = () => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  return getPacificDay(date);
+};
 
 const completedTasks = (user: UserProfile) =>
   [user.evm, user.solana, user.x.status !== 'idle', user.telegram.status !== 'idle', user.tiktok.status !== 'idle'].filter(Boolean)
@@ -240,9 +283,9 @@ const server = createServer(async (req, res) => {
 
   try {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const db = await readDb();
 
     if (req.method === 'GET' && url.pathname === '/api/profile') {
+      const db = await readDb();
       const user = db.users[url.searchParams.get('userId') ?? ''];
       return user ? json(res, 200, { profile: user }) : json(res, 404, { error: 'Profile not found.' });
     }
@@ -255,9 +298,11 @@ const server = createServer(async (req, res) => {
 
       const nonce = randomBytes(16).toString('hex');
       const message = buildMessage(kind, address, nonce);
-      db.nonces[nonce] = { nonce, walletKind: kind, address, message, expiresAt: Date.now() + NONCE_TTL_MS };
-      await writeDb(db);
-      return json(res, 200, { nonce, message });
+      const result = await updateDb<ApiResult>((db) => {
+        db.nonces[nonce] = { nonce, walletKind: kind, address, message, expiresAt: Date.now() + NONCE_TTL_MS };
+        return { status: 200, body: { nonce, message } };
+      });
+      return json(res, result.status, result.body);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/wallet/verify') {
@@ -267,7 +312,9 @@ const server = createServer(async (req, res) => {
       const nonce = str(body.nonce);
       const message = str(body.message);
       const alias = str(body.alias).slice(0, 32);
-      const record = db.nonces[nonce];
+      const requestedUserId = str(body.userId);
+      const dbBeforeVerify = await readDb();
+      const record = dbBeforeVerify.nonces[nonce];
       if (!kind || !address || !record || record.expiresAt < Date.now()) return json(res, 400, { error: 'Signature request expired.' });
       if (record.walletKind !== kind || record.address !== address || record.message !== message) {
         return json(res, 400, { error: 'Signature request does not match this wallet.' });
@@ -276,65 +323,97 @@ const server = createServer(async (req, res) => {
       const ok = await verifyWalletSignature(kind, address, message, body.signature);
       if (!ok) return json(res, 401, { error: 'Signature verification failed.' });
 
-      const existing = findUserByWallet(db, kind, address);
-      const user = existing ?? defaultUser(randomUUID());
-      user.alias = alias || user.alias;
-      user[kind] = { address, verifiedAt: Date.now() };
-      db.users[user.id] = user;
-      delete db.nonces[nonce];
-      await writeDb(db);
-      return json(res, 200, { profile: user });
+      const result = await updateDb<ApiResult>((db) => {
+        const freshRecord = db.nonces[nonce];
+        if (!freshRecord || freshRecord.expiresAt < Date.now()) {
+          return { status: 400, body: { error: 'Signature request expired.' } };
+        }
+        if (freshRecord.walletKind !== kind || freshRecord.address !== address || freshRecord.message !== message) {
+          return { status: 400, body: { error: 'Signature request does not match this wallet.' } };
+        }
+
+        const existingByWallet = findUserByWallet(db, kind, address);
+        const requestedUser = requestedUserId ? db.users[requestedUserId] : undefined;
+        if (requestedUserId && !requestedUser) {
+          return { status: 404, body: { error: 'Profile not found. Reset local session and sign again.' } };
+        }
+        if (existingByWallet && requestedUser && existingByWallet.id !== requestedUser.id) {
+          return { status: 409, body: { error: 'Wallet is already registered to another profile.' } };
+        }
+
+        const user = requestedUser ?? existingByWallet ?? defaultUser(randomUUID());
+        user.alias = alias || user.alias;
+        user[kind] = { address, verifiedAt: Date.now() };
+        db.users[user.id] = user;
+        delete db.nonces[nonce];
+        return { status: 200, body: { profile: user } };
+      });
+      return json(res, result.status, result.body);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/social') {
       const body = await readJson(req);
-      const user = db.users[str(body.userId)];
       const kind = socialKind(body.kind);
       const handle = str(body.handle).replace(/^@/, '').slice(0, 40);
-      if (!user?.evm && !user?.solana) return json(res, 401, { error: 'Register a wallet first.' });
       if (!kind || !handle) return json(res, 400, { error: 'Social handle is required.' });
 
-      user[kind] = { handle, status: 'pending', openedAt: Date.now(), verifiedAt: Date.now() };
-      await writeDb(db);
-      return json(res, 200, { profile: user });
+      const result = await updateDb<ApiResult>((db) => {
+        const user = db.users[str(body.userId)];
+        if (!user?.evm && !user?.solana) return { status: 401, body: { error: 'Register a wallet first.' } };
+
+        user[kind] = { handle, status: 'pending', openedAt: Date.now(), verifiedAt: Date.now() };
+        return { status: 200, body: { profile: user } };
+      });
+      return json(res, result.status, result.body);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/profile') {
       const body = await readJson(req);
-      const user = db.users[str(body.userId)];
-      if (!user?.evm && !user?.solana) return json(res, 401, { error: 'Register a wallet first.' });
+      const alias = str(body.alias).slice(0, 32);
+      const result = await updateDb<ApiResult>((db) => {
+        const user = db.users[str(body.userId)];
+        if (!user?.evm && !user?.solana) return { status: 401, body: { error: 'Register a wallet first.' } };
 
-      user.alias = str(body.alias).slice(0, 32);
-      await writeDb(db);
-      return json(res, 200, { profile: user });
+        user.alias = alias;
+        return { status: 200, body: { profile: user } };
+      });
+      return json(res, result.status, result.body);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/spin') {
       const body = await readJson(req);
-      const user = db.users[str(body.userId)];
-      if (!user?.evm && !user?.solana) return json(res, 401, { error: 'Register a wallet first.' });
+      const result = await updateDb<ApiResult>((db) => {
+        const user = db.users[str(body.userId)];
+        if (!user?.evm && !user?.solana) return { status: 401, body: { error: 'Register a wallet first.' } };
 
-      const today = getPacificDay();
-      const credits = completedTasks(user) - (user.dailySpins[today] ?? 0);
-      if (credits <= 0) return json(res, 409, { error: 'No spin credits left until midnight PT.' });
+        const today = getPacificDay();
+        const credits = completedTasks(user) - (user.dailySpins[today] ?? 0);
+        if (credits <= 0) return { status: 409, body: { error: 'No spin credits left until midnight PT.' } };
 
-      const rewardDef = pickReward();
-      const reward: SpinReward = {
-        ...rewardDef,
-        id: randomUUID(),
-        xp: pickXp(),
-        wonAt: Date.now(),
-      };
+        const rewardDef = pickReward();
+        const reward: SpinReward = {
+          ...rewardDef,
+          id: randomUUID(),
+          xp: pickXp(),
+          wonAt: Date.now(),
+        };
 
-      const currentStreak = user.lastSpinDay === today || !user.lastSpinDay ? Math.max(1, user.currentStreak || 1) : 1;
-      user.totalXp += reward.xp;
-      user.currentStreak = currentStreak;
-      user.longestStreak = Math.max(user.longestStreak, currentStreak);
-      user.lastSpinDay = today;
-      user.dailySpins[today] = (user.dailySpins[today] ?? 0) + 1;
-      user.collection = [reward, ...user.collection].slice(0, 24);
-      await writeDb(db);
-      return json(res, 200, { profile: user, reward });
+        const yesterday = getPreviousPacificDay();
+        const currentStreak =
+          user.lastSpinDay === today
+            ? Math.max(1, user.currentStreak || 1)
+            : user.lastSpinDay === yesterday
+              ? Math.max(1, user.currentStreak || 0) + 1
+              : 1;
+        user.totalXp += reward.xp;
+        user.currentStreak = currentStreak;
+        user.longestStreak = Math.max(user.longestStreak, currentStreak);
+        user.lastSpinDay = today;
+        user.dailySpins[today] = (user.dailySpins[today] ?? 0) + 1;
+        user.collection = [reward, ...user.collection].slice(0, 24);
+        return { status: 200, body: { profile: user, reward } };
+      });
+      return json(res, result.status, result.body);
     }
 
     return json(res, 404, { error: 'Not found.' });

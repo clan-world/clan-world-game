@@ -104,7 +104,7 @@ The wheel is a horizontal CS:GO-style loot reel using ClanWorld sprites. Spins g
 - The backend must own XP, streaks, daily credits, and reward selection to prevent trivial local tampering.
 - Midnight reset is Pacific Time, not the host time zone.
 - The host machine runs in Europe/Moscow. User-facing campaign timing should be shown in PT for resets unless we decide otherwise.
-- Existing port registry is crowded in this repo. The prototype currently reuses the landing dev port allocation for Vite.
+- Existing port registry is crowded in this repo. The prototype now has dedicated `port-for` purposes for web and API dev servers.
 - This code is still in a monorepo experiment and should stay easy to extract into a private repo.
 - `pnpm --filter @clan-world/retention api` runs with the package as cwd, so DB paths must be app-root-relative, not shell-cwd-relative.
 - Vite config should avoid `port-for` lookups during production build to keep build logs clean while dev servers are running.
@@ -149,3 +149,22 @@ The wheel is a horizontal CS:GO-style loot reel using ClanWorld sprites. Spins g
   - web/HMR routes to Vite port `58443`
   - user systemd services keep both processes running
   - Cloudflare Access protects external traffic
+
+### 2026-06-13
+
+- Addressed cloud review feedback on PR #653:
+  - Wallet verification now accepts the current profile id so an EVM wallet and a Solana wallet attach to one campaign profile.
+  - Wallet collisions now return a conflict instead of silently merging accounts.
+  - File-backed DB writes now run through a serialized read-modify-write queue with unique temp files.
+  - Solana wallet matching preserves base58 case sensitivity.
+  - Streaks now increment across consecutive Pacific Time days and hold steady for multiple same-day spins.
+  - API rate limiting now keys by pathname instead of full URL/query.
+  - Oversized JSON bodies stop reading immediately.
+  - Wildcard API CORS headers were removed because the app uses the same-origin Vite proxy behind Cloudflare Access.
+  - Retention Vite/API servers now use dedicated `port-for` purposes.
+  - Demo signing is hidden outside dev unless explicitly enabled with `VITE_RETENTION_ENABLE_DEMO_SIGNING=true`.
+- Validation completed:
+  - `pnpm --filter @clan-world/retention typecheck`
+  - `pnpm --filter @clan-world/retention build`
+  - API smoke with fresh EVM and Solana signatures: wallet attach, wallet conflict, social saves, spin reward/streak.
+  - Playwright visual smoke against `http://127.0.0.1:58443` with screenshot and console-error check.
