@@ -133,6 +133,32 @@ export interface ClansmanRow {
   isDead: boolean;
 }
 
+/**
+ * Project a mission's settle *tick* onto wall-clock time (unix seconds) using
+ * the tick epoch, so the UI can render a real clock time ("ETA 3:42:10 AM")
+ * instead of a raw tick/timestamp number.
+ *
+ * etaTs = tickEpochStartedAt + settlesAtTick * tickDurationSeconds
+ *
+ * Returns null when there's no live ETA (`eta === null`, i.e. idle/dead) OR
+ * when the tick epoch hasn't been surfaced yet (`tickEpochStartedAt <= 0`) — in
+ * the latter case the projection would be garbage/relative-to-zero, so we leave
+ * it null and let the tab fall back to the relative-ticks label rather than
+ * render a misleading 1970-epoch clock.
+ *
+ * Exported as a pure function so the derivation is unit-testable (and the test
+ * fails if the epoch-guard or the projection formula is reverted).
+ */
+export function deriveEtaTs(
+  eta: number | null,
+  settlesAtTick: number,
+  tickEpochStartedAt: number,
+  tickDurationSeconds: number,
+): number | null {
+  if (eta === null || tickEpochStartedAt <= 0) return null;
+  return tickEpochStartedAt + settlesAtTick * tickDurationSeconds;
+}
+
 export const getClanClansmen = query({
   args: { clanId: v.number() },
   handler: async (ctx, { clanId }): Promise<ClansmanRow[]> => {
@@ -211,16 +237,17 @@ export const getClanClansmen = query({
       const tickEpochStartedAt = numberLike(snap?.tickEpochStartedAt);
       const nowSeconds = tickEpochStartedAt + currentTick * tickDurationSeconds;
 
-      // Absolute wall-clock settle time (unix seconds). We project the settle
-      // *tick* onto the tick epoch so the UI can render a real clock time rather
-      // than a raw number. Only meaningful while a mission is active; null
-      // otherwise (idle/dead) so the tab shows no ETA. Requires a known epoch
-      // start — if the snapshot hasn't surfaced tickEpochStartedAt yet we leave
-      // it null and the tab falls back to the relative-ticks label.
-      const etaTs =
-        eta !== null && tickEpochStartedAt > 0
-          ? tickEpochStartedAt + settlesAtTick * tickDurationSeconds
-          : null;
+      // Absolute wall-clock settle time (unix seconds). See deriveEtaTs: we
+      // project the settle *tick* onto the tick epoch so the UI can render a
+      // real clock time rather than a raw number. Null when idle/dead or when
+      // the epoch hasn't surfaced yet (tab falls back to the relative-ticks
+      // label in that case).
+      const etaTs = deriveEtaTs(
+        eta,
+        settlesAtTick,
+        tickEpochStartedAt,
+        tickDurationSeconds,
+      );
       const cooldown =
         cooldownEndsAtTs > nowSeconds
           ? Math.max(
