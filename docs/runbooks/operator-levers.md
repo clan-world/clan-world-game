@@ -232,7 +232,7 @@ A forked live diamond may inherit `worldPaused=true` and pre-existing clans —
 
 > **Disk leak note (2026-06-13):** anvil's `--state=/data/anvil-state.json` can't
 > write the root-owned `clan-world_anvil_data` volume, so it spams 71MB dumps
-> into its container tmp layer (filled 240GB) AND never persists (so restart
+> into its container tmp layer (filled 240 GB) AND never persists (so restart
 > re-forks). `--force-recreate anvil-fork` clears the leaked layer. Durable fix
 > (deferred): chown `/data` to anvil's uid, or drop `--state`.
 

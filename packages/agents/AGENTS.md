@@ -50,4 +50,4 @@ pnpm --filter @clan-world/agents build
 node packages/agents/dist/cli.js world snapshot   # or once linked: `elder world snapshot`
 ```
 
-See `../../docs/guides/stream-agents.md` for the Elder boot sequence and toolbelt invocation pattern.
+See `../../agents/README.md` and `../../docs/architecture/current-architecture.md` for the elder boot sequence and runtime model. (The legacy `stream-agents.md` orchestrator guide is archived under `docs/archive/guides/`.)

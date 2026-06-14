@@ -8,7 +8,7 @@ Convex backend. Hosts game-state queries, the indexer cron, and the post-tick we
 - **Mutations:** internal-only state writes from the indexer.
 - **Indexer cron:** runs every 5s as a safety net; the primary trigger is the post-tick webhook (per addendum §4).
 - **Post-tick webhook:** HTTP action at `/api/heartbeat-webhook` — re-runs both event indexer and state snapshot refresh.
-- **Disaster `heartbeatCaller` cron:** feature-flagged off by default (`HEARTBEAT_CALLER_ENABLED`); flip on if Foundry loop or KeeperHub dies.
+- **Disaster `heartbeatCaller` cron:** feature-flagged off by default (`HEARTBEAT_CALLER_ENABLED`); flip on if the dockerized heartbeat runner dies.
 
 ## Wave 0 status
 
@@ -23,7 +23,7 @@ A stub `convex/getSnapshot.ts` returns a mock `WorldSnapshot`. No actual Convex 
 ## Local conventions
 
 - **MOCK_MODE flag:** the backend reads `CLAN_WORLD_USE_STUB_CHAIN=true` to short-circuit chain reads with mock data. Same flag the agents use; one toggle for the whole stack.
-- **Webhook auth:** `WEBHOOK_SHARED_SECRET` in the `Authorization: Bearer …` header. Both keepers (Foundry loop, KeeperHub) include it.
+- **Webhook auth:** `WEBHOOK_SHARED_SECRET` in the `Authorization: Bearer …` header. The heartbeat runner includes it.
 - **Webhook is wake-up only.** Do NOT trust the payload's `currentTick` (it's not in the payload — re-derive from chain).
 - **Indexer is idempotent.** Both webhook handler and 5s poll call the same internal mutation; double-fires are safe.
 

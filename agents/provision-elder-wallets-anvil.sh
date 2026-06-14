@@ -77,13 +77,26 @@ fund_account() {
 # Derive the heartbeat runner address. Prefer deriving from RUNNER_PRIVATE_KEY
 # (sourced from .env / .env.local above, same key the heartbeat container uses)
 # so the funded address always tracks the configured runner wallet. If the key
-# is unavailable, fall back to the configurable HEARTBEAT_RUNNER_ADDRESS env var
-# which defaults to the known dev runner wallet.
+# is unavailable OR fails to decode into a valid address, fall back to the
+# configurable HEARTBEAT_RUNNER_ADDRESS env var which defaults to the known dev
+# runner wallet.
+#
+# NOTE: .env.local may hold a non-empty BUT MALFORMED placeholder such as
+# RUNNER_PRIVATE_KEY=DELETED_2026_06_08_PENDING_ROTATION. A bare `-n` check
+# passes for that, then `cast wallet address` fails to decode → empty addr →
+# anvil_setBalance errors → set -e aborts before the clan hand-off. So we must
+# fall back when the key fails to decode, not only when it is empty: derive,
+# validate the result is 0x+40hex, else use the hardcoded fallback.
 runner_address() {
   local key="${RUNNER_PRIVATE_KEY:-}"
+  local derived=""
   if [[ -n "$key" ]]; then
-    cast wallet address "$key"
-    return 0
+    derived="$(cast wallet address "$key" 2>/dev/null || true)"
+    if [[ "$derived" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+      printf '%s\n' "$derived"
+      return 0
+    fi
+    echo "WARN: RUNNER_PRIVATE_KEY did not decode to a valid address (got '${derived:-<empty>}'); falling back to HEARTBEAT_RUNNER_ADDRESS." >&2
   fi
   printf '%s\n' "${HEARTBEAT_RUNNER_ADDRESS:-0xBC34eB46EF3Ad429C3Bcef049dc8ccca6f786cc7}"
 }

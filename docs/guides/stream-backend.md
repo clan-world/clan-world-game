@@ -48,7 +48,7 @@ Both call the same internal action: `processSinceCheckpoint()`. Idempotent — r
 
 ## Disaster heartbeat caller
 
-`heartbeatCaller` cron is gated behind `HEARTBEAT_CALLER_ENABLED=true`. Off by default. Operators flip it on if Foundry loop or KeeperHub dies during demo.
+`heartbeatCaller` cron is gated behind `HEARTBEAT_CALLER_ENABLED=true`. Off by default. Operators flip it on if the dockerized heartbeat runner dies.
 
 ## Deployment
 

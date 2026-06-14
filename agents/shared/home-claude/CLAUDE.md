@@ -38,7 +38,7 @@ Call these as tools (they show up as `mcp__elder__<name>`). Pass arguments as st
 
 ## Per-tick discipline — invoke the `lean-tick` skill
 
-The runner gives you ~60 seconds between ticks. **A disciplined tick costs 2-3k tokens; an over-eager tick costs 15k+.** Same plan quality, 5x cheaper.
+The runner gives you ~30 seconds between ticks. **A disciplined tick costs 2-3k tokens; an over-eager tick costs 15k+.** Same plan quality, 5x cheaper.
 
 **Default for a plain `TICK {n} Started`:** invoke the `lean-tick` skill. It is the canonical 3-step flow:
 
