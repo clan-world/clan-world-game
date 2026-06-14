@@ -6,6 +6,12 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Removed
+
+- Stripped retired 0G memory/iNFT, Gensyn AXL transport, and World mini-app surfaces from active runtime, env templates, contracts, cockpit copy, and sponsor credit. Interim Elder memory and private whispers now use the existing file-backed stores.
+
 ## [2.16.0] — 2026-05-26
 
 **WORLD_PHYSICS spec + real elder CLI.** A complete, code-verified game-engine specification — built collaboratively as a spec-alignment exercise (owner states intent → subagent verifies against the contracts → reconcile + cite, surfacing ~30 code-vs-intent gaps as the rebuild to-do) — plus the real elder CLI/MCP finally wired into the dockerized image.

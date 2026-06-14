@@ -76,7 +76,7 @@ CLAN_WORLD_USE_STUB_CHAIN=true pnpm --filter @clan-world/orchestrator dev
 ## Why this pattern
 
 1. **Parallel streams unblock each other.** The frontend can wire `IConvexClient` end-to-end before backend stream finishes the real Convex impl, because the stub gives it real-shape data.
-2. **Architecture changes don't ripple.** If Wave 2 research kills our 0G compute plan, we change the stub-or-real picker for `ILLMClient`. Consumer code is untouched.
+2. **Architecture changes don't ripple.** If Wave 2 research changes an LLM provider plan, we change the stub-or-real picker for `ILLMClient`. Consumer code is untouched.
 3. **Tests are trivial.** Pass `CLAN_WORLD_USE_STUB_*=true` and the whole stack runs without external deps.
 4. **Demos are repeatable.** Demo-mode is just `MOCK_MODE=true` for any flaky external system.
 
@@ -103,8 +103,8 @@ CLAN_WORLD_USE_STUB_CHAIN=true pnpm --filter @clan-world/orchestrator dev
 ## When to add a new adapter
 
 Add a new adapter interface when:
-- A new external system is introduced (e.g., 0G Storage in S2).
-- A choice of provider is anticipated (e.g., Claude vs ZeroG for LLM).
+- A new external system is introduced.
+- A choice of provider is anticipated.
 - Tests want to mock something that's currently hard-coded.
 
 Don't add an adapter for:

@@ -1,8 +1,7 @@
 /**
  * IElderMemoryStore — durable Elder memory across context resets.
  *
- * S2 stub: local JSON file at ~/.world/clanworld-runner/state/elder-{N}-memory.json
- * Phase 7: 0G iNFT memory (ERC-7857 linked storage per clan; survives ownership transfer)
+ * Local JSON file at ~/.world/clanworld-runner/state/elder-{N}-memory.json
  *
  * Contract:
  * - Key/value store scoped to a single Elder (N).
@@ -22,7 +21,7 @@ export interface IElderMemoryStore {
    *
    * Contract:
    * - Must complete before the tick loop continues (caller does not fire-and-forget).
-   * - Must throw on storage failure (full disk, permission denied, 0G write error).
+   * - Must throw on storage failure (full disk, permission denied).
    */
   save(key: string, value: string): Promise<void>;
 

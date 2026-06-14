@@ -178,8 +178,6 @@ Flush all game/indexer state for the old realm. At minimum clear:
 - `kickstartTokens`
 - `kickstartWatchedTokens`
 - `agentLogs`
-- `inftTokens`
-- `inftTransfers`
 - `memoryEntries`
 - `bulletins`
 - `memoryEvents`

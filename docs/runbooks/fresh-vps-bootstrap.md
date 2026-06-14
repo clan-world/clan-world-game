@@ -194,9 +194,6 @@ npx convex env set WEBHOOK_SHARED_SECRET <SAME AS YOUR .env.local>
 # npx convex env set CLAN_WORLD_LENS_ADDRESS 0x...
 # npx convex env set INDEXER_START_BLOCK <deploy block number>
 
-# Optional World ID config (skip if not running World ID gates)
-# npx convex env set WORLD_APP_ID app_...
-# npx convex env set WORLD_ACTION_ID ...
 ```
 
 Verify:
@@ -430,7 +427,6 @@ ELDER_ADDRESS=0x...
 RPC_URL=https://sepolia.base.org   # or your Alchemy URL
 CLAN_WORLD_CONTRACT_ADDRESS=0x...   # same as the deployed PRIMARY diamond
 ELDER_WALLET_KEY_PATH=/home/<user>/.secrets/clanworld-elder-keys/elder-N.key
-# 0G (optional — for iNFT memory): see heartbeat package docs
 ```
 
 Start each elder in a tmux session:

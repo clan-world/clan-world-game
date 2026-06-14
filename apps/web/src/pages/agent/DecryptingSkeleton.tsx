@@ -4,7 +4,7 @@ import { agentTokens as t } from './agent-tokens';
 interface Props {
   /** Approximate height of the surface being decrypted (px). */
   height: number;
-  /** Optional override label — defaults to the standard 0G ritual text. */
+  /** Optional override label for the loading ritual. */
   label?: string;
 }
 
@@ -17,10 +17,10 @@ const RUNES = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛉᛊᛏᛒᛖᛗᛚᛜ�
  *   - 6 horizontal "strips" of randomized rune characters, each shifting
  *     at slightly different intervals so the eye reads scrolling glyph noise.
  *   - A faint cyan scan line glides vertically over the strips.
- *   - Center-bottom caption pulses: "Decrypting 0G iNFT storage…" with
+   *   - Center-bottom caption pulses with
  *     a trailing spinner glyph.
  */
-export function DecryptingSkeleton({ height, label = 'Decrypting 0G iNFT storage' }: Props) {
+export function DecryptingSkeleton({ height, label = 'Decrypting agent memory' }: Props) {
   const [strips, setStrips] = useState<string[]>(() => buildStrips(6, 32));
   const lastTickRef = useRef(0);
 

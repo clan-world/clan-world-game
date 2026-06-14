@@ -17,8 +17,6 @@ const RESET_TABLES = [
   "kickstartTokens",
   "kickstartWatchedTokens",
   "agentLogs",
-  "inftTokens",
-  "inftTransfers",
   "memoryEntries",
   "bulletins",
   "memoryEvents",

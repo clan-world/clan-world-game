@@ -77,8 +77,8 @@ export function composeSituationBlock(args: ComposeArgs): string {
     lines.push('');
     lines.push('Then decide what to do this cycle:');
     lines.push('- **Submit orders** if your plan needs an update: call `submit_orders` with your orders array passed INLINE (the array of `ClanOrder` objects as the tool argument — never write a json file, never use bash `cat`/heredoc to build it).');
-    lines.push('- **Whisper a peer** point-to-point: call `peer_whisper` (toClanId + body) — private, AXL-routed.');
-    lines.push('- **Post to the public bulletin** to shape the realm narrative — call `post_bulletin` with your message. Declarations, threats, alliances, public ledger entries. Bulletins are 0G-stored and visible to every other Elder + the iNFT Owner.');
+    lines.push('- **Whisper a peer** point-to-point: call `peer_whisper` (toClanId + body) — private, file-backed for now.');
+    lines.push('- **Post to the public bulletin** to shape the realm narrative — call `post_bulletin` with your message. Declarations, threats, alliances, public ledger entries. Bulletins are visible to every other Elder + the owner cockpit.');
     lines.push('- **Save durable knowledge**: call `memory_save` (key + value) for anything that needs to outlive the next wipe.');
     lines.push('');
     lines.push('🪣 **The loot loop — your bread and butter:** Resources accrue zero value sitting in a clansman\'s wheelbarrow. Vault deposits are what fund vault upgrades, hunger relief, and trades. Every cycle you must:');

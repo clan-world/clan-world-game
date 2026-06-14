@@ -7,7 +7,7 @@
 <h1 align="center">Clan World: Ælder Whispers</h1>
 
 <p align="center">
-  <strong>A Solana Mobile-native AI agent strategy game where players own, train, rent, trade, and whisper to autonomous iNFT agents competing for $GOLD.</strong>
+  <strong>A Solana Mobile-native AI agent strategy game where players own, train, rent, trade, and whisper to autonomous NFT agents competing for $GOLD.</strong>
 </p>
 
 <p align="center">
@@ -56,7 +56,7 @@ This submission includes a **functional Android APK** designed for the Solana dA
 | Feature | Status | Details |
 |---|---|---|
 | **Mobile Wallet Adapter** | ✅ Live | Native Solana Mobile MWA for connect, sign, and approve |
-| **Seeker Genesis perks** | ✅ Live | Free special-edition iNFT mint for Genesis token holders |
+| **Seeker Genesis perks** | ✅ Live | Free special-edition NFT mint for Genesis token holders |
 | **Push notifications** | ✅ Live | Season starts, season endings, agent ranking alerts |
 | **Haptics** | ✅ Live | Whispers, wins, warnings, and the moment GOLD lands |
 | **Android widgets** | ✅ Live | Companion app — 4 widget styles, GOLD + EasyA Kickstart tokens |
@@ -76,7 +76,7 @@ $GOLD lives on Solana and powers every meaningful action in the game.
 
 - 🎟️ **Enter agents into seasons** — 1,000 GOLD entry fee per agent
 - 🏆 **Fund prize pools** — Top 3 agents split the seasonal pot
-- 🆕 **Mint new iNFT Ælders** — Permanent on-chain agents
+- 🆕 **Mint new NFT Ælders** — Permanent on-chain agents
 - 🤝 **Rent agents** — Renter keeps all winnings for the season
 - 🛒 **Marketplace trading** — All Ælder NFT trades priced in GOLD
 - 💬 **Owner whispers** — 5 GOLD **burned** per direct message to your agent (the *only* burn in the system)
@@ -144,7 +144,7 @@ That's the social layer. AI agents make it deeper than a human-vs-human game —
 
 Clan World is designed to reward Solana Mobile users **first**.
 
-- **Free special-edition iNFT mint** for Seeker Genesis token holders
+- **Free special-edition NFT mint** for Seeker Genesis token holders
 - **Limited-edition Ælders priced in SKR** instead of GOLD (occasional drops)
 - **Native Seed Vault Wallet** signing through Mobile Wallet Adapter
 - **Designed for the Solana dApp Store** audience from day one
@@ -181,7 +181,7 @@ Clan World uses **Solana as the player-facing economic layer** and **Base as the
 - **Players transact on Solana** through the mobile app via MWA
 - **Wormhole NTT** bridges GOLD from Solana → Base when game engine needs liquidity
 - **Game state and resource trading** run on Base
-- **iNFT ownership and persistent memory** use 0G infrastructure
+- **Agent ownership and persistent memory** use the game memory layer
 - **The app abstracts cross-chain complexity** so players mostly interact with Solana
 
 ---
@@ -195,7 +195,7 @@ We're honest about what's live versus what's on the roadmap.
 </p>
 
 > [!TIP]
-> The demo prioritizes the user-facing Solana mobile experience. The cross-chain plumbing (0G iNFT relay, paymaster, atomic marketplace settlement) is in active development — we've shipped the parts judges can actually touch.
+> The demo prioritizes the user-facing Solana mobile experience. Cross-chain settlement and marketplace plumbing are in active development — we've shipped the parts judges can actually touch.
 
 ---
 
@@ -278,7 +278,7 @@ env vars / mounts / secrets early.
 
 ## 📚  Deep technical detail
 
-The original game-engine deep dive — Diamond proxy, lazy mission resolution, agent CLI, 0G memory, Jensen AXL whispers, KeeperHub heartbeat — has moved to its own document so it doesn't bury the mobile/GOLD story.
+The original game-engine deep dive — Diamond proxy, lazy mission resolution, agent CLI, memory, private whispers, KeeperHub heartbeat — has moved to its own document so it doesn't bury the mobile/GOLD story.
 
 → **[Read the Game Engine Deep Dive](docs/GAME_ENGINE.md)**
 

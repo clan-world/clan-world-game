@@ -341,34 +341,12 @@ export default defineSchema({
     message: v.string(),
     timestamp: v.number(),
   }),
-  inftTokens: defineTable({
-    tokenId: v.number(),
-    clanId: v.number(),
-    owner: v.string(),
-    dataHash: v.string(),
-    encryptedKeyHash: v.optional(v.string()),
-    metadataUri: v.optional(v.string()),
-    updatedAt: v.number(),
-    txHash: v.optional(v.string()),
-  }).index("by_tokenId", ["tokenId"]),
-  inftTransfers: defineTable({
-    tokenId: v.number(),
-    clanId: v.number(),
-    from: v.string(),
-    to: v.string(),
-    dataHash: v.string(),
-    encryptedKeyHash: v.string(),
-    txHash: v.string(),
-    transferredAt: v.number(),
-  })
-    .index("by_tokenId", ["tokenId"])
-    .index("by_clanId", ["clanId"]),
   memoryEntries: defineTable({
     clanId: v.number(),
     key: v.string(),
     value: v.string(),
     dataHash: v.optional(v.string()),
-    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
+    source: v.union(v.literal("local"), v.literal("demo")),
     updatedAt: v.number(),
     txHash: v.optional(v.string()),
   })
@@ -384,7 +362,7 @@ export default defineSchema({
   }).index("by_clan_slot", ["clanId", "slot"]),
   /**
    * Append-only audit log of reads/writes on memoryEntries keys. Surfaced
-   * as the cockpit "memory CRUD" section on the ZeroG tab. One row per
+   * as the cockpit memory section. One row per
    * tick operation; `note` is an optional human-readable description.
    */
   memoryEvents: defineTable({
@@ -398,10 +376,10 @@ export default defineSchema({
     .index("by_clan_tick", ["clanId", "tick"])
     .index("by_tick", ["tick"]),
   // Comms-tab tables (added 2026-05-04 for cockpit Comms wiring).
-  // These three feed the per-elder "AXL" view; bulletins (above) feeds the
-  // "0G Bulletin" view + the cross-clan flyout.
+  // These three feed the per-elder private view; bulletins (above) feeds the
+  // public bulletin view + the cross-clan flyout.
 
-  /** AXL direct whispers between clans. Recorded by elder CLI via Convex. */
+  /** Direct whispers between clans. Recorded by elder CLI via Convex. */
   whispers: defineTable(whisperFields)
     .index("by_tick", ["tick"])
     .index("by_from_clan", ["fromClanId", "tick"])
@@ -412,7 +390,7 @@ export default defineSchema({
     .index("by_tick", ["tick"])
     .index("by_target_clan", ["targetClanId", "tick"]),
 
-  /** Human ("iNFT Owner") steering messages routed to a specific clan. */
+  /** Human owner steering messages routed to a specific clan. */
   humanSteeringMessages: defineTable(humanSteeringMessageFields)
     .index("by_target_clan", ["targetClanId", "tick"])
     .index("by_tick", ["tick"]),

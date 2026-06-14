@@ -631,11 +631,6 @@ describe("purgeStaleData (cron entry)", () => {
           ...rows("goldTxReceipts", [old(10), old(8), old(6), old(4), old(2)]),
           ...rows("goldTxReceipts", [fresh(1), fresh(2), fresh(3)]),
         ],
-        inftTransfers: [
-          ...rows("inftTransfers", [old(10), old(8), old(6), old(4), old(2)]),
-          ...rows("inftTransfers", [fresh(1), fresh(2), fresh(3)]),
-        ],
-
         // clanView: 2 clans, each with 3 old + 2 fresh.
         clanView: [
           { _id: "clanView:0", _creationTime: old(20), clanId: 1 },
@@ -751,8 +746,6 @@ describe("purgeStaleData (cron entry)", () => {
         tickHistory: rows("tickHistory", [old(50)]),
         memoryEvents: rows("memoryEvents", [old(50)]),
         goldTxReceipts: rows("goldTxReceipts", [old(50)]),
-        inftTransfers: rows("inftTransfers", [old(50)]),
-
         clanView: [
           { _id: "clanView:0", _creationTime: old(50), clanId: 1 },
           { _id: "clanView:1", _creationTime: old(40), clanId: 1 },
@@ -785,8 +778,6 @@ describe("purgeStaleData (cron entry)", () => {
       expect(tables.tickHistory).toHaveLength(0);
       expect(tables.memoryEvents).toHaveLength(0);
       expect(tables.goldTxReceipts).toHaveLength(0);
-      expect(tables.inftTransfers).toHaveLength(0);
-
       // clanView: clan 1 keeps its latest (clanView:1); clan 2 keeps its
       // only row (clanView:2). Total 2 rows survive.
       expect(tables.clanView).toHaveLength(2);

@@ -5,8 +5,7 @@ import type { IElderMemoryStore } from '@clan-world/agents/seams';
 
 /**
  * Default state dir for the runner — `~/.world/clanworld-runner/state`.
- * Matches the path the Elder CLI reads/writes; exported so the 0G adapter
- * can fall back to a local file under the same directory.
+ * Matches the path the Elder CLI reads/writes.
  */
 export function defaultStateDir(base: string = os.homedir()): string {
   return path.join(base, '.world', 'clanworld-runner', 'state');
