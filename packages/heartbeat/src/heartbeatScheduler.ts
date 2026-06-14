@@ -25,7 +25,8 @@ export interface HeartbeatSchedulerDeps {
   nowMs?: () => number;
 }
 
-export const HEARTBEAT_JITTER_MS = 500;
+export const HEARTBEAT_SAFETY_MARGIN_MS = 1_500;
+export const HEARTBEAT_JITTER_MS = HEARTBEAT_SAFETY_MARGIN_MS;
 export const HEARTBEAT_RETRY_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000] as const;
 const HOT_LOOP_GUARD_MS = 1_000;
 const ALERT_DEDUP_WINDOW_MS = 5 * 60 * 1_000;
@@ -56,9 +57,9 @@ export function startHeartbeatScheduler(deps: HeartbeatSchedulerDeps): void {
 export function computeHeartbeatDelayMs(
   nextHeartbeatAtTs: number,
   nowMs: number,
-  jitterMs = HEARTBEAT_JITTER_MS,
+  safetyMarginMs = HEARTBEAT_SAFETY_MARGIN_MS,
 ): number {
-  return Math.max(0, nextHeartbeatAtTs * 1000 - nowMs) + jitterMs;
+  return Math.max(0, nextHeartbeatAtTs * 1000 + safetyMarginMs - nowMs);
 }
 
 export function classifyHeartbeatError(err: unknown): HeartbeatFireResult {
@@ -133,7 +134,7 @@ async function runHeartbeatScheduler(
       heartbeatIntervalSeconds,
       nextHeartbeatAtTs,
     });
-    if (result.success && !result.rateLimited) {
+    if (result.success) {
       lastAlertAtMs.clear();
     }
     if (result.success) {
@@ -179,14 +180,14 @@ async function attemptHeartbeatWithBackoff(
     nextHeartbeatAtTs?: number;
   },
 ): Promise<
-  | { success: true; rateLimited?: false }
-  | { success: true; rateLimited: true }
+  | { success: true }
   | { success: false; aborted: true; message: string; lastFireResult?: HeartbeatFireResult }
   | { success: false; aborted: false; message: string; lastFireResult: HeartbeatFireResult }
 > {
   const nowMs = deps.nowMs ?? (() => Date.now());
 
-  for (let attempt = 0; attempt <= HEARTBEAT_RETRY_BACKOFF_MS.length; attempt++) {
+  let attempt = 0;
+  while (attempt <= HEARTBEAT_RETRY_BACKOFF_MS.length) {
     try {
       const { txHash } = await deps.heartbeatCaller.callHeartbeat();
       deps.log.info(`heartbeat tx confirmed: ${txHash}`);
@@ -208,15 +209,26 @@ async function attemptHeartbeatWithBackoff(
     } catch (err) {
       if (err instanceof HeartbeatRateLimitedError) {
         const lastFailureMessage = messageFrom(err);
+        const nextHeartbeatAtTs = await deps.heartbeatCaller
+          .readNextHeartbeatAtTs()
+          .catch(() => err.nextAllowedAt || deps.nextHeartbeatAtTs);
         deps.log.warn(`heartbeat rate-limited: ${lastFailureMessage}`);
         await postRunnerStatus(deps, {
           runnerId: deps.runnerId,
           lastFireResult: 'rate-limited',
           lastFailureMessage,
           heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
-          nextHeartbeatAtTs: deps.nextHeartbeatAtTs,
+          nextHeartbeatAtTs,
         });
-        return { success: true, rateLimited: true };
+        const waitMs = nextHeartbeatAtTs === undefined
+          ? HEARTBEAT_SAFETY_MARGIN_MS
+          : computeHeartbeatDelayMs(nextHeartbeatAtTs, nowMs());
+        deps.log.info(
+          `heartbeat rate-limited; retrying after ${waitMs}ms (nextHeartbeatAtTs=${nextHeartbeatAtTs ?? 'unknown'})`,
+        );
+        await sleepWithSignal(waitMs, deps.signal);
+        if (deps.signal.aborted) return { success: false, aborted: true, message: 'aborted' };
+        continue;
       }
       if (deps.signal.aborted) return { success: false, aborted: true, message: 'aborted' };
       if (isHeartbeatTimeoutError(err) && deps.nextHeartbeatAtTs !== undefined) {
@@ -254,6 +266,7 @@ async function attemptHeartbeatWithBackoff(
         return { success: false, aborted: false, message: lastFailureMessage, lastFireResult };
       }
       const backoffMs = HEARTBEAT_RETRY_BACKOFF_MS[attempt] ?? HEARTBEAT_RETRY_BACKOFF_MS[0];
+      attempt++;
       await sleepWithSignal(backoffMs, deps.signal);
       if (deps.signal.aborted) return { success: false, aborted: true, message: 'aborted' };
     }

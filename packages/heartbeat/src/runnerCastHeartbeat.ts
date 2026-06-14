@@ -139,7 +139,10 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         // instrumentation diagnoses this), revisit with decodeErrorResult on the
         // receipt revert data.
         const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
-        if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
+        if (
+          next !== undefined &&
+          await this.isNextHeartbeatStillFuture(next, receipt.blockNumber)
+        ) {
           throw new HeartbeatRateLimitedError(next);
         }
         throw new Error(`heartbeat tx ${hash} reverted on-chain`);
@@ -181,7 +184,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       // No decoded reason (e.g. a custom error with no ABI match) — only here do
       // we fall back to the timestamp heuristic for the rate-limit case.
       const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
-      if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
+      if (next !== undefined && await this.isNextHeartbeatStillFuture(next)) {
         throw new HeartbeatRateLimitedError(next);
       }
       throw err;
@@ -206,8 +209,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     // cycle. Measured from the latest block, so it under-estimates by the age
     // of that block — which only delays the next fire, never causes a
     // rate-limited revert.
-    const block = await this.publicClient.getBlock({ blockTag: 'latest' });
-    return Number(block.timestamp) * 1000;
+    return this.readBlockTimestampMs();
   }
 
   async readNextHeartbeatAtTs(): Promise<number> {
@@ -219,6 +221,21 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     });
     // viem decodes the named tuple into an object with the same field names.
     return Number((state as { nextHeartbeatAtTs: bigint }).nextHeartbeatAtTs);
+  }
+
+  private async isNextHeartbeatStillFuture(
+    nextHeartbeatAtTs: number,
+    blockNumber?: bigint | number | null,
+  ): Promise<boolean> {
+    const chainNowMs = await this.readBlockTimestampMs(blockNumber).catch(() => Date.now());
+    return nextHeartbeatAtTs * 1000 > chainNowMs;
+  }
+
+  private async readBlockTimestampMs(blockNumber?: bigint | number | null): Promise<number> {
+    const block = blockNumber === undefined || blockNumber === null
+      ? await this.publicClient.getBlock({ blockTag: 'latest' })
+      : await this.publicClient.getBlock({ blockNumber: BigInt(blockNumber) });
+    return Number(block.timestamp) * 1000;
   }
 
   private async postHeartbeatWebhook(args: {

@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeHeartbeatDelayMs,
   HEARTBEAT_RETRY_BACKOFF_MS,
+  HEARTBEAT_SAFETY_MARGIN_MS,
   startHeartbeatScheduler,
 } from '../src/heartbeatScheduler';
 import { HeartbeatRateLimitedError, type IHeartbeatCaller } from '@clan-world/agents/seams';
@@ -48,9 +49,34 @@ afterEach(() => {
 });
 
 describe('heartbeatScheduler', () => {
-  it('computes delay from nextHeartbeatAtTs with 500ms jitter', () => {
-    expect(computeHeartbeatDelayMs(10, 9_250)).toBe(1_250);
+  it('computes delay from nextHeartbeatAtTs with a safety margin', () => {
+    expect(computeHeartbeatDelayMs(10, 9_250)).toBe(2_250);
     expect(computeHeartbeatDelayMs(10, 11_000)).toBe(500);
+    expect(computeHeartbeatDelayMs(10, 12_000)).toBe(0);
+  });
+
+  it('does not fire before nextHeartbeatAtTs plus the safety margin', async () => {
+    const callHeartbeat = vi.fn().mockResolvedValue({ txHash: '0x1' });
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readNextHeartbeatAtTs() { return 10; },
+    });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 9_250,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_249);
+    expect(callHeartbeat).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+
+    abort.abort();
   });
 
   it('fires heartbeat when on-chain nextHeartbeatAtTs is due', async () => {
@@ -71,7 +97,7 @@ describe('heartbeatScheduler', () => {
       nowMs: () => 0,
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     abort.abort();
@@ -92,7 +118,7 @@ describe('heartbeatScheduler', () => {
     });
 
     await vi.advanceTimersByTimeAsync(
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0),
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0),
     );
 
     expect(callHeartbeat).toHaveBeenCalledTimes(HEARTBEAT_RETRY_BACKOFF_MS.length + 1);
@@ -101,35 +127,46 @@ describe('heartbeatScheduler', () => {
     abort.abort();
   });
 
-  it('treats rate-limited heartbeats as terminal without retrying or alerting', async () => {
-    const callHeartbeat = vi.fn().mockRejectedValue(new HeartbeatRateLimitedError(60));
+  it('waits until nextHeartbeatAtTs plus safety margin after a rate limit without consuming backoff budget', async () => {
+    vi.setSystemTime(0);
+    const callHeartbeat = vi.fn()
+      .mockRejectedValueOnce(new HeartbeatRateLimitedError(3))
+      .mockResolvedValueOnce({ txHash: '0x1' });
     const alert = vi.fn().mockResolvedValue({ ok: true });
     const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
-    let readNextCount = 0;
     const caller = makeHeartbeatCaller({
       callHeartbeat,
-      async readNextHeartbeatAtTs() {
-        readNextCount++;
-        return readNextCount === 2 ? 60 : 0;
-      },
+      readNextHeartbeatAtTs: vi.fn()
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(3)
+        .mockResolvedValue(33),
     });
     const abort = new AbortController();
 
     startHeartbeatScheduler({
       heartbeatCaller: caller,
       signal: abort.signal,
-      nowMs: () => 0,
       alert,
       convex: { postRunnerStatus },
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
 
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
     expect(alert).not.toHaveBeenCalled();
     expect(postRunnerStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ lastFireResult: 'rate-limited' }),
+      expect.objectContaining({ lastFireResult: 'rate-limited', nextHeartbeatAtTs: 3 }),
+    );
+
+    await vi.advanceTimersByTimeAsync(2_998);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(callHeartbeat).toHaveBeenCalledTimes(2);
+    expect(alert).not.toHaveBeenCalled();
+    expect(postRunnerStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ lastFireResult: 'success', nextHeartbeatAtTs: 33 }),
     );
 
     abort.abort();
@@ -149,7 +186,7 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
     abort.abort();
     await vi.advanceTimersByTimeAsync(1_000);
 
@@ -172,7 +209,7 @@ describe('heartbeatScheduler', () => {
     });
 
     const failureCycleMs =
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
 
@@ -202,7 +239,7 @@ describe('heartbeatScheduler', () => {
     });
 
     const failureCycleMs =
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
     await vi.advanceTimersByTimeAsync(120_000 - failureCycleMs);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
@@ -229,7 +266,7 @@ describe('heartbeatScheduler', () => {
     });
 
     await vi.advanceTimersByTimeAsync(
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0),
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0),
     );
 
     expect(alert).toHaveBeenCalledTimes(1);
@@ -277,7 +314,7 @@ describe('heartbeatScheduler', () => {
     });
 
     const failureCycleMs =
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
     await vi.advanceTimersByTimeAsync(120_000 - failureCycleMs);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
@@ -307,7 +344,7 @@ describe('heartbeatScheduler', () => {
     });
 
     const failureCycleMs =
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
     await vi.advanceTimersByTimeAsync(120_000 - failureCycleMs);
     await vi.advanceTimersByTimeAsync(failureCycleMs);
@@ -369,7 +406,7 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
 
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
     expect(alert).not.toHaveBeenCalled();
@@ -377,7 +414,7 @@ describe('heartbeatScheduler', () => {
       expect.objectContaining({ lastFireResult: 'success', nextHeartbeatAtTs: 160 }),
     );
     expect(existsSync(heartbeatSuccessFile)).toBe(true);
-    expect(readFileSync(heartbeatSuccessFile, 'utf8')).toBe('100');
+    expect(readFileSync(heartbeatSuccessFile, 'utf8')).toBe('101');
 
     abort.abort();
   });
@@ -399,7 +436,7 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(2_002);
+    await vi.advanceTimersByTimeAsync(4_002);
 
     expect(postRunnerStatus).toHaveBeenCalled();
     expect(callHeartbeat).toHaveBeenCalledTimes(2);
@@ -428,7 +465,7 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
 
     expect(postRunnerStatus).toHaveBeenCalledWith(
       expect.objectContaining({ lastFireAt: 123_456, lastFireResult: 'success' }),
@@ -452,10 +489,10 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(2_501);
     expect(callHeartbeat).toHaveBeenCalledTimes(2);
 
     abort.abort();
@@ -480,7 +517,7 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_SAFETY_MARGIN_MS + 1);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(999);
