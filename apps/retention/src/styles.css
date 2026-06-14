@@ -1,0 +1,764 @@
+:root {
+  color: #162021;
+  background: #eef1ed;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(72, 128, 115, 0.18), transparent 28%),
+    linear-gradient(135deg, #f4f0e8 0%, #eef1ed 44%, #e8eef4 100%);
+}
+
+.workspace {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.masthead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.eyebrow,
+.step {
+  margin: 0 0 8px;
+  color: #53696b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  max-width: 780px;
+  margin-bottom: 0;
+  color: #101820;
+  font-size: 2.45rem;
+  line-height: 1.05;
+}
+
+h2 {
+  margin-bottom: 0;
+  color: #162021;
+  font-size: 1.15rem;
+}
+
+.progressDial {
+  display: grid;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  border: 1px solid rgba(16, 24, 32, 0.14);
+  border-radius: 50%;
+  background: conic-gradient(#257a6b 0deg, #257a6b 120deg, #d7d5c9 120deg);
+  color: #101820;
+  font-weight: 900;
+}
+
+.progressDial span {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 50%;
+  background: #fbfaf6;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr) 340px;
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.panel {
+  border: 1px solid rgba(16, 24, 32, 0.14);
+  border-radius: 8px;
+  background: rgba(251, 250, 246, 0.92);
+  box-shadow: 0 18px 50px rgba(16, 24, 32, 0.08);
+  padding: 18px;
+}
+
+.panel.locked {
+  opacity: 0.62;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(16, 24, 32, 0.11);
+  padding-bottom: 14px;
+}
+
+.walletRow,
+.questRow {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.walletRow {
+  grid-template-columns: minmax(0, 1fr) 104px;
+  align-items: end;
+}
+
+.walletRow.expanded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.walletRow + .walletRow,
+.questRow + .questRow {
+  border-top: 1px solid rgba(16, 24, 32, 0.09);
+}
+
+.aliasRow {
+  padding-bottom: 14px;
+}
+
+.fieldGroup {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+label {
+  color: #334749;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(16, 24, 32, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #101820;
+  padding: 0 12px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #257a6b;
+  box-shadow: 0 0 0 3px rgba(37, 122, 107, 0.16);
+}
+
+.inputStatusWrap {
+  position: relative;
+}
+
+.inputStatusWrap input {
+  padding-right: 74px;
+}
+
+.inlineState {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  translate: 0 -50%;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.inlineState.loading {
+  background: #dfeeff;
+  color: #1d4e7a;
+}
+
+.inlineState.success {
+  background: #dff0e4;
+  color: #155b4f;
+}
+
+.inlineState.error {
+  background: #ffe0df;
+  color: #8f2b24;
+}
+
+.primaryButton,
+.secondaryButton,
+.verifiedButton {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.primaryButton {
+  border: 1px solid #101820;
+  background: #101820;
+  color: #ffffff;
+}
+
+.secondaryButton {
+  border: 1px solid rgba(16, 24, 32, 0.18);
+  background: #ffffff;
+  color: #162021;
+}
+
+.verifiedButton {
+  border: 1px solid rgba(37, 122, 107, 0.3);
+  background: #dff0e4;
+  color: #155b4f;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.verifiedButton:disabled {
+  opacity: 0.48;
+}
+
+.questTitle,
+.buttonLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.questTitle {
+  justify-content: space-between;
+}
+
+.walletActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.questBadge {
+  display: inline-grid;
+  min-width: 88px;
+  min-height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: #ead7bd;
+  color: #4b3420;
+  font-weight: 900;
+}
+
+.statusPill {
+  display: inline-grid;
+  min-height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.statusPill.idle {
+  background: #e5e8eb;
+  color: #53606b;
+}
+
+.statusPill.verifying {
+  background: #dfeeff;
+  color: #1d4e7a;
+}
+
+.statusPill.pending {
+  background: #fff1c7;
+  color: #76520c;
+}
+
+.statusPill.granted {
+  background: #dff0e4;
+  color: #155b4f;
+}
+
+.notice {
+  margin: -2px 0 0;
+  color: #6d521d;
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.hintText,
+.errorText {
+  margin: -2px 0 0;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.hintText {
+  color: #53606b;
+}
+
+.errorText {
+  color: #9a3128;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.rewardMeter {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.spinPanel {
+  overflow: hidden;
+}
+
+.spinHeader,
+.spinFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.spinHeader {
+  margin-bottom: 16px;
+}
+
+.spinStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  gap: 8px;
+}
+
+.stat {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid rgba(16, 24, 32, 0.1);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.stat span {
+  color: #53606b;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.stat strong {
+  overflow: hidden;
+  color: #101820;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reelFrame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(16, 24, 32, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(16, 24, 32, 0.18), transparent 14%, transparent 86%, rgba(16, 24, 32, 0.18)),
+    #182223;
+  padding: 14px 0;
+}
+
+.reelMarker {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  border-radius: 999px;
+  background: #ffd166;
+  box-shadow: 0 0 0 1px rgba(16, 24, 32, 0.22), 0 0 22px rgba(255, 209, 102, 0.65);
+}
+
+.reelTrack {
+  display: flex;
+  gap: 10px;
+  width: max-content;
+  padding-inline: 16px;
+  transform: translateX(0);
+}
+
+.reelTrack.spinning {
+  animation: reelSlide 2.35s cubic-bezier(0.12, 0.76, 0.12, 1) forwards;
+}
+
+.reelSlot {
+  display: grid;
+  width: 132px;
+  height: 148px;
+  flex: 0 0 auto;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: #f8f5ec;
+  padding: 8px;
+}
+
+.reelSlot img,
+.collectionItem img {
+  width: 100%;
+  min-width: 0;
+  object-fit: contain;
+}
+
+.reelSlot img {
+  height: 88px;
+}
+
+.reelSlot span {
+  overflow: hidden;
+  color: #162021;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.reelSlot.common,
+.collectionItem.common {
+  border-color: #a9b8b3;
+}
+
+.reelSlot.uncommon,
+.collectionItem.uncommon {
+  border-color: #3b8f7e;
+}
+
+.reelSlot.rare,
+.collectionItem.rare {
+  border-color: #3d6ee4;
+}
+
+.reelSlot.epic,
+.collectionItem.epic {
+  border-color: #8b5bd6;
+}
+
+.reelSlot.legendary,
+.collectionItem.legendary {
+  border-color: #d99626;
+  box-shadow: inset 0 0 0 2px rgba(255, 209, 102, 0.22);
+}
+
+.spinFooter {
+  margin-top: 14px;
+}
+
+.spinButton {
+  min-width: 160px;
+}
+
+.rewardOrb {
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(16, 24, 32, 0.12);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ead7bd, #d7d5c9);
+}
+
+.rewardOrb.ready {
+  background: linear-gradient(135deg, #3b8f7e, #ffd166);
+}
+
+.statusLabel {
+  margin-bottom: 4px;
+  font-weight: 900;
+}
+
+.statusCopy {
+  margin-bottom: 0;
+  color: #53606b;
+  font-size: 0.92rem;
+}
+
+.profileList {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px 12px;
+  margin: 0 0 18px;
+  border-top: 1px solid rgba(16, 24, 32, 0.09);
+  padding-top: 16px;
+}
+
+.bonusTrack {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.bonusNode {
+  display: grid;
+  min-height: 52px;
+  place-items: center;
+  border: 1px solid rgba(16, 24, 32, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #53606b;
+}
+
+.bonusNode.earned {
+  border-color: rgba(37, 122, 107, 0.35);
+  background: #dff0e4;
+  color: #155b4f;
+}
+
+.bonusNode strong,
+.bonusNode span {
+  line-height: 1;
+}
+
+.bonusNode strong {
+  font-size: 1rem;
+}
+
+.bonusNode span {
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.lowerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.collectionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+}
+
+.collectionItem {
+  display: grid;
+  min-height: 118px;
+  grid-template-rows: minmax(0, 1fr) 24px;
+  align-items: center;
+  border: 1px solid rgba(16, 24, 32, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.collectionItem img {
+  height: 74px;
+}
+
+.collectionItem span {
+  color: #162021;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.emptyState {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #53606b;
+  font-weight: 750;
+}
+
+.leaderboard {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard li {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(16, 24, 32, 0.1);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.leaderboard span:not(.rank) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard small {
+  grid-column: 2 / 4;
+  color: #53606b;
+  font-weight: 750;
+}
+
+.rank {
+  color: #257a6b;
+  font-weight: 900;
+}
+
+dt {
+  color: #53606b;
+  font-weight: 850;
+}
+
+dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #162021;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes reelSlide {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-2820px);
+  }
+}
+
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .statusPanel {
+    order: -1;
+  }
+
+  .lowerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .spinHeader,
+  .spinFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .spinStats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 18px;
+  }
+
+  .masthead {
+    align-items: flex-start;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  .progressDial {
+    width: 60px;
+    height: 60px;
+  }
+
+  .progressDial span {
+    width: 44px;
+    height: 44px;
+  }
+
+  .walletRow {
+    grid-template-columns: 1fr;
+  }
+
+  .buttonLine > button,
+  .walletRow > button,
+  .walletActions {
+    width: 100%;
+  }
+
+  .walletActions {
+    grid-template-columns: 1fr;
+  }
+
+  .spinStats {
+    grid-template-columns: 1fr;
+  }
+
+  .reelSlot {
+    width: 112px;
+    height: 134px;
+  }
+
+  @keyframes reelSlide {
+    0% {
+      transform: translateX(0);
+    }
+
+    100% {
+      transform: translateX(-2440px);
+    }
+  }
+}
