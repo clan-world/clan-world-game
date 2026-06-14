@@ -185,7 +185,25 @@ services:
   # ---------------------------------------------------------------------------
   anvil-fork:
     image: ghcr.io/foundry-rs/foundry:v1.2.0
-    entrypoint: anvil
+    # The anvil_data named volume is created empty + root-owned, but the foundry
+    # image runs anvil as non-root uid 1000 (foundry). Without the chown below,
+    # anvil cannot write /data/anvil-state.json — it silently spams ~71MB
+    # timestamped state-dump snapshots into the container writable layer
+    # (~240GB observed) AND the fork never persists (re-forks on restart).
+    # Fix: start as root, chown /data to the foundry uid, then drop back to
+    # foundry via setpriv before exec'ing anvil. Result: a single overwriting
+    # /data/anvil-state.json, zero tmp dump accumulation, state survives restart.
+    # Same volume-ownership pattern as the Coolify ssh-dir chown-to-app-uid fix.
+    user: root
+    entrypoint:
+      - /bin/sh
+      # -e so a failed chown/setpriv fails the container loudly instead of
+      # silently exec'ing anvil into the original broken (root-owned) state.
+      - -ec
+      - |
+        chown foundry:foundry /data
+        exec setpriv --reuid foundry --regid foundry --init-groups anvil "$@"
+      - anvil
     command:
       - --host=0.0.0.0
       - --fork-url=${RPC_URL_PRIMARY:?RPC_URL_PRIMARY required for fork seed}
