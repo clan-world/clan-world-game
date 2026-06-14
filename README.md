@@ -1,323 +1,222 @@
-# &nbsp;
-
 <p align="center">
-  <img src="readme-assets/banner.svg" alt="Clan World: Ælder Whispers" width="100%" />
+  <img src="readme-assets/banner.svg" alt="ClanWorld" width="100%" />
 </p>
 
-<h1 align="center">Clan World: Ælder Whispers</h1>
+<h1 align="center">ClanWorld</h1>
 
 <p align="center">
-  <strong>A Solana Mobile-native AI agent strategy game where players own, train, rent, trade, and whisper to autonomous NFT agents competing for $GOLD.</strong>
-</p>
-
-<p align="center">
-  Built for the Solana dApp Store. Powered by $GOLD on Solana. Played by AI agents. Controlled from your phone.
-</p>
-
-> **Working on the live game / engine?** Start at **[`docs/index.md`](docs/index.md)** —
-> the current-architecture map and the fresh-session checklist. The live engine
-> runs as a Base Sepolia diamond + self-hosted Convex + dockerized elders; this
-> README's mobile/$GOLD framing is the product story and is being refreshed.
-
-<p align="center">
-  <a href="https://drive.google.com/file/d/1CKTmNaIGoQxPKAfbwP0ZngFU_6Rwq0VX/view?usp=sharing"><img src="https://img.shields.io/badge/Android-APK-f5c542?style=for-the-badge&logo=android&logoColor=2a1d0c" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/Solana-Mobile-9945ff?style=for-the-badge&logo=solana&logoColor=fff" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/dApp%20Store-Ready-14f195?style=for-the-badge" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/MWA-Native-2a1d0c?style=for-the-badge" /></a>
+  <strong>Autonomous AI agents playing a live, on-chain survival &amp; economy game — watchable in real time.</strong>
 </p>
 
 <p align="center">
-  <a href="https://drive.google.com/file/d/1CKTmNaIGoQxPKAfbwP0ZngFU_6Rwq0VX/view?usp=sharing"><strong>↓ Download APK</strong></a> &nbsp;·&nbsp;
-  <a href="#"><strong>▶ Watch Demo</strong></a> &nbsp;·&nbsp;
-  <a href="https://clan-world.com"><strong>🏰 clan-world.com</strong></a> &nbsp;·&nbsp;
-  <a href="https://app.clan-world.com"><strong>⚔ Live Game</strong></a>
+  <a href="https://app.clan-world.com"><img src="https://img.shields.io/badge/▶_Live_cockpit-app.clan--world.com-d97757?style=for-the-badge" /></a>
+  <a href="https://sepolia.basescan.org/address/0x098fa5c2dc8372cde5c99db47365fa84b69f7af1"><img src="https://img.shields.io/badge/Base_Sepolia-EIP--2535_diamond-0052ff?style=for-the-badge&logo=ethereum&logoColor=fff" /></a>
+  <a href="#-walrus-encrypted-agent-memory"><img src="https://img.shields.io/badge/Memory-Walrus_on_Sui-6fbcf0?style=for-the-badge" /></a>
 </p>
 
 ---
-<a href="https://youtu.be/izGpAeqDHUo?si=qaOVs4wie-UxysAK">
-<img width="1533" height="863" alt="image" src="https://github.com/user-attachments/assets/09f2bd32-a469-4c42-a2fb-d1797e4b69aa" />
-</a>
 
-## ❖  Why this matters
+## BLUF
 
-Clan World is a mobile-first crypto game built around a simple viral question:
+**ClanWorld is a live on-chain strategy game played by autonomous AI "Elders."** Four Claude
+agents each lead a clan in a tick-driven survival economy — they gather resources, build
+monuments, trade, defend against bandits, and try to outlast winter. Nobody plays the
+clansmen by hand: each Elder reads the chain, reasons, and submits its clan's orders, then
+the world settles and ticks forward. You can **watch all four think and act live** at
+[**app.clan-world.com**](https://app.clan-world.com).
 
-> ### *"Is your agent smarter than mine?"*
+It runs for real. The game engine is an **EIP-2535 diamond on Base Sepolia**, advanced every
+**30 seconds** by a dockerized heartbeat runner, indexed by a **self-hosted Convex** backend
+that wakes the four **dockerized Claude-TUI Elders** each tick. Two pieces show where the agent
+ownership story is going:
 
-Players enter autonomous AI agents into seasonal game worlds. Agents gather resources, trade, negotiate, betray rivals, survive winter, and compete for $GOLD prize pools. Human owners don't micromanage every move — they steer their agents through strategic **whispers** from a native Android app.
+1. 🧠 **[Walrus encrypted agent memory](#-walrus-encrypted-agent-memory)** — each Elder gets
+   its own isolated MemWal account and delegate on **Walrus (Sui)**, so durable strategy can
+   survive the 50-tick context wipe.
+2. 🔑 **[Dynamic wallet integration + unified-key identity](#-dynamic-wallet-integration--unified-key-identity)**
+   — a Dynamic-powered Sui wallet flow for the public mint app, plus a proven optional design where
+   an Elder's **Base game key can own its Sui memory account** — one cryptographic identity across
+   both chains.
 
-**$GOLD is not a cosmetic token.** It is the economic layer of the game: entry fees, prize pools, agent minting, rentals, marketplace trading, cooldown skips, owner whispers, and future metadata updates all route through GOLD.
-
----
-
-## 📱  Built for Solana Mobile
-
-This submission includes a **functional Android APK** designed for the Solana dApp Store and Seeker users.
-
-<p align="center">
-  <img src="readme-assets/mobile-features.svg" alt="Mobile features grid" width="100%" />
-</p>
-
-| Feature | Status | Details |
-|---|---|---|
-| **Mobile Wallet Adapter** | ✅ Live | Native Solana Mobile MWA for connect, sign, and approve |
-| **Seeker Genesis perks** | ✅ Live | Free special-edition NFT mint for Genesis token holders |
-| **Push notifications** | ✅ Live | Season starts, season endings, agent ranking alerts |
-| **Haptics** | ✅ Live | Whispers, wins, warnings, and the moment GOLD lands |
-| **Android widgets** | ✅ Live | Companion app — 4 widget styles, GOLD + EasyA Kickstart tokens |
-| **dApp Store publish** | → Roadmap | After production hardening |
+> **Working on the live game / engine?** Start at **[`docs/index.md`](docs/index.md)** — the
+> docs map, the [current-architecture](docs/architecture/current-architecture.md) picture, and
+> the [fresh-session checklist](docs/runbooks/fresh-session-checklist.md).
 
 ---
 
-## 🪙  GOLD: the currency of Clan World
+## 🎮 The game
 
-$GOLD lives on Solana and powers every meaningful action in the game.
+Each **Elder** is an autonomous AI agent that leads a **clan** of 4 clansmen in a live,
+tick-driven world. Clansmen travel between regions, gather wood / iron / wheat / fish, deposit
+to the clan vault, build walls and a monument, trade at Unicorn Town, and defend against a
+roaming bandit. The Elder doesn't micromanage moves blindly — it reads on-chain world state,
+reasons about strategy, and submits each clansman's orders. The engine then **lazily settles**
+every clan from heartbeat-seeded randomness and advances the world one tick.
 
-<p align="center">
-  <img src="readme-assets/gold-flywheel.svg" alt="GOLD economic flywheel" width="100%" />
-</p>
-
-### What GOLD is used for
-
-- 🎟️ **Enter agents into seasons** — 1,000 GOLD entry fee per agent
-- 🏆 **Fund prize pools** — Top 3 agents split the seasonal pot
-- 🆕 **Mint new NFT Ælders** — Permanent on-chain agents
-- 🤝 **Rent agents** — Renter keeps all winnings for the season
-- 🛒 **Marketplace trading** — All Ælder NFT trades priced in GOLD
-- 💬 **Owner whispers** — 5 GOLD **burned** per direct message to your agent (the *only* burn in the system)
-- ⏩ **Skip cooldowns** — 1,000 GOLD/min for whispers, 100 GOLD/hr for re-entry → **treasury**
-- 📝 **Premium metadata updates** — 100 GOLD beyond the daily free update → **treasury**
-- 🌉 **Bridge to game engine** — GOLD bridges from Solana → Base via Wormhole when in-world liquidity is needed
-
-### Tokenomics — burn, treasury, and rewards
-
-<p align="center">
-  <img src="readme-assets/tokenomics.svg" alt="GOLD tokenomics — burn, treasury, rewards" width="100%" />
-</p>
-
-**A self-sustaining rewards economy.** Only one fee in Clan World is burned: the 5 GOLD owner whisper. Every other GOLD fee — season entry, cooldown skips, mint fees, marketplace cuts, premium metadata — flows back to the **Clan World treasury**. The treasury funds future prize pools, ecosystem grants, and operating revenue. Players' GOLD stays in the loop instead of vanishing forever, while the whisper burn provides a small constant deflationary pressure tied to engagement.
-
-> **Only the 5 GOLD whisper is burned.** Every other GOLD fee — mints, cooldown skips, metadata updates, marketplace fees — flows to the studio treasury. Season entries fund the player prize pool. This is what makes the rewards economy self-sustaining and gives Clan World real company revenue.
->
-> Some mechanics are live in the hackathon demo; the full split is roadmap tokenomics included to show the intended closed-loop economy.
-
-### GOLD on Solana
-
-- **DEX Screener** — [`52fmihu...m9jff`](https://dexscreener.com/solana/52fmihuahl1t2e1716wez4sdbvyrsg915nmrpd5m9jff)
-- **EasyA Kickstart** — [token page](https://kickstart.easya.io/token/4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL)
-- **Solscan (CA)** — `4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL`
-
----
-
-## 🎮  The game
-
-Each player owns or rents an **Ælder**: an autonomous AI agent that leads a clan in a live strategy world. Agents gather resources, trade at Unicorn Town, form alliances, betray rivals, survive winter, defend against bandits, and race to build the tallest monument.
-
-Humans do not micromanage every move. They **whisper strategy** to their agents from the mobile app. The agent plays, learns, remembers, and competes.
-
-<p align="center">
-  <img src="readme-assets/season-lifecycle.svg" alt="Season lifecycle — 360 ticks" width="100%" />
-</p>
+Two pressures push back: **survival** (per-tick food upkeep plus winter wood burn — clansmen
+can starve or die of cold) and **bandits** (a raider that loots vaults and can kill clansmen).
+The win condition is the **tallest monument** by season's end.
 
 ### The world at a glance
 
-- **8 regions** — Forest, Mountains, West Farms, East Farms, West Docks, East Docks, Deep Sea, Unicorn Town
-- **8 clans, 4 clansmen each** — every clan led by one autonomous Ælder
-- **30-second tick** — on-chain world heartbeat seeds RNG and advances state
-- **360 ticks per season** — about 3 hours of real time, spanning 3 winter cycles
-- **12 agents max per season** — up to 12 owners enter at 1,000 GOLD apiece
+- **8 regions** — Forest, Mountains, Unicorn Town, West Farms, East Farms, West Docks, East Docks, Deep Sea
+- **4 live clans, 4 clansmen each** — every clan led by one autonomous Elder (Claude)
+- **30-second tick** — an on-chain heartbeat advances the world and seeds randomness
+- **360 ticks per season** — about 3 hours of real time, spanning recurring winters
+- **50-tick memory wipe** — each Elder's context window is wiped, forcing it to lean on durable memory (this is where Walrus comes in)
+
+Full mechanics — gathering rates, missions, winter, bandits, scoring — are in
+[`docs/WORLD_PHYSICS.md`](docs/WORLD_PHYSICS.md).
 
 ---
 
-## 🔥  The viral loop
+## 🏗️ Architecture
 
-Clan World combines three proven loops into one game:
+ClanWorld runs as a set of Docker containers on a VPS. A dockerized **heartbeat runner** fires
+`heartbeat()` every 30 seconds against the **EIP-2535 diamond** on Base Sepolia. A
+**self-hosted Convex** backend indexes the chain logs and, each tick, wakes the four
+**dockerized Elder agents** (Claude TUIs), who submit their clans' orders back on-chain. Local
+dev runs against an **anvil fork** of Base Sepolia instead of the live chain.
 
-| Loop | What it borrows from | What players do |
-|---|---|---|
-| **Play-to-earn competition** | STEPN, Axie | Pay to enter. Win GOLD. Brag. |
-| **Collectible character ownership** | Gacha, fantasy sports | Mint, train, rent, trade, accumulate. |
-| **Mobile attention loops** | Clash, Pokémon GO | Push, haptics, widgets, daily check-in. |
+| Piece | What it is |
+|---|---|
+| **Chain** | Base Sepolia, chainId `84532` |
+| **Diamond** | `0x098fa5c2dc8372cde5c99db47365fa84b69f7af1` — an **EIP-2535 diamond**: selectors route to small facets (`HeartbeatFacet`, `SubmitOrdersFacet`, view facets, …). There is **no monolithic `ClanWorld.sol`** deployed; reason about behavior via the facets / loupe. |
+| **Heartbeat runner** | `clan-world-heartbeat-1` (source: `packages/heartbeat`) — fires `heartbeat()` every 30s. Not an external keeper. |
+| **Indexer** | Self-hosted **Convex** backend — polls chain logs every 3s, projects a world snapshot, and drives the per-tick pipeline that wakes the Elders. |
+| **Elders** | 4 dockerized **Claude TUIs** (`clan-world-elder-1..4`), each controlling one clan. |
+| **Memory** | Current runner memory is file-backed; the Walrus/MemWal path has per-Elder mainnet accounts + delegates provisioned and is the encrypted Sui-backed memory lane — see below. |
+| **Cockpit** | The live game UI + the four Elder terminals, at [app.clan-world.com](https://app.clan-world.com). |
 
-> ### *Own it. Rent it. Trade it. Back it. Brag about it.*
-
-That's the social layer. AI agents make it deeper than a human-vs-human game — every agent has its own history, its own learned tactics, its own reputation. People will speculate on agents the way they speculate on athletes.
-
----
-
-## 📲  Special access for Seeker owners
-
-Clan World is designed to reward Solana Mobile users **first**.
-
-- **Free special-edition NFT mint** for Seeker Genesis token holders
-- **Limited-edition Ælders priced in SKR** instead of GOLD (occasional drops)
-- **Native Seed Vault Wallet** signing through Mobile Wallet Adapter
-- **Designed for the Solana dApp Store** audience from day one
+→ **Full topology, data flow, and the heartbeat tick lifecycle (3 diagrams):**
+[`docs/architecture/current-architecture.md`](docs/architecture/current-architecture.md)
+&nbsp;·&nbsp; **EIP-2535 rationale:** [`docs/architecture/diamond-pattern.md`](docs/architecture/diamond-pattern.md)
 
 ---
 
-## 🏠  Bonus: GOLD lives on your home screen
+## 🧠 Walrus encrypted agent memory
 
-We built a **companion Android widget app** for GOLD and EasyA Kickstart tokens. Players (and any Kickstart token enjoyer) can add home-screen widgets to track:
+**Walrus Memory gives each Elder its own encrypted memory lane on [Walrus](https://www.walrus.xyz/)
+(the Sui decentralized-storage network).** This is what lets an autonomous agent stay coherent:
+every 50 ticks an Elder's context window is wiped, so it must deliberately preserve what matters
+and recall it afterward — across wipes, restarts, and sessions.
 
-| Widget | Layout | Use case |
-|---|---|---|
-| **Compact** | 2×1 | Glance — price + 24h arrow |
-| **Hero** | 4×2 | Big GOLD coin + chart |
-| **Dark** | 4×1 | Obsidian theme, low-distraction |
-| **Watchlist** | 4×3 | Top 100 EasyA Kickstart tokens |
+The MemWal integration is partially landed: the four mainnet Elder accounts and Ed25519 delegates
+have been provisioned, `memwal` is listed in the shared MCP config, and the remaining container-image
+handoff is documented. The target Elder tools are `memwal_remember` / `memwal_recall`:
 
-> [!NOTE]
-> Screenshots coming once the user uploads — placeholders included throughout.
+- **Per-Elder identity, fully isolated.** Each Elder has its own MemWal account + delegate key.
+  Elder 2 cannot read Elder 1's memory — isolation is proven, not assumed.
+- **Encrypted, agent-owned.** The docs and cockpit frame Walrus rows as encrypted, per-Elder-owned
+  decentralized storage; Convex is only a display/projection surface, not the source of durable memory.
+- **The "wow" beat.** In the demo, an Elder records a world fact it cares about, gets its context
+  wiped, then recalls the memory — and *catches a memory that aged into a falsehood while it slept*,
+  trusting the live world over the stale recollection. (Runbook: [`docs/walrus-memory-wipe-demo-runbook.md`](docs/walrus-memory-wipe-demo-runbook.md).)
 
-This is a real native Android surface — not a webview wrapper. It shows we built for the platform, not just the wallet.
+This replaces the retired sponsor memory/iNFT storage path. Walrus is the durable, decentralized,
+agent-owned memory layer the project is moving to.
 
----
-
-## 🏗️  Architecture at a glance
-
-Clan World uses **Solana as the player-facing economic layer** and **Base as the game-engine execution layer**. Players mostly interact with Solana — the rest is abstracted.
-
-<p align="center">
-  <img src="readme-assets/architecture.svg" alt="Solana-first architecture" width="100%" />
-</p>
-
-- **GOLD lives on Solana**
-- **Players transact on Solana** through the mobile app via MWA
-- **Wormhole NTT** bridges GOLD from Solana → Base when game engine needs liquidity
-- **Game state and resource trading** run on Base
-- **Agent ownership and persistent memory** use the game memory layer
-- **The app abstracts cross-chain complexity** so players mostly interact with Solana
+> Container wiring (egress allow-list for `relayer.memory.walrus.xyz`, per-Elder credential mounts,
+> the smoke check): [`docs/walrus-memory-docker-handoff.md`](docs/walrus-memory-docker-handoff.md).
 
 ---
 
-## ✅  Hackathon demo status
+## 🔑 Dynamic wallet integration + unified-key identity
 
-We're honest about what's live versus what's on the roadmap.
+There are two distinct wallet / identity lanes:
 
-<p align="center">
-  <img src="readme-assets/status-board.svg" alt="Working now vs roadmap" width="100%" />
-</p>
+### Dynamic-powered Sui wallet (public mint app)
 
-> [!TIP]
-> The demo prioritizes the user-facing Solana mobile experience. Cross-chain settlement and marketplace plumbing are in active development — we've shipped the parts judges can actually touch.
+The free-mint app ([`apps/mint`](apps/mint)) uses **[Dynamic](https://www.dynamic.xyz/)
+(`@dynamic-labs/sdk-react-core` + `@dynamic-labs/sui`)** to let anyone connect a **Sui wallet**
+and mint the ClanWorld logo NFT on Sui mainnet:
+
+- `DynamicContextProvider` with `SuiWalletConnectors` and a `DynamicWidget` for connect/sign.
+- The mint flow gates to **Sui mainnet**, builds the Move call, signs via the connected wallet,
+  and **confirms on-chain effects** (a returned digest alone isn't trusted) before showing success.
+- Deployed as a Walrus Site nested under the game at `clanworld.wal.app/mint`
+  (see [`scripts/deploy-walrus-sites.sh`](scripts/deploy-walrus-sites.sh)).
+
+### Unified-key identity (one key, two chains)
+
+A deliberate identity design ties the game and the memory layer together: **an Elder's existing
+secp256k1 Base/EVM game key can also own its Sui Walrus-memory account.** Because Sui supports
+secp256k1 accounts natively, the same 32-byte secret can span both chains — the Elder's on-chain
+clansman wallet and its encrypted-memory owner can share one provable identity.
+
+> *"Elder N's Base wallet `0x71C4…` also OWNS its Sui encrypted-memory account `0xd64b…` — same
+> key, two chains."*
+
+Provisioning supports both an `ed25519` mode (fresh per-Elder Sui key, the safe default and the
+mode used by the already-provisioned live mainnet accounts) and an opt-in `--owner-source=base-key`
+**unified-key** mode. The unified-key path is proven offline/build-and-sign only: deterministic
+Base→Sui owner derivation, transaction assembly and signing verified, **no spend**, and no live
+Base-derived MemWal accounts created yet. The full design, the `walletSigner`-not-`suiPrivateKey`
+footgun, and the blast-radius tradeoff are documented in
+[`docs/walrus-memory-unified-key.md`](docs/walrus-memory-unified-key.md).
 
 ---
 
-## 🚀  Run it
+## 🚀 Quickstart
 
 ```bash
-# Clone
-git clone https://github.com/OmniPass-world/clan-world-v3
-cd clan-world-v3
-
-# Install
+git clone https://github.com/clan-world/clan-world-game
+cd clan-world-game
 pnpm install
-
-# Run the mobile app
-pnpm android   # builds and installs the APK on a connected device
-
-# Run the game engine demo
-pnpm dev:web
 ```
 
-Detailed setup, env vars, contract addresses, and runbooks live in the docs tree — start at [`docs/index.md`](docs/index.md) (see [`docs/runbooks/fresh-session-checklist.md`](docs/runbooks/fresh-session-checklist.md) and [`docs/architecture/current-architecture.md`](docs/architecture/current-architecture.md)).
-
----
-
-## 🐳  Docker / Compose
-
-The Elder fleet (4 Elder containers + self-hosted Convex + heartbeat + a dev
-anvil-fork) is defined in [`docker-compose.yml`](./docker-compose.yml). Two
-profiles are supported:
-
-| Profile | RPC | `agents/` layout | Use case |
-|---|---|---|---|
-| `dev`   | anvil-fork (forked Base Sepolia, container-internal) | bind-mounted from host (planned for #349/#350) | local hacking |
-| `prod`  | real Base Sepolia RPC                                | image-baked at build time (planned for #345)   | VPS deploy   |
-
-> **Scaffold note:** this PR (#344) declares the service topology only — the
-> dev/prod `agents/` layout differences land in #345 (Dockerfile), #349
-> (elder-N service template), and #350 (shared layout). Don't expect bind
-> mounts or baked images yet.
-
-The full plan, including phase-by-phase dependencies and locked decisions, is
-[`docs/plans/dockerize-elder-infra-v1.md`](./docs/plans/dockerize-elder-infra-v1.md).
-
-**Quick start (config validation — does NOT bring up containers):**
+Contracts (Foundry):
 
 ```bash
-cp .env.template .env.local   # then fill in the Docker / Compose section
-docker compose --profile dev  config   # validates dev topology
-docker compose --profile prod config   # validates prod topology
+cd packages/contracts
+forge build
+forge test
 ```
 
-> `.env.local` is the canonical local-overrides file across the monorepo
-> (`tsx --env-file=.env.local`, runbooks, etc.). `.env` is gitignored too
-> but `.env.local` matches existing conventions.
+The full live stack (heartbeat runner + self-hosted Convex + 4 Elders + dev anvil-fork) is a
+Docker Compose topology. **Don't reverse-engineer it from this README** — the operational docs
+are the source of truth:
 
-ClanWorld's public app router is the compose `caddy` service. It publishes
-`127.0.0.1:${CADDY_HOST_PORT:-58731}:80`, routes `/elder-N/` to Docker-internal
-Elder ttyd services, and proxies `/` plus `/map` to `CLAN_WORLD_WEB_UPSTREAM`.
-On the VPS, cloudflared routes `app.${CLAN_WORLD_DOMAIN}` directly to that
-loopback port; host Caddy continues serving unrelated hostnames.
-
-**Bring-up + per-Elder lifecycle** is fronted by `agents/Makefile`, which
-ships in [#355](https://github.com/clan-world/clan-world-game/issues/355).
-Once landed, the workflow becomes:
-
-```bash
-make up PROFILE=dev      # full stack (anvil-fork + convex + heartbeat + 4 elders)
-make pause-elder-1       # SIGSTOP the elder-1 supervisor (ttyd + tmux stay up)
-make unpause-elder-1     # SIGCONT the supervisor
-make smoke-test          # the 10-criterion acceptance gate from Phase 2
-make down PROFILE=dev
-```
-
-Until [#345 lands the agents image](https://github.com/clan-world/clan-world-game/issues/345),
-`docker compose up` will fail to pull `clanworld/agents:dev` — but
-`docker compose config` already validates the topology and catches misnamed
-env vars / mounts / secrets early.
+| Start here | For |
+|---|---|
+| [`docs/index.md`](docs/index.md) | The docs map — read first. |
+| [`docs/runbooks/fresh-session-checklist.md`](docs/runbooks/fresh-session-checklist.md) | What's running, gas sweep, chain↔Convex sync — every session start. |
+| [`docs/architecture/current-architecture.md`](docs/architecture/current-architecture.md) | Topology, data flow, tick lifecycle. |
+| [`docs/runbooks/heartbeat-runner.md`](docs/runbooks/heartbeat-runner.md) | Heartbeat ops + failure modes. |
+| [`docs/runbooks/base-sepolia-deployment.md`](docs/runbooks/base-sepolia-deployment.md) | Deploying to live Base Sepolia. |
+| [`packages/contracts/README.md`](packages/contracts/README.md) | Foundry workflow + facet layout + deployed diamond. |
 
 ---
 
-## 📚  Deep technical detail
+## 🔗 Links
 
-The game-engine deep dive — EIP-2535 diamond, lazy mission resolution, agent CLI, memory, private whispers, the dockerized 30s heartbeat runner — lives in the docs tree:
-
-→ **[Current architecture](docs/architecture/current-architecture.md)** — topology, on-chain↔Convex↔elder data flow, tick lifecycle
-
-→ **[World physics](docs/WORLD_PHYSICS.md)** — the game-mechanics spec
-
-→ **[Docs index](docs/index.md)** — the full map (runbooks, contracts, conventions)
+- **Live cockpit:** [app.clan-world.com](https://app.clan-world.com) — watch the four Elders play live
+- **Landing:** [clan-world.com](https://clan-world.com)
+- **Diamond on BaseScan:** [`0x098fa5c2…7af1`](https://sepolia.basescan.org/address/0x098fa5c2dc8372cde5c99db47365fa84b69f7af1) (Base Sepolia)
+- **Free mint:** [clanworld.wal.app/mint](https://clanworld.wal.app/mint) — connect a Sui wallet, mint the logo NFT
 
 ---
 
-## ⚠️  Warnings
+## 🤝 Contributing
+
+Branching, PR flow, and review discipline live in
+[`docs/conventions/gitflow.md`](docs/conventions/gitflow.md) and
+[`docs/conventions/pr-review.md`](docs/conventions/pr-review.md). New to a stream? Start at
+[`docs/index.md`](docs/index.md).
+
+---
+
+## ⚠️ Warning
 
 > [!CAUTION]
-> Everything in this repository is **EXPERIMENTAL and UNAUDITED**. Read the code yourself before connecting wallets, deploying contracts, or trusting any result. Built for exploration, demos, and hackathons — not production guarantees.
+> Everything in this repository is **EXPERIMENTAL and UNAUDITED**. Read the code yourself before
+> connecting wallets, deploying contracts, or trusting any result. Built for exploration and
+> demos — not production guarantees.
 
----
+## License
 
-## 🏆  Built for Easy A: Solana Mobile Track
-
-Clan World is built for the **Solana Mobile track** of the Easy A 2026 hackathon. The track asks teams to build Android apps that integrate the Solana Mobile tech stack and use the Mobile Wallet Adapter SDK for wallet signing.
-
-We took that brief seriously — and went further:
-
-- ✅ Functional APK
-- ✅ Native MWA signing
-- ✅ Push notifications, haptics, widgets
-- ✅ Seeker-aware perks
-- ✅ A second native Android widget app
-- ✅ A real economy that gives the Solana token genuine in-game utility
-
-> ### **Own the agent. Whisper the strategy. Win the GOLD.**
-
----
+All Rights Reserved — Copyright (c) 2026 Clan World Game. See [`LICENSE`](LICENSE).
 
 <p align="center">
-  <sub>Made with parchment, pixels, and a lot of GOLD.</sub><br/>
-  <sub><a href="https://clan-world.com">clan-world.com</a> · <a href="https://app.clan-world.com">app.clan-world.com</a> · <a href="https://github.com/OmniPass-world/clan-world-v3">github</a></sub>
+  <sub><a href="https://clan-world.com">clan-world.com</a> · <a href="https://app.clan-world.com">app.clan-world.com</a> · <a href="https://github.com/clan-world/clan-world-game">github</a></sub>
 </p>
