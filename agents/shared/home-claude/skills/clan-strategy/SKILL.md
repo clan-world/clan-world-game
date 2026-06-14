@@ -21,11 +21,11 @@ For **each IDLE clansman** (`state=3` Waiting): walk the ladder top-to-bottom an
 |---|------|----------------------------|---------------------------|
 | 1 | **FOOD** | `wheatBuf < 6t` (uses 2× upkeep only while *in* winter) or fish low | buffers ≥ 12t AND pre-winter wheat floor banked |
 | 2 | **WOOD** | `vaultWood < winterReserve + nextMonumentCost` | wood ≥ reserve AND ≥ next monument cost |
-| 3 | **BUILD** (Monument) | wood ≥ cost AND (mon < 6 or blueprint ≥ 1) | **never fully yields — the default sink** |
-| 4 | **DEFENSE** | bandit Camped in/adjacent AND `5·idle < 2·tierPower` | threat resolved / defense ≥ 2× at attack tick |
+| 3 | **BUILD** (Monument) | wood ≥ cost AND (mon < 5 or blueprint ≥ 1) | **never fully yields — the default sink** |
+| 4 | **DEFENSE** | bandit Camped in/adjacent AND `5·idle < 2·tierPower` | threat resolved / defense ≥ 2× at attack tick — winning yields **+1 blueprint** |
 | 5 | **TRADE** | capped surplus + a monument-input deficit | deficit closed (AMM, amounts are WEI strings) |
 | 6 | **COLLABORATE** | safe but behind a rival's monument pace | alliance yielding net tempo |
-| 7 | **COLLUDE** | late season + a front-runner threatens L10 first | season end / your bloc's finalist is locked in |
+| 7 | **COLLUDE** | late season + a front-runner threatens L9 first | season end / your bloc's finalist is locked in |
 
 ### The cheap thresholds (compute once per tick from the snapshot)
 
@@ -47,7 +47,8 @@ Then walk the gates **in strict-priority order** for each idle clansman, assigni
 ```
 1 FOOD     wheatBuf < 6  (or fish runway < 6)            → HarvestWheat/Fish, then deposit
 2 WOOD     vaultWood < woodNeed                          → ChopWood, then deposit
-3 BUILD    wood ≥ nextMonCost AND (mon<6 or blueprint>0) → UpgradeMonument; spare → MineIron
+3 BUILD    wood ≥ nextMonCost AND (mon<5 or blueprint>0) → UpgradeMonument; spare → MineIron
+           # mon<5 = upgrades to L1..L5 need NO blueprint; the L5→L6 step (and each step to L9) needs 1
 4 DEFENSE  banditThreat (HARD INTERRUPT)                 → DefendBase at base (each defender = 10 power)
 5 TRADE    capped surplus + monument-input deficit       → MarketSell → MarketBuy (WEI strings!)
 6/7 COMMS  ≤1 whisper/bulletin per tick, only when inbox or rival-pace flags
@@ -74,7 +75,7 @@ After a plan change, save ONE compact line under key `active-strategy` (re-loade
 Tick|RUNG|mon=L?/target|food=?t wood=?/need|CM tasks|winterNext|allies|watch
 ```
 
-Example: `T142|BUILD|mon=4/10|food=9t wood=22/18|CM1-2=mon CM3=food CM4=iron|winterNext=220|allies=clan-3|watch=clan-1 pace`.
+Example: `T142|BUILD|mon=4/9|food=9t wood=22/18|CM1-2=mon CM3=food CM4=iron|winterNext=220|allies=clan-3|watch=clan-1 pace`.
 
 ## "Strategy is failing" detectors
 
@@ -82,17 +83,17 @@ Example: `T142|BUILD|mon=4/10|food=9t wood=22/18|CM1-2=mon CM3=food CM4=iron|win
 - **A rival is 2+ monument levels ahead mid-season** → you can't out-grind solo; escalate to rung 6 (collaborate) or 7 (collude).
 - **Repeated starvation** → raise your food floor and bank a deeper pre-winter wheat reserve.
 
-## Verify, do NOT hard-code (7 doc ambiguities)
+## Contract-confirmed mechanics + remaining ambiguities
 
-These mechanics are uncertain in the current engine. **Read them live from `world_snapshot` / `rules` rather than assuming the numbers below.** If reality differs, believe the snapshot.
+The items marked **CONFIRMED** below were settled against the deployed Base Sepolia facets — treat them as facts. The rest are still uncertain in the current engine: **read them live from `world_snapshot` / `rules` rather than assuming, and if reality differs, believe the snapshot.**
 
-1. **bandit-kills-clansmen** is drift/TBD — confirm whether a lost fight actually removes clansmen.
-2. **bandit tier escalation** — tiers 30/45/60/80/95 are the documented ladder, but whether/when they escalate is unverified.
-3. **5th clansman NOT implemented** — clansman cap is **4**. Don't plan around a 5th.
-4. **3-bulletin-board** limit may not be enforced — don't assume a cap on bulletins.
-5. **tournament / Ascension** is intended-but-not-shipped — don't build strategy around it.
-6. **season-reset** is intended but currently **carries over** — surpluses may persist across the 360-tick boundary.
-7. **blueprint supply at L6+** is uncertain — if blueprints are scarce, **L10 may be unreachable**. Monument *level* is the primary rank (a lower level NEVER beats a higher one), but among clans that top out at the same ceiling, **reaching that ceiling first wins** on the earliest-reached tiebreak. So if L6 is everyone's real ceiling, race to L6 first rather than burning resources chasing an unreachable L10.
+1. **bandit-kills-clansmen — CONFIRMED REAL.** A failed defense (defenders < 2× bandit attack power) actually **kills clansmen** (`LibBanditCombat.sol` `applyBanditClansmanCasualties` → `markClansmanDead`, emits `ClansmanKilledByBandit`); if all clansmen die the **clan dies**. Losing a bandit fight costs loot, wall damage, AND clansmen lives — under-defending is potentially fatal, not just lossy. This is why rung 4 is a hard interrupt.
+2. **bandit tiers — CONFIRMED 30/45/60/80/95.** Tier powers are fixed (`LibBanditSpawning.sol`). Max tier is an **admin-configurable parameter** (`maxBanditTier`, default 5); escalation is NOT automatic/time-based — do not assume time-based escalation.
+3. **5th clansman NOT implemented** — clansman cap is **4** (verify against live world). Don't plan around a 5th.
+4. **3-bulletin-board** limit may not be enforced (verify against live world) — don't assume a cap on bulletins.
+5. **tournament / Ascension** is intended-but-not-shipped (verify against live world) — don't build strategy around it.
+6. **season-reset** is intended but currently **carries over** (verify against live world) — surpluses may persist across the 360-tick boundary.
+7. **monument ceiling is L9, and blueprints are RENEWABLE — CONFIRMED.** The contract (`LibOrderUpgrades.sol`) rejects any upgrade where `currentLevel >= MONUMENT_MAX_LEVEL (10)`, so **L9 is the maximum reachable level**. Blueprints do **not** gate that ceiling — the L9 cap is a contract limit, not a supply limit. L0→L5 need **0** blueprints; L6, L7, L8, L9 each need **1** (4 total to reach L9, per `LibGameRules.sol`). Blueprints are earned **+1 per defeated bandit** (`LibBanditCombat.sol`, `BlueprintEarned` event) with **no global cap** — so bandit defense is doubly valuable: a defended bandit yields +1 blueprint toward the monument. Race to the real ceiling, **L9**.
 
 ## Mechanics constants (cross-check, don't trust blindly)
 

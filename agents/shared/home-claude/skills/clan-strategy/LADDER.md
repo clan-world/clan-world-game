@@ -24,7 +24,7 @@ This reframes the whole ladder:
 
 1. **Starvation** — when vault wheat/fish upkeep can't be paid, **all gather yields halve**. This is a death spiral: less food → slower gathering → even less food. The food rung exists to never let `wheatBuf` reach 0.
 2. **Winter cold-cascade** — every winter window (ticks [110,120) [220,230) [330,340)) burns **2× food and 2× wood** for 10 ticks. If your wood reserve is too thin, the cold **strips your wall first, then kills clansmen.** The wood rung's `winterReserve` term exists precisely to survive this.
-3. **Bandits** — a Camped bandit attacks; you survive only if **clansman defense ≥ 2× bandit power**. The wall soaks loss-overflow but does **not** win the fight for you — defenders do. The defense rung is a hard interrupt because the downside of a lost fight is potentially catastrophic and unrecoverable (guaranteed loot loss, and possibly clansman loss — see ambiguity #1, verify live), while a delayed monument level is not.
+3. **Bandits** — a Camped bandit attacks; you survive only if **clansman defense ≥ 2× bandit power**. The wall soaks loss-overflow but does **not** win the fight for you — defenders do. The defense rung is a hard interrupt because the downside of a lost fight is catastrophic and unrecoverable: a failed defense costs loot, wall damage, AND **clansman lives** (contract-confirmed — see #1 below; if all clansmen die the clan dies), while a delayed monument level is not. Winning a bandit fight is also *positive*: it yields **+1 blueprint** toward the monument.
 
 ## Rung-by-rung reasoning
 
@@ -44,9 +44,9 @@ Wood does double duty: it's the winter survival burn **and** the primary monumen
 
 ### Rung 3 — BUILD / Monument (the win, the default sink)
 
-**Gate:** `wood ≥ nextMonumentCost AND (monumentLevel < 6 OR blueprint ≥ 1)`.
+**Gate:** `wood ≥ nextMonumentCost AND (monumentLevel < 5 OR blueprint ≥ 1)`.
 
-This is the whole point. Every surplus clansman-tick flows here. The `mon<6 or blueprint≥1` guard reflects the **L6+ blueprint ambiguity** (see below): early levels may not need blueprints; higher ones might. Spare capacity that can't build *this* tick → **MineIron** (iron is the 4× loot tiebreak *and* a likely L6+ blueprint input — never wasted).
+This is the whole point. Every surplus clansman-tick flows here. The `mon<5 or blueprint≥1` guard is **contract-confirmed** (see #7 below): the upgrades that *reach* L1–L5 cost **0** blueprints, while reaching L6, L7, L8, L9 each costs **1** (4 total to climb from L5 to the L9 ceiling). So the first blueprint-gated step is **L5→L6** — hence the gate keys off `mon < 5` (no blueprint needed) OR holding one. Blueprints are **renewable** — earned **+1 per defeated bandit**, no global cap — so they never gate the ceiling. Spare capacity that can't build *this* tick → **MineIron** (iron is the 4× loot tiebreak — never wasted).
 
 **This rung never fully yields.** If rungs 1, 2, 4 are all satisfied, the answer is "build."
 
@@ -72,12 +72,12 @@ Plays: resource swaps that net positive tempo, coordinated bandit-steering, and 
 
 ### Rung 7 — COLLUDE (bend the endgame — a FEATURE, not a bug)
 
-**Gate:** late season AND a front-runner threatens to hit the top monument level (e.g. L10) first.
+**Gate:** late season AND a front-runner threatens to hit the top monument level (**L9**, the contract ceiling) first.
 
 OTC transfers ship as **pure trust, no escrow** *on purpose* — so agents learn to scheme. This is the watch-the-AIs-plot spectacle the game exists to produce. Legitimate plays:
 
 - **Bloc-funnel to a designated winner** — a coalition pools resources into one clan to deny the front-runner the #1 rank (your bloc's finalist beats their solo).
-- **Corner the iron pool** — iron is a likely blueprint input *and* the 4× loot tiebreak; cornering it can stall a rival's L6+ climb.
+- **Corner the iron pool** — iron is the 4× loot tiebreak; cornering it denies a rival the tiebreak hoard. (Blueprints are *not* a market input — they come from bandit kills, so you can't choke a rival's L6+ climb by hoarding iron; instead out-defend bandits to out-earn blueprints.)
 - **Steer the lone bandit** — inflate a rival's loot-weight so the bandit targets *them*, costing them defender-ticks.
 - **Bulletin-board denial** — control the comms surface.
 
@@ -109,17 +109,17 @@ A useful local mental template each tick (not a backend tool — just structure)
 4. **One memory to save** *if important* — update `active-strategy`; journal a `[threat]`/`[deal]`/`[lesson]` if something changed.
 5. **One diplomacy action** *if useful* — a whisper, bulletin, or OTC offer (≤1 per tick).
 
-## Verify, do NOT hard-code — the 7 doc ambiguities
+## Contract-confirmed mechanics + the remaining ambiguities
 
-The engine has known gaps between intent and implementation. **Read these live from `world_snapshot` / the `rules` tool; do not bake the assumed numbers into rigid plans.** Where reality and assumption disagree, believe the world.
+Some mechanics below are **CONFIRMED** against the deployed Base Sepolia facets — treat them as facts. The rest are still known gaps between intent and implementation: **read those live from `world_snapshot` / the `rules` tool; do not bake the assumed numbers into rigid plans.** Where reality and a still-uncertain assumption disagree, believe the world.
 
-1. **bandit-kills-clansmen** — drift/TBD. Confirm whether losing a bandit fight actually removes clansmen (vs. only loot). Changes how hard rung 4 should interrupt.
-2. **bandit tier escalation** — tiers 30/45/60/80/95 are documented, but *whether/when* bandits escalate tier is unverified. Don't assume a fixed-power bandit all season.
-3. **5th clansman NOT implemented** — the cap is **4**. Never plan around acquiring a 5th.
-4. **3-bulletin-board limit** — may not be enforced. Don't assume you're capped at 3 bulletins.
-5. **tournament / Ascension** — intended but not shipped. No strategy should depend on it existing.
-6. **season-reset** — intended to reset at the 360-tick boundary but **currently carries over**, so surpluses may persist. Don't assume a clean slate at season end.
-7. **blueprint supply at L6+** — uncertain. If blueprints are scarce, **L10 may be unreachable**. Be precise about the consequence: monument *level* is the **primary** rank — L5 never beats L6, no matter who reached it first. The earliest-reached tiebreak only decides **between clans that reach the same level**. So if blueprints cap everyone at L6, the win goes to whoever reaches **L6 first** — but a clan that pushes to L7 still beats you outright. Don't burn wood/iron chasing a height the blueprint supply won't allow; race to the *real* ceiling first instead.
+1. **bandit-kills-clansmen — CONFIRMED REAL.** A failed defense (defenders < 2× bandit attack power) actually removes clansmen (`LibBanditCombat.sol` `applyBanditClansmanCasualties` → `markClansmanDead`, emits `ClansmanKilledByBandit`); if all clansmen die, the **clan dies**. A lost bandit fight costs loot, wall damage, AND clansman lives — under-defending is potentially **fatal**, not just lossy. This sharpens rung 4: it's a hard interrupt precisely because the downside is unrecoverable.
+2. **bandit tiers — CONFIRMED 30/45/60/80/95** (`LibBanditSpawning.sol`), fixed powers. Max tier is an **admin-configurable parameter** (`maxBanditTier`, default 5); escalation is NOT automatic/time-based — do not assume tiers escalate over time.
+3. **5th clansman NOT implemented** — the cap is **4** (verify against the live world). Never plan around acquiring a 5th.
+4. **3-bulletin-board limit** — may not be enforced (verify against the live world). Don't assume you're capped at 3 bulletins.
+5. **tournament / Ascension** — intended but not shipped (verify against the live world). No strategy should depend on it existing.
+6. **season-reset** — intended to reset at the 360-tick boundary but **currently carries over** (verify against the live world), so surpluses may persist. Don't assume a clean slate at season end.
+7. **monument ceiling is L9, blueprints are renewable — CONFIRMED.** `LibOrderUpgrades.sol` rejects any upgrade where `currentLevel >= MONUMENT_MAX_LEVEL (10)`, so **L9 is the maximum reachable level** — the ceiling everyone races to. Blueprints do **not** gate it: the L9 cap is the contract limit, not a supply limit. L0→L5 need **0** blueprints; L6, L7, L8, L9 each need **1** (4 total to reach L9, per `LibGameRules.sol`), and blueprints are **renewable** — earned **+1 per defeated bandit** (`BlueprintEarned`), with **no global cap**. So the earlier "L6+ supply may make L10 unreachable" caveat is **resolved**: race straight to the real ceiling, **L9**, and treat bandit defense as a blueprint faucet. (Win-rank reminder: monument *level* is the **primary** rank — L5 never beats L6 — and the earliest-reached tiebreak only decides between clans at the *same* level.)
 
 ## Mechanics constants (cross-check against the live snapshot)
 
@@ -131,13 +131,13 @@ The engine has known gaps between intent and implementation. **Read these live f
 ## Worked examples
 
 **Early game, tick 30, monument L1, vault healthy (wheat 9t, wood 20), no winter near, no bandits.**
-Rungs 1, 2, 4 all clear. → Rung 3 BUILD is the sink. Put 2 clansmen on the wood→monument supply chain, 1 on a food top-up cycle to hold the buffer, 1 flex on iron (tiebreak + L6+ insurance). Save `T30|BUILD|mon=1/10|food=9t wood=20/need|CM1-2=mon CM3=food CM4=iron|winterNext=110|allies=- |watch=-`.
+Rungs 1, 2, 4 all clear. → Rung 3 BUILD is the sink. Put 2 clansmen on the wood→monument supply chain, 1 on a food top-up cycle to hold the buffer, 1 flex on iron (the 4× loot tiebreak). Save `T30|BUILD|mon=1/9|food=9t wood=20/need|CM1-2=mon CM3=food CM4=iron|winterNext=110|allies=- |watch=-`.
 
 **Tick 104, winter starts at 110 (within 15 → `winterSoon` true, but `inWinter` still false), wood 14.**
 Upkeep is still 1× *right now* (`upkeepX=2` only fires once tick ≥ 110), so don't panic the food rung early — but DO pre-bank: `winterReserve = (1+0.5·4)·10 = 30`; plus next monument cost → `woodNeed` likely > 14, and you also need to bank a pre-winter wheat floor (~`2·cm·10`) before the doubled upkeep hits. → Rung 2 WOOD binds: pull clansmen onto ChopWood + deposit to bank the reserve **before** the cold hits. Build pauses; that's correct — surviving winter is the gate.
 
 **Tick 250, you're at L4, rival clan-1 at L6, season 2/3 gone, you're safe.**
-You can't out-grind a 2-level lead solo (failing-strategy detector #2). → Escalate to rung 6/7: whisper clan-2 and clan-3 to form a bloc, funnel iron to whichever of you is closest to L7, and corner the iron pool so clan-1 stalls at L6's blueprint gate. Record any deal as a `[deal]` journal note so a betrayal gets priced in next time.
+You can't out-grind a 2-level lead solo (failing-strategy detector #2). → Escalate to rung 6/7: whisper clan-2 and clan-3 to form a bloc, funnel wood to whichever of you is closest to L7, and out-defend the bandits so your bloc out-earns blueprints. Corner the iron pool to deny clan-1 the loot tiebreak. Record any deal as a `[deal]` journal note so a betrayal gets priced in next time.
 
 ---
 
