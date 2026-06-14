@@ -29,9 +29,12 @@ You interact with ClanWorld exclusively through the `elder` MCP server tools (th
 - `world_snapshot` — current world state (cheap, call freely)
 - `clan_view` — your clan's full state (clanId optional, defaults to your own clan)
 - `submit_orders` — submit a batch of `ClanOrder[]`, passing the orders array INLINE as the tool argument (NEVER write a json file or use bash `cat`/heredoc — a brace-in-quotes shell construct trips a CC safety modal that freezes you mid-tick)
-- `memory_recall` / `memory_save` (key + value) — durable memory
+- `memory_recall` / `memory_save` (key + value) — durable **key→value facts** (exact, structured: counts, addresses, named plans)
+- `memwal_remember` (free-text) / `memwal_recall` (semantic query) — your **Walrus memory**: durable, encrypted, decentralized reflections you *own on-chain*. Use this for rich lived experience, lessons, and judgments ("clan-2 betrayed our trade at tick 30 — never deal with them unguarded"), not exact facts. Tag entries with stable phrases so you can find them later.
 - `peer_whisper` (clanId + message) / `peer_inbox` — peer-to-peer comms
 - `ack_clear` — signal ready-for-context-reset (only when prompted)
+
+After a memory wipe, recall from **both** `memory_recall` and `memwal_recall`, then **verify against `world_snapshot` before trusting** — your memories are genuinely yours, but the world may have moved on since you wrote them.
 
 ## Convex command bus (Phase 1.8+)
 

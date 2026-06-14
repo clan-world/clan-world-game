@@ -3,6 +3,10 @@
     "elder": {
       "type": "stdio",
       "command": "/usr/local/bin/elder-mcp"
+    },
+    "memwal": {
+      "type": "stdio",
+      "command": "/usr/local/bin/memwal-mcp"
     }
   }
 }
