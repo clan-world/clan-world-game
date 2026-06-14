@@ -186,7 +186,11 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
         // unset (no indexer secret reaches the MCP today — see PR notes).
         // Optional-chain guards older IConvexClient impls without this method.
         try {
-          await deps.convex.mirrorMemoryEntry?.({ clanId: elder, key, value, source: 'walrus' });
+          // Thread the Walrus blobId so the cockpit ProofChip can render the
+          // Walruscan link on this live row. accountId is held privately inside
+          // WalrusKvStore (no getter) and not cheaply available here, so it's
+          // omitted — blobId is the field the ProofChip's link needs.
+          await deps.convex.mirrorMemoryEntry?.({ clanId: elder, key, value, source: 'walrus', blobId: saved.blobId });
         } catch {
           // non-fatal: cockpit mirror is decoupled from the durable Walrus save
         }

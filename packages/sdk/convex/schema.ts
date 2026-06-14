@@ -357,6 +357,12 @@ export default defineSchema({
     ),
     updatedAt: v.number(),
     txHash: v.optional(v.string()),
+    // Walrus provenance for the cockpit ProofChip. `blobId` is the Walrus blob
+    // returned by a successful MemWal KV save (links to Walruscan); `accountId`
+    // is the MemWal account that wrote it. Both optional so historical rows +
+    // `convex deploy` schema validation stay green (no required field added).
+    blobId: v.optional(v.string()),
+    accountId: v.optional(v.string()),
   })
     .index("by_clan_key", ["clanId", "key"])
     .index("by_clan", ["clanId"]),

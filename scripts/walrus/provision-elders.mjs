@@ -4,11 +4,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, fileURLToPath, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 function moduleFile(...parts) {
   const roots = (process.env.NODE_PATH ?? "").split(":").filter(Boolean);
@@ -21,6 +22,17 @@ function moduleFile(...parts) {
 
 const { Ed25519Keypair } = await import(
   moduleFile("@mysten", "sui", "dist", "keypairs", "ed25519", "index.mjs")
+);
+const { Secp256k1Keypair } = await import(
+  moduleFile("@mysten", "sui", "dist", "keypairs", "secp256k1", "index.mjs")
+);
+// Used for M3: deriving the EVM address from a secp256k1 private key so we can
+// verify entry.address matches entry.privateKey before trusting the pairing.
+const { secp256k1: nobleSecp256k1 } = await import(
+  moduleFile("@noble", "curves", "secp256k1.js")
+);
+const { keccak_256 } = await import(
+  moduleFile("@noble", "hashes", "sha3.js")
 );
 const { SuiJsonRpcClient, getJsonRpcFullnodeUrl } = await import(
   moduleFile("@mysten", "sui", "dist", "jsonRpc", "index.mjs")
@@ -39,7 +51,38 @@ const PACKAGE_ID =
 const REGISTRY_ID =
   "0x0da982cefa26864ae834a8a0504b904233d49e20fcc17c373c8bed99c75a7edd";
 const RELAYER = "https://relayer.memory.walrus.xyz";
-const SECRETS_ROOT = join(homedir(), ".secrets", "clanworld-elder-walrus");
+
+// --- Owner-source mode ----------------------------------------------------
+// `ed25519`  (DEFAULT): each Elder owner is a fresh Ed25519 Sui key. This is the
+//             behavior that provisioned the 4 live mainnet accounts — DO NOT change
+//             its creds dir or the running Elders break.
+// `base-key` (BONUS): each Elder owner is derived from its EXISTING secp256k1
+//             Base/EVM private key (the "one identity across Base + Sui" story).
+//             Creds land in a SEPARATE dir so the fresh-key accounts are untouched.
+function parseOwnerSource() {
+  const fromFlag = process.argv
+    .find((arg) => arg.startsWith("--owner-source="))
+    ?.split("=")[1];
+  const raw = (fromFlag ?? process.env.WALRUS_OWNER_SOURCE ?? "ed25519").trim();
+  if (raw !== "ed25519" && raw !== "base-key") {
+    throw new Error(`Invalid --owner-source=${raw} (expected ed25519 | base-key)`);
+  }
+  return raw;
+}
+const OWNER_SOURCE = parseOwnerSource();
+const DERIVE_ONLY =
+  process.argv.includes("--derive-only") || process.env.WALRUS_DERIVE_ONLY === "1";
+
+// Fresh-key creds (default mode) MUST keep this dir untouched — it holds the live
+// mainnet accounts. base-key mode writes to a DISTINCT dir so it can never clobber them.
+const SECRETS_ROOT =
+  OWNER_SOURCE === "base-key"
+    ? join(homedir(), ".secrets", "clanworld-elder-walrus-unified")
+    : join(homedir(), ".secrets", "clanworld-elder-walrus");
+// Source of the Elder secp256k1 Base/EVM keys (only read in base-key mode).
+const ELDER_WALLETS_PATH =
+  process.env.WALRUS_ELDER_WALLETS_PATH ??
+  join(homedir(), ".secrets", "clanworld-elder-wallets.json");
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const FINDINGS_PATH =
   process.env.WALRUS_PROVISION_FINDINGS ??
@@ -90,6 +133,17 @@ function bytesToHex(bytes) {
   return Buffer.from(bytes).toString("hex");
 }
 
+function hexToBytes(hex) {
+  // Secp256k1Keypair.fromSecretKey REJECTS plain/0x hex strings (it only takes raw
+  // Uint8Array(32) or Bech32 suiprivkey1...), so the Base key hex must be converted
+  // to 32 raw bytes here first. See docs/walrus-memory-unified-key.md.
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (!/^[0-9a-fA-F]{64}$/.test(clean)) {
+    throw new Error(`Expected a 32-byte (64 hex char) secp256k1 secret, got length ${clean.length}`);
+  }
+  return Uint8Array.from(Buffer.from(clean, "hex"));
+}
+
 function normalizeAddress(address) {
   return address.toLowerCase();
 }
@@ -132,9 +186,154 @@ function loadOrCreateOwner(elderNumber) {
     keyPath,
     credentialsPath,
     ownerKey,
+    ownerKeypair: keypair,
     ownerAddress: keypair.getPublicKey().toSuiAddress(),
+    walletSigner: null, // ed25519 mode signs via suiPrivateKey, not a walletSigner
     generated,
   };
+}
+
+// Derives the checksummed EVM address from a secp256k1 hex private key using
+// the standard keccak256(uncompressedPubKey[1..64]) → last 20 bytes formula.
+// No external packages beyond what is already on NODE_PATH (@noble/curves + @noble/hashes).
+function deriveEvmAddress(privateKeyHex) {
+  const privBytes = hexToBytes(privateKeyHex);
+  // Uncompressed pubkey = 0x04 || x (32 bytes) || y (32 bytes) = 65 bytes total.
+  const uncompressed = nobleSecp256k1.getPublicKey(privBytes, false);
+  // EVM address = keccak256 of the 64-byte body (skip the 0x04 prefix), take last 20 bytes.
+  const hash = keccak_256(uncompressed.slice(1));
+  return "0x" + Buffer.from(hash.slice(12)).toString("hex");
+}
+
+let elderWalletsCache = null;
+function loadElderBaseKey(elderNumber) {
+  if (!elderWalletsCache) {
+    if (!existsSync(ELDER_WALLETS_PATH)) {
+      throw new Error(`Elder Base wallets file not found: ~/.secrets/clanworld-elder-wallets.json`);
+    }
+    // H1: Permission gate — this file is the root owner secret for Base + Sui identities.
+    // Refuse to consume it if group or world bits are set (file must be 0o600 or tighter;
+    // parent dir must be 0o700 or tighter).
+    const fileStat = statSync(ELDER_WALLETS_PATH);
+    if ((fileStat.mode & 0o077) !== 0) {
+      throw new Error(
+        `Elder Base wallets file has unsafe permissions (${(fileStat.mode & 0o777).toString(8)}); ` +
+          `expected 0600 or tighter. Run: chmod 600 ~/.secrets/clanworld-elder-wallets.json`,
+      );
+    }
+    const dirStat = statSync(dirname(ELDER_WALLETS_PATH));
+    if ((dirStat.mode & 0o077) !== 0) {
+      throw new Error(
+        `Elder Base wallets parent dir has unsafe permissions (${(dirStat.mode & 0o777).toString(8)}); ` +
+          `expected 0700 or tighter. Run: chmod 700 ~/.secrets`,
+      );
+    }
+    elderWalletsCache = JSON.parse(readFileSync(ELDER_WALLETS_PATH, "utf8"));
+  }
+  const elders = elderWalletsCache.elders ?? [];
+  // Match strictly on the 1-based `index` field — these become PERMANENT on-chain
+  // identities, so a positional/0-based fallback that silently returns the wrong
+  // Elder's key is worse than a loud failure. If the file is ever 0-based, this
+  // throws with a clear message rather than mis-owning an account.
+  const entry = elders.find((e) => e.index === elderNumber);
+  if (!entry?.privateKey) {
+    throw new Error(
+      `No Base private key with index=${elderNumber} in ${ELDER_WALLETS_PATH} ` +
+        `(expected 1-based "elders[].index"; found indices: ${elders.map((e) => e.index).join(",")})`,
+    );
+  }
+  // M3: verify the JSON's stated `address` actually matches the private key, so
+  // the "same key, two chains" artifact can never present a stale/mismatched EVM
+  // address as the paired identity of a permanent on-chain Sui owner.
+  if (entry.address) {
+    const derived = deriveEvmAddress(entry.privateKey);
+    if (derived.toLowerCase() !== String(entry.address).toLowerCase()) {
+      throw new Error(
+        `Elder ${elderNumber} Base wallet address mismatch: file says ${entry.address} but the ` +
+          `private key derives ${derived}. Refusing to provision under a mismatched identity.`,
+      );
+    }
+  }
+  return { privateKey: entry.privateKey, baseAddress: entry.address };
+}
+
+// Adapter that lets the MemWal account helpers sign with a non-Ed25519 keypair.
+// MemWal's createAccount/addDelegateKey({ suiPrivateKey }) helper ALWAYS does
+// Ed25519Keypair.fromSecretKey() under the hood — so a secp256k1 owner MUST go
+// through walletSigner instead, or the account is created under the WRONG owner.
+function makeWalletSigner(keypair) {
+  const address = keypair.getPublicKey().toSuiAddress();
+  return {
+    address,
+    // memwal calls this as signAndExecuteTransaction({ transaction }) and only reads .digest.
+    // SuiJsonRpcClient handles build+sign+execute when given the keypair as `signer`.
+    async signAndExecuteTransaction({ transaction }) {
+      const result = await rpc.signAndExecuteTransaction({
+        signer: keypair,
+        transaction,
+        options: { showEffects: true, showObjectChanges: true },
+      });
+      // Strict positive assertion: throw unless effects explicitly say success
+      // (missing/absent effects = treat as failure, not silent success).
+      const status = result.effects?.status?.status;
+      if (status !== "success") {
+        throw new Error(
+          `owner tx ${result.digest} did not succeed on-chain (status=${status ?? "missing effects"}): ` +
+            `${result.effects?.status?.error ?? "unknown error"}`,
+        );
+      }
+      return { digest: result.digest };
+    },
+    async signPersonalMessage(message) {
+      return keypair.signPersonalMessage(message);
+    },
+  };
+}
+
+// base-key mode: owner is the Elder's secp256k1 Base/EVM key. No owner.key is
+// written (the Base key is the source of truth in clanworld-elder-wallets.json);
+// only the Ed25519 delegate credentials are persisted in the unified creds dir.
+function loadBaseKeyOwner(elderNumber) {
+  const dir = join(SECRETS_ROOT, `elder-${elderNumber}`);
+  const credentialsPath = join(dir, "credentials.json");
+  ensureSecretDir(dir);
+
+  const { privateKey, baseAddress } = loadElderBaseKey(elderNumber);
+  const keypair = Secp256k1Keypair.fromSecretKey(hexToBytes(privateKey));
+  const ownerAddress = keypair.getPublicKey().toSuiAddress();
+  return {
+    dir,
+    keyPath: null, // Base key stays in clanworld-elder-wallets.json — never copied here
+    credentialsPath,
+    ownerKey: null, // signals walletSigner path (NOT suiPrivateKey)
+    ownerKeypair: keypair,
+    ownerAddress,
+    baseAddress,
+    walletSigner: makeWalletSigner(keypair),
+    generated: false,
+  };
+}
+
+function loadOwner(elderNumber) {
+  return OWNER_SOURCE === "base-key"
+    ? loadBaseKeyOwner(elderNumber)
+    : loadOrCreateOwner(elderNumber);
+}
+
+// Offline (free) derivation of every Elder's Base→Sui owner address. No network,
+// no spend — used by --derive-only and printed at the top of every base-key run.
+function deriveBaseOwners() {
+  const rows = [];
+  for (let elderNumber = 1; elderNumber <= 4; elderNumber += 1) {
+    const { privateKey, baseAddress } = loadElderBaseKey(elderNumber);
+    const keypair = Secp256k1Keypair.fromSecretKey(hexToBytes(privateKey));
+    rows.push({
+      elder: elderNumber,
+      baseAddress,
+      suiOwnerAddress: keypair.getPublicKey().toSuiAddress(),
+    });
+  }
+  return rows;
 }
 
 async function getSuiBalance(address) {
@@ -287,12 +486,22 @@ async function findExistingAccount(ownerAddress) {
   throw new Error(`MemWal account already exists for ${ownerAddress}, but no AccountCreated event was found`);
 }
 
-async function createOrRecoverAccount(ownerAddress, ownerKey) {
+// Returns the signer-bearing opts for a MemWal account helper, choosing the
+// walletSigner path for secp256k1 (base-key) owners and the suiPrivateKey path
+// for Ed25519 owners. The two are mutually exclusive (memwal throws if both set).
+function ownerSignerOpts(owner) {
+  return owner.walletSigner
+    ? { walletSigner: owner.walletSigner }
+    : { suiPrivateKey: owner.ownerKey };
+}
+
+async function createOrRecoverAccount(owner) {
+  const ownerAddress = owner.ownerAddress;
   try {
     const account = await createAccount({
       packageId: PACKAGE_ID,
       registryId: REGISTRY_ID,
-      suiPrivateKey: ownerKey,
+      ...ownerSignerOpts(owner),
       suiClient,
       suiNetwork: "mainnet",
     });
@@ -341,7 +550,8 @@ async function isDelegateValid(accountId, publicKeyHex) {
   return delegates.some((entry) => publicKeyHexFromDelegateEntry(entry)?.toLowerCase() === wanted);
 }
 
-async function prepareDelegate(elderNumber, ownerKey, ownerAddress, account, credentialsPath) {
+async function prepareDelegate(elderNumber, owner, account, credentialsPath) {
+  const ownerAddress = owner.ownerAddress;
   const existing = readJson(credentialsPath);
   if (
     existing?.delegatePrivateKey &&
@@ -378,6 +588,7 @@ async function prepareDelegate(elderNumber, ownerKey, ownerAddress, account, cre
     packageId: PACKAGE_ID,
     relayerUrl: RELAYER,
     label: `elder-${elderNumber}`,
+    ownerSource: OWNER_SOURCE,
     createdAt: new Date().toISOString(),
     version: 1,
   };
@@ -387,7 +598,7 @@ async function prepareDelegate(elderNumber, ownerKey, ownerAddress, account, cre
     accountId: account.accountId,
     publicKey: delegate.publicKey,
     label: `elder-${elderNumber}`,
-    suiPrivateKey: ownerKey,
+    ...ownerSignerOpts(owner),
     suiClient,
     suiNetwork: "mainnet",
   });
@@ -405,12 +616,14 @@ async function healCredentialsPublicKey(credentials) {
 }
 
 async function provisionElder(elderNumber, runFundingTotal) {
-  const owner = loadOrCreateOwner(elderNumber);
+  const owner = loadOwner(elderNumber);
   logPublic({
     elder: elderNumber,
     step: "owner",
     status: owner.generated ? "generated" : "loaded",
+    ownerSource: OWNER_SOURCE,
     ownerAddress: owner.ownerAddress,
+    baseAddress: owner.baseAddress ?? null,
     ownerKeyPath: owner.keyPath,
   });
 
@@ -418,7 +631,16 @@ async function provisionElder(elderNumber, runFundingTotal) {
   // the delegate is confirmed on-chain, skip this Elder entirely (including funding).
   // This makes reruns safe against double-spend without re-checking everything.
   const existingCreds = readJson(owner.credentialsPath);
-  if (existingCreds?.accountId && existingCreds?.delegatePublicKeyHex) {
+  // Guard the done-marker on ownerSource too. base-key and ed25519 modes use
+  // DIFFERENT creds dirs so they can't read each other's files today, but this
+  // also rejects stale creds written by an older script version (no ownerSource
+  // field) and makes the invariant explicit: a creds file only short-circuits a
+  // run of the SAME owner source it was provisioned under.
+  if (
+    existingCreds?.accountId &&
+    existingCreds?.delegatePublicKeyHex &&
+    (existingCreds.ownerSource ?? "ed25519") === OWNER_SOURCE
+  ) {
     const alreadyValid = await isDelegateValid(
       existingCreds.accountId,
       existingCreds.delegatePublicKeyHex,
@@ -437,6 +659,7 @@ async function provisionElder(elderNumber, runFundingTotal) {
       return {
         elderNumber,
         ownerAddress: owner.ownerAddress,
+        baseAddress: owner.baseAddress ?? null,
         accountId: existingCreds.accountId,
         delegateAddress: existingCreds.delegateAddress,
         delegatePublicKeyHex: existingCreds.delegatePublicKeyHex,
@@ -460,7 +683,7 @@ async function provisionElder(elderNumber, runFundingTotal) {
   }
 
   const funding = await fundIfNeeded(elderNumber, owner.ownerAddress, runFundingTotal);
-  const account = await createOrRecoverAccount(owner.ownerAddress, owner.ownerKey);
+  const account = await createOrRecoverAccount(owner);
   logPublic({
     elder: elderNumber,
     step: "account",
@@ -472,8 +695,7 @@ async function provisionElder(elderNumber, runFundingTotal) {
 
   const delegate = await prepareDelegate(
     elderNumber,
-    owner.ownerKey,
-    owner.ownerAddress,
+    owner,
     account,
     owner.credentialsPath,
   );
@@ -494,6 +716,7 @@ async function provisionElder(elderNumber, runFundingTotal) {
   return {
     elderNumber,
     ownerAddress: owner.ownerAddress,
+    baseAddress: owner.baseAddress ?? null,
     accountId: account.accountId,
     delegateAddress: credentials.delegateAddress,
     delegatePublicKeyHex: credentials.delegatePublicKeyHex,
@@ -573,6 +796,7 @@ function writeFindings(provisioned, isolation) {
     "# Walrus Elder provisioning findings",
     "",
     `Run date: ${new Date().toISOString()}`,
+    `Owner source: **${OWNER_SOURCE}**${OWNER_SOURCE === "base-key" ? " (Elder Base/EVM secp256k1 key owns the Sui memory account)" : " (fresh Ed25519 Sui key per Elder)"}.`,
     "",
     "## VERDICT",
     "",
@@ -581,11 +805,11 @@ function writeFindings(provisioned, isolation) {
     "",
     "## Per-Elder artifacts",
     "",
-    "| Elder | Owner address | Account ID | Delegate address | Funded this run SUI | Owner balance after SUI | Credentials path |",
-    "|---|---|---|---|---:|---:|---|",
+    "| Elder | Base/EVM address | Sui owner address | Account ID | Delegate address | Funded this run SUI | Owner balance after SUI | Credentials path |",
+    "|---|---|---|---|---|---:|---:|---|",
     ...provisioned.map(
       (elder) =>
-        `| ${elder.elderNumber} | \`${elder.ownerAddress}\` | \`${elder.accountId}\` | \`${elder.delegateAddress}\` | ${elder.funding.funded ? elder.funding.fundAmountSui : "0.000000"} | ${elder.funding.afterSui} | \`${elder.credentialsPath}\` |`,
+        `| ${elder.elderNumber} | \`${elder.baseAddress ?? "n/a"}\` | \`${elder.ownerAddress}\` | \`${elder.accountId}\` | \`${elder.delegateAddress}\` | ${elder.funding.funded ? elder.funding.fundAmountSui : "0.000000"} | ${elder.funding.afterSui} | \`${elder.credentialsPath}\` |`,
     ),
     "",
     "## Isolation assertions",
@@ -613,19 +837,33 @@ function writeFindings(provisioned, isolation) {
   writeFileSync(FINDINGS_PATH, `${lines.join("\n")}\n`, { mode: 0o600 });
 }
 
-// Shared mutable counter — all provisionElder calls update it; fundIfNeeded enforces the cap.
-const runFundingTotal = { value: 0n };
+logPublic({ step: "mode", ownerSource: OWNER_SOURCE, secretsRoot: SECRETS_ROOT, deriveOnly: DERIVE_ONLY });
 
-const provisioned = [];
-provisioned.push(await provisionElder(1, runFundingTotal));
-provisioned.push(await provisionElder(2, runFundingTotal));
-const isolation = await proveIsolation(provisioned[0], provisioned[1]);
-provisioned.push(await provisionElder(3, runFundingTotal));
-provisioned.push(await provisionElder(4, runFundingTotal));
-writeFindings(provisioned, isolation);
-logPublic({
-  step: "complete",
-  allProvisioned: provisioned.length === 4,
-  isolation: isolation.pass ? "PASS" : "FAIL",
-  findingsPath: FINDINGS_PATH,
-});
+// In base-key mode, ALWAYS print the offline (free, no-spend) Base→Sui owner
+// mapping for all 4 Elders — this is the "one identity across Base + Sui" proof.
+if (OWNER_SOURCE === "base-key") {
+  logPublic({ step: "base-owner-derivation", owners: deriveBaseOwners() });
+}
+
+// --derive-only: stop here. Prove the secp256k1 derivation works with ZERO spend.
+if (DERIVE_ONLY) {
+  logPublic({ step: "complete", deriveOnly: true, ownerSource: OWNER_SOURCE });
+} else {
+  // Shared mutable counter — all provisionElder calls update it; fundIfNeeded enforces the cap.
+  const runFundingTotal = { value: 0n };
+
+  const provisioned = [];
+  provisioned.push(await provisionElder(1, runFundingTotal));
+  provisioned.push(await provisionElder(2, runFundingTotal));
+  const isolation = await proveIsolation(provisioned[0], provisioned[1]);
+  provisioned.push(await provisionElder(3, runFundingTotal));
+  provisioned.push(await provisionElder(4, runFundingTotal));
+  writeFindings(provisioned, isolation);
+  logPublic({
+    step: "complete",
+    ownerSource: OWNER_SOURCE,
+    allProvisioned: provisioned.length === 4,
+    isolation: isolation.pass ? "PASS" : "FAIL",
+    findingsPath: FINDINGS_PATH,
+  });
+}

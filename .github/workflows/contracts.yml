@@ -15,23 +15,52 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # Detect whether any Solidity / forge-relevant files changed. On
+      # pull_request the base ref is auto-detected (compared against the PR
+      # base); on push it compares against the previous commit. The job itself
+      # ALWAYS runs and ALWAYS reports the `contracts` required check — only the
+      # expensive forge steps below are gated, so a docs/web/agents PR finishes
+      # this job green in seconds instead of ~5 minutes.
+      - name: Detect contract changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            contracts:
+              - 'packages/contracts/**'
+              - '**/*.sol'
+              - 'packages/contracts/foundry.toml'
+              - 'packages/contracts/foundry.lock'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
+              # self-reference: edits to this workflow must re-run forge validation
+              - '.github/workflows/contracts.yml'
       - uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.contracts == 'true'
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.contracts == 'true'
         with:
           node-version: 24
           cache: pnpm
       - name: Install Foundry
+        if: steps.changes.outputs.contracts == 'true'
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
       - run: pnpm install --frozen-lockfile
+        if: steps.changes.outputs.contracts == 'true'
       - name: Build contracts
+        if: steps.changes.outputs.contracts == 'true'
         working-directory: packages/contracts
         run: pnpm run build
       - name: Check deployable bytecode sizes
+        if: steps.changes.outputs.contracts == 'true'
         working-directory: packages/contracts
         run: pnpm run check:sizes
       - name: Run targeted contract gates
+        if: steps.changes.outputs.contracts == 'true'
         working-directory: packages/contracts
         run: |
           bash scripts/forge.sh test --match-path test/diamond/DiamondSkeleton.t.sol
@@ -42,7 +71,11 @@ jobs:
           bash scripts/forge.sh test --match-path test/BanditAttackResolution.t.sol
           bash scripts/forge.sh test --match-path test/ReservationConsistency.t.sol
       - name: Dry-run diamond deploy script
+        if: steps.changes.outputs.contracts == 'true'
         working-directory: packages/contracts
         env:
           DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
         run: bash scripts/forge.sh script script/DeployDiamond.s.sol:DeployDiamond
+      - name: Skipped — no contract changes
+        if: steps.changes.outputs.contracts != 'true'
+        run: echo "No Solidity / forge-relevant files changed; skipping forge build/test/deploy. The 'contracts' required check passes."
