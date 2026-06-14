@@ -51,21 +51,24 @@ export default function MintButton() {
   }, [suiWallet]);
 
   async function handleMint() {
-    if (!suiWallet) return;
-
-    // Mainnet guard — never attempt a mint on the wrong network.
-    const net = await suiWallet.getActiveNetwork();
-    setActiveNetwork(net);
-    if (net !== MAINNET_NETWORK) {
-      setState({
-        status: 'error',
-        message: 'Switch your wallet to Sui mainnet to mint.',
-      });
-      return;
-    }
-
+    // Re-entry guard + set minting state BEFORE any await, so the button is
+    // disabled immediately and a double-click during the network check can't
+    // fire a second mint.
+    if (!suiWallet || minting) return;
     setState({ status: 'minting' });
     try {
+      // Mainnet guard — never attempt a mint on the wrong network. Inside the
+      // try so a getActiveNetwork() rejection surfaces as an error state.
+      const net = await suiWallet.getActiveNetwork();
+      setActiveNetwork(net);
+      if (net !== MAINNET_NETWORK) {
+        setState({
+          status: 'error',
+          message: 'Switch your wallet to Sui mainnet to mint.',
+        });
+        return;
+      }
+
       const tx = new Transaction();
       tx.moveCall({ target: MINT_TARGET, arguments: [] });
 

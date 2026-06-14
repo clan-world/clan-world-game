@@ -24,6 +24,7 @@ SITE_OBJECT="${SITE_OBJECT:-0x407f079c2f235a588546008550ce1f479fce8a0ad10525ab17
 EPOCHS="${EPOCHS:-5}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 COMBINED="$(mktemp -d)/clanworld-site"
+trap 'rm -rf "$(dirname "$COMBINED")"' EXIT
 
 echo "[1/5] build game (apps/web)…"
 pnpm --filter @clan-world/web build
