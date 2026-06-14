@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -18,82 +18,6 @@ function requireIndexerSecret(supplied: string): void {
   }
 }
 
-export const getInftDemoState = query({
-  args: { clanId: v.number() },
-  handler: async (ctx, { clanId }) => {
-    const token = await ctx.db
-      .query("inftTokens")
-      .withIndex("by_tokenId", (q) => q.eq("tokenId", clanId))
-      .order("desc")
-      .first();
-    const transfers = await ctx.db
-      .query("inftTransfers")
-      .withIndex("by_clanId", (q) => q.eq("clanId", clanId))
-      .order("desc")
-      .take(8);
-    const memory = await ctx.db
-      .query("memoryEntries")
-      .withIndex("by_clan", (q) => q.eq("clanId", clanId))
-      .order("desc")
-      .take(20);
-    const bulletins = await ctx.db
-      .query("bulletins")
-      .filter((q) => q.eq(q.field("clanId"), clanId))
-      .order("desc")
-      .take(8);
-
-    return { token, transfers, memory, bulletins };
-  },
-});
-
-export const mirrorToken = mutation({
-  args: {
-    secret: v.string(),
-    tokenId: v.number(),
-    clanId: v.number(),
-    owner: v.string(),
-    dataHash: v.string(),
-    encryptedKeyHash: v.optional(v.string()),
-    metadataUri: v.optional(v.string()),
-    txHash: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    requireIndexerSecret(args.secret);
-    const { secret: _omit, ...row } = args;
-    const existing = await ctx.db
-      .query("inftTokens")
-      .withIndex("by_tokenId", (q) => q.eq("tokenId", row.tokenId))
-      .first();
-    const stamped = { ...row, updatedAt: Date.now() };
-    if (existing) {
-      await ctx.db.patch(existing._id, stamped);
-      return existing._id;
-    }
-    return await ctx.db.insert("inftTokens", stamped);
-  },
-});
-
-export const mirrorTransfer = mutation({
-  args: {
-    secret: v.string(),
-    tokenId: v.number(),
-    clanId: v.number(),
-    from: v.string(),
-    to: v.string(),
-    dataHash: v.string(),
-    encryptedKeyHash: v.string(),
-    txHash: v.string(),
-  },
-  handler: async (ctx, args) => {
-    requireIndexerSecret(args.secret);
-    const { secret: _omit, ...row } = args;
-    return await ctx.db.insert("inftTransfers", {
-      ...row,
-      transferredAt: Date.now(),
-    });
-  },
-});
-
 export const mirrorMemoryEntry = mutation({
   args: {
     secret: v.string(),
@@ -101,8 +25,19 @@ export const mirrorMemoryEntry = mutation({
     key: v.string(),
     value: v.string(),
     dataHash: v.optional(v.string()),
-    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
+    // "0g" retained for historical rows (deploy-safety); see schema.ts.
+    // "walrus" = mirrored after a successful Walrus Memory KV save.
+    source: v.union(
+      v.literal("local"),
+      v.literal("0g"),
+      v.literal("demo"),
+      v.literal("walrus"),
+    ),
     txHash: v.optional(v.string()),
+    // Walrus provenance for the cockpit ProofChip — see schema.ts. Optional so
+    // non-Walrus mirror callers can omit them; persisted only when provided.
+    blobId: v.optional(v.string()),
+    accountId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);

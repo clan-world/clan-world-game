@@ -1,7 +1,8 @@
 # ClanWorld V3 Active Build Plan
 
-V3 is focused on the OpenAgents Track 2 demo: Base Sepolia chain state, 0G
-memory/iNFT identity, AXL whispers, and KeeperHub heartbeat. Historical
+V3 is focused on Base Sepolia chain state (diamond
+`0x098fa5c2dc8372cde5c99db47365fa84b69f7af1`, 84532), Walrus-directed agent
+memories, private whispers, and the dockerized 30s heartbeat runner. Historical
 hackathon material is archived under `docs/archive/`.
 
 ## Active Milestones
@@ -9,7 +10,7 @@ hackathon material is archived under `docs/archive/`.
 1. **Base Sepolia engine**
    - Keep the diamond deployment buildable.
    - Keep `IClanWorld` ABI generation in sync with shared adapters.
-   - Drive heartbeats through the runner/foundry loop in dev and KeeperHub for live runs.
+   - Drive heartbeats through the dockerized `packages/heartbeat` runner (30s) in dev and live.
 
 2. **Convex live state**
    - Webhook-first indexer with polling as safety net.
@@ -19,15 +20,14 @@ hackathon material is archived under `docs/archive/`.
 3. **Elder runner**
    - Cycle A heartbeat scheduler.
    - Cycle B per-tick situation blocks and order submission.
-   - File-backed defaults with 0G memory available behind explicit config.
+   - File-backed defaults until the Walrus memory backend lands.
 
-4. **iNFT transfer demo**
-   - Mint clan agent identity.
+4. **Agent memory demo**
+   - Persist clan agent memory.
    - Play through visible ticks.
-   - Transfer ownership mid-game.
-   - Show memory/identity continuity in cockpit and owner tooling.
+   - Show memory continuity in cockpit tooling.
 
-5. **AXL communications**
+5. **Communications**
    - Elder-to-Elder whispers.
    - Owner steering messages.
    - Cockpit comms view wired to live Convex tables.

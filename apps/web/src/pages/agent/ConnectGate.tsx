@@ -247,10 +247,8 @@ export function ConnectGate({ agent, loading, onConnect }: Props) {
             letterSpacing: '0.02em',
           }}
         >
-          The Ælder's iNFT essence is sealed beneath{' '}
-          <span style={{ color: t.rune.core, fontFamily: t.font.mono }}>0G</span>{' '}
-          encryption. Connect a wallet bearing the matching covenant to whisper
-          and reshape its mind.
+          The Ælder's NFT essence is sealed in agent memory. Connect a wallet
+          bearing the matching covenant to whisper and reshape its mind.
         </p>
 
         <button

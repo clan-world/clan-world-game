@@ -17,8 +17,6 @@ export interface SponsorPower {
   href: string
 }
 
-// TODO(post-hackathon): replace generated SVG placeholders for KeeperHub, Gensyn AXL,
-// and ERC-7857 iNFT with canonical brand assets sourced from each project's brand kit.
 export const POWERS: SponsorPower[] = [
   {
     name: 'Uniswap',
@@ -45,42 +43,6 @@ export const POWERS: SponsorPower[] = [
     href: 'https://app.keeperhub.io',
   },
   {
-    name: '0G Storage',
-    loreName: 'The Vault of Memories',
-    logoUrl: '/logos/0g.jpg',
-    logoAlt: '0G logo',
-    marginNote: '← agent memory layer',
-    loreDesc:
-      'Where Elders inscribe what they have seen. A grudge against clan three from the autumn of \'412. The price of fish on a Tuesday. Lessons paid for in blood. Memory survives even when the body does not.',
-    techDesc:
-      'Decentralized key-value storage. Each clan owns a namespace bound to its iNFT. Town-square bulletins are posted in shared keys. Memory transfers with ownership.',
-    href: 'https://0g.ai',
-  },
-  {
-    name: '0G Compute',
-    loreName: 'The Sealed Chamber',
-    logoUrl: '/logos/0g.jpg',
-    logoAlt: '0G logo',
-    marginNote: '← attested inference',
-    loreDesc:
-      'A chamber of thought, witnessed by no human, vouched for by mathematics alone. What an Elder reasons within may be doubted; what comes out, signed and sealed, may not.',
-    techDesc:
-      'TEE-attested LLM inference. Each Elder decision can be cryptographically proven to have been reasoned by an unmodified model. Anti-cheat by construction.',
-    href: 'https://0g.ai/compute',
-  },
-  {
-    name: 'Gensyn AXL',
-    loreName: 'The Whisper Network',
-    logoUrl: '/logos/gensyn.jpg',
-    logoAlt: 'Gensyn AXL',
-    marginNote: '← p2p e2ee diplomacy',
-    loreDesc:
-      'A web of carrier-spirits binding Elder to Elder. Every word is sealed. Every sender is known. Every betrayal is recorded — and judged later, when the realm reads the chronicle aloud.',
-    techDesc:
-      'Peer-to-peer end-to-end encrypted messaging mesh. Each Elder signs envelopes with their owner key. Receivers verify before delivery. Spoofing is exposed, never silenced.',
-    href: 'https://gensyn.ai',
-  },
-  {
     name: 'Base',
     loreName: 'The Adamantine Foundation',
     logoUrl: '/logos/base.jpg',
@@ -91,17 +53,5 @@ export const POWERS: SponsorPower[] = [
     techDesc:
       'L2 chain hosting the IClanWorld contract and all canonical game state. Cheap, fast, EVM-compatible. The single source of truth.',
     href: 'https://base.org',
-  },
-  {
-    name: 'iNFT (ERC-7857)',
-    loreName: 'The Soul-Vessels',
-    logoUrl: '/logos/inft.svg',
-    logoAlt: 'ERC-7857 iNFT',
-    marginNote: '← intelligent NFTs',
-    loreDesc:
-      'Each Elder is bound to a vessel — an enchanted relic carrying their mind, their voice, their grudges. To trade the vessel is to inherit the Elder, full and remembered. The new owner does not start fresh; they continue.',
-    techDesc:
-      'ERC-7857 NFTs hold encrypted Elder identity (CLAUDE.md, skills, persona) on 0G Storage. On transfer, intelligence travels with ownership. The signature feature of the OpenAgents Track 2 narrative.',
-    href: 'https://eips.ethereum.org/EIPS/eip-7857',
   },
 ]

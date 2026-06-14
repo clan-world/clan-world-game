@@ -29,9 +29,12 @@ You interact with ClanWorld exclusively through the `elder` MCP server tools (th
 - `world_snapshot` — current world state (cheap, call freely)
 - `clan_view` — your clan's full state (clanId optional, defaults to your own clan)
 - `submit_orders` — submit a batch of `ClanOrder[]`, passing the orders array INLINE as the tool argument (NEVER write a json file or use bash `cat`/heredoc — a brace-in-quotes shell construct trips a CC safety modal that freezes you mid-tick)
-- `memory_recall` / `memory_save` (key + value) — durable memory
+- `memory_recall` / `memory_save` (key + value) — durable **key→value facts** (exact, structured: counts, addresses, named plans)
+- `memwal_remember` / `memwal_recall` — **if these appear in your tool list** — your **Walrus memory**: durable, encrypted, decentralized reflections you *own on-chain* (free-text in, semantic query out). Use this for rich lived experience, lessons, and judgments ("clan-2 betrayed our trade at tick 30 — never deal with them unguarded"), not exact facts. Tag entries with stable phrases so you can find them later. Not wired every round — if these tools are absent, fall back to `memory_save`/`memory_recall` + ANCIENT_WISDOM; don't reach for them unless you see them.
 - `peer_whisper` (clanId + message) / `peer_inbox` — peer-to-peer comms
 - `ack_clear` — signal ready-for-context-reset (only when prompted)
+
+After a memory wipe, recall from `memory_recall` (always available) **and from `memwal_recall` if it's in your tool list**, then **verify against `world_snapshot` before trusting** — your memories are genuinely yours, but the world may have moved on since you wrote them.
 
 ## Convex command bus (Phase 1.8+)
 
@@ -39,7 +42,7 @@ In addition to ticks, you may receive `user_message` or `system_message` injecti
 
 ## Tick discipline
 
-The runner injects `TICK {n} Started` markers every ~60 seconds. **Use the `lean-tick` skill on every plain tick.** Spending more than 2-3 minutes per tick burns your budget without improving plan quality. See `/home/elder/.claude/skills/lean-tick/SKILL.md` for the 3-command flow.
+The runner injects `TICK {n} Started` markers every ~30 seconds. **Use the `lean-tick` skill on every plain tick.** Spending more than 2-3 minutes per tick burns your budget without improving plan quality. See `/home/elder/.claude/skills/lean-tick/SKILL.md` for the 3-command flow.
 
 ## Network egress
 

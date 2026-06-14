@@ -1,6 +1,5 @@
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
-import { useMemo } from 'react';
 import { useSafeQuery as useQuery } from '../../../hooks/useSafeQuery';
 import { api } from '../../../../../server/convex/_generated/api';
 
@@ -9,9 +8,32 @@ interface Props {
   testIdPrefix: string;
 }
 
+/** Claude/Walrus coral — signals decentralized, encrypted, on-chain storage. */
+const WALRUS_CORAL = '#d97757';
+
 interface KvRow {
   key: string;
   value: string;
+  /**
+   * Storage backend the row lives on. `"walrus"` (added by PR4's schema work)
+   * means the value is encrypted on Walrus + owned per-Elder on Sui; anything
+   * else is local/demo scratch. Read as a widened string so this UI compiles
+   * before the schema literal lands and renders correctly once it does.
+   */
+  source: string;
+  /** Walrus blob id (on-chain proof), present once a row is published. */
+  blobId?: string;
+  /** Sui object / account id owning the encrypted memory. */
+  accountId?: string;
+}
+
+/** Free-text episodic reflection (memwal_remember), distinct from KV state. */
+interface ReflectionRow {
+  tick?: number;
+  text: string;
+  source: string;
+  blobId?: string;
+  accountId?: string;
 }
 
 interface CrudRow {
@@ -27,10 +49,20 @@ interface BulletinRow {
 }
 
 const STUB_KV: KvRow[] = [
-  { key: 'last_grudge',     value: 'clan-3'             },
-  { key: 'wood_threshold',  value: '80'                 },
-  { key: 'pref_target',     value: 'forest'             },
-  { key: 'mood',            value: 'cautious'           },
+  { key: 'last_grudge',     value: 'clan-3',    source: 'local' },
+  { key: 'wood_threshold',  value: '80',        source: 'local' },
+  { key: 'pref_target',     value: 'forest',    source: 'local' },
+  { key: 'mood',            value: 'cautious',  source: 'local' },
+];
+
+/**
+ * Reflections are intentionally stub-only until PR4 wires the live
+ * `memwal_remember` free-text feed. We do NOT fabricate on-chain ids here —
+ * the section renders an explicit "awaiting live data" affordance instead.
+ */
+const STUB_REFLECTIONS: ReflectionRow[] = [
+  { tick: 5, text: 'Crimson feinted at the river then pulled back — likely baiting a wall commitment. Hold the millers.', source: 'demo' },
+  { tick: 3, text: 'Winter is two ticks out and the granary is thin. Prioritise wheat over wood until the threshold clears.', source: 'demo' },
 ];
 
 const STUB_CRUD: CrudRow[] = [
@@ -45,32 +77,74 @@ const STUB_BULLETINS: BulletinRow[] = [
   { age: '5t', body: '"Crimson moves — watch the river."'  },
 ];
 
-interface DemoInftState {
-  tokenId: string;
-  owner: string;
-  dataHash: string;
-  notes?: string;
-  data?: Array<{ label: string; dataHash: string; uri: string }>;
-}
-
 /** Coerce the stored bulletin slot/updatedAt pair into a short "Nt" age label. */
 function bulletinAge(slot: number, currentSlot: number): string {
   const diff = Math.max(0, currentSlot - slot);
   return `${diff}t`;
 }
 
-export function ZeroGTab({ elder, testIdPrefix }: Props) {
-  const demoState = useMemo<DemoInftState | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const raw = window.localStorage.getItem(`clanworld:inft-demo:${elder.clanId}`);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as DemoInftState;
-    } catch {
-      return null;
-    }
-  }, [elder.clanId]);
+/**
+ * Read a string field off a Convex memory doc without depending on the schema
+ * literal. PR4 adds the `"walrus"` source value plus `blobId`/`accountId`
+ * on-chain proof fields; until its generated types land, those keys aren't on
+ * the inferred row type, so we widen through `unknown` and validate at runtime.
+ */
+function readStr(row: unknown, ...keys: string[]): string | undefined {
+  if (!row || typeof row !== 'object') return undefined;
+  const rec = row as Record<string, unknown>;
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return undefined;
+}
 
+/** Read a finite number field off a Convex doc without depending on its type. */
+function readNum(row: unknown, ...keys: string[]): number | undefined {
+  if (!row || typeof row !== 'object') return undefined;
+  const rec = row as Record<string, unknown>;
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+/** True when a memory row lives on decentralized Walrus storage. */
+function isWalrus(source: string): boolean {
+  return source === 'walrus';
+}
+
+// Explorer roots. Single source of truth so a future testnet/devnet toggle is
+// a one-line change. ClanWorld targets Sui + Walrus mainnet.
+const SUISCAN_ROOT = 'https://suiscan.xyz/mainnet';
+const WALRUSCAN_ROOT = 'https://walruscan.com/mainnet';
+
+/**
+ * Explorer link for an on-chain proof id. A Walrus blob id is a content digest
+ * resolved on Walruscan; a Sui object id resolves on Suiscan. They are
+ * different namespaces, so route by which field carried the id.
+ *
+ * NOTE (PR4): we currently treat the non-blob id as a Sui *object* (`/object/`).
+ * If PR4 surfaces an owner *address* in `accountId` rather than an object id,
+ * switch that branch to `/account/` — confirm the id semantics when the live
+ * field lands.
+ */
+function proofUrl(kind: 'blob' | 'object', id: string): string {
+  // Walrus blob ids / Sui object ids are opaque and may contain characters that
+  // aren't path-safe — encode before interpolating into the explorer URL path.
+  const safeId = encodeURIComponent(id);
+  return kind === 'blob'
+    ? `${WALRUSCAN_ROOT}/blob/${safeId}`
+    : `${SUISCAN_ROOT}/object/${safeId}`;
+}
+
+/** Shorten a long hex/base64 id to `head…tail` for chip display. */
+function shortId(id: string): string {
+  return id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
+}
+
+export function ZeroGTab({ elder, testIdPrefix }: Props) {
   // ─── Live Convex queries with stub fallback ────────────────────────────
   // Every section follows the same discipline as CommsTab:
   //   - useQuery returns undefined while loading → fallback to stub
@@ -81,20 +155,46 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
   const liveEvents = useQuery(api.memory.getEventsByClan, { clanId: elder.clanId });
   const liveBulletins = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
 
-  // KV state: prefer iNFT demo localStorage if present (legacy demo path),
-  // else live memoryEntries, else stub. The iNFT-demo branch wins because
-  // the existing demo flow writes a hand-crafted state-root we want to show.
-  const memorySource: 'live' | 'stub' =
-    demoState?.data && demoState.data.length > 0
-      ? 'stub'
-      : liveMemory && liveMemory.length > 0
-        ? 'live'
-        : 'stub';
+  // KV state: prefer live memoryEntries, else stub. Reflection-kind rows (if
+  // PR4 ever returns them from this same query) are excluded here so they only
+  // appear in the Reflections section below — the two sections stay mutually
+  // exclusive regardless of how PR4 routes free-text memories.
+  const liveKv = (liveMemory ?? []).filter(
+    (m) => readStr(m, 'kind', 'memType') !== 'reflection',
+  );
+  const memorySource: 'live' | 'stub' = liveKv.length > 0 ? 'live' : 'stub';
   const kvRows: KvRow[] =
-    demoState?.data?.map((entry) => ({ key: entry.label, value: entry.uri })) ??
-    (liveMemory && liveMemory.length > 0
-      ? liveMemory.map((m) => ({ key: m.key, value: m.value }))
-      : STUB_KV);
+    liveKv.length > 0
+      ? liveKv.map((m) => ({
+          key: m.key,
+          value: m.value,
+          source: readStr(m, 'source') ?? 'local',
+          blobId: readStr(m, 'blobId', 'blob_id'),
+          accountId: readStr(m, 'accountId', 'account_id'),
+        }))
+      : STUB_KV;
+
+  // ─── Walrus Reflections (free-text episodic, memwal_remember) ───────────
+  // No live free-text feed exists yet (PR4 owns the dedicated query + the row
+  // discriminator). We deliberately do NOT scrape KV rows by value length —
+  // that would double-render a long KV value in both the KV table and here.
+  // Instead we only surface rows EXPLICITLY tagged as reflections via a `kind`
+  // discriminator (`kind === "reflection"`, which PR4 will set). Until such
+  // rows exist, fall back to the stub with an explicit "awaiting live data"
+  // affordance. We never fabricate on-chain ids.
+  const liveReflections: ReflectionRow[] = (liveMemory ?? [])
+    .filter((m) => readStr(m, 'kind', 'memType') === 'reflection')
+    .map((m) => ({
+      tick: readNum(m, 'tick'),
+      text: m.value,
+      source: readStr(m, 'source') ?? 'local',
+      blobId: readStr(m, 'blobId', 'blob_id'),
+      accountId: readStr(m, 'accountId', 'account_id'),
+    }));
+  const reflectionsSource: 'live' | 'stub' =
+    liveReflections.length > 0 ? 'live' : 'stub';
+  const reflectionRows: ReflectionRow[] =
+    liveReflections.length > 0 ? liveReflections : STUB_REFLECTIONS;
 
   const eventsSource: 'live' | 'stub' =
     liveEvents && liveEvents.length > 0 ? 'live' : 'stub';
@@ -137,9 +237,9 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
         gap: tokens.space.md,
       }}
     >
-      {/* iNFT metadata */}
+      {/* NFT metadata */}
       <section>
-        <SectionHeader>iNFT — Elder #{elder.clanId}</SectionHeader>
+        <SectionHeader>NFT — Elder #{elder.clanId}</SectionHeader>
         <div
           style={{
             marginTop: tokens.space.sm,
@@ -150,19 +250,18 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
             fontSize: '10px',
           }}
         >
-          <Field k="token_id"     v={demoState?.tokenId ?? `0x${(0xe1de7000 + elder.clanId).toString(16)}`} />
-          <Field k="owner"        v={demoState?.owner ?? 'demo-owner'} />
+          <Field k="token_id"     v={`0x${(0xe1de7000 + elder.clanId).toString(16)}`} />
+          <Field k="owner"        v="demo-owner" />
           <Field k="archetype"    v={elder.archetype} />
-          <Field k="state_root"   v={demoState?.dataHash ?? '0xa1b2…f7e9'} />
-          <Field k="encrypted"    v="◉ tee-attested" />
+          <Field k="state_root"   v="local-memory" />
           <Field k="version"      v="v0.4.6" />
         </div>
       </section>
 
-      {/* KV state + memory CRUD side-by-side on wide, stacked on narrow */}
+      {/* Walrus memory sections side-by-side on wide, stacked on narrow */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: tokens.space.md }}>
         <div data-testid={`${testIdPrefix}-0g-kv`} data-source={memorySource}>
-          <SectionHeader>kv state</SectionHeader>
+          <SectionHeader>Walrus KV State</SectionHeader>
           <div
             style={{
               marginTop: tokens.space.sm,
@@ -173,34 +272,63 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
               gap: '2px',
             }}
           >
-            {kvRows.map((kv) => (
-              <div
-                key={kv.key}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '3px 6px',
-                  background: 'rgba(255,255,255,0.18)',
-                }}
-              >
-                <span style={{ color: tokens.text.onParchmentDim }}>{kv.key}</span>
-                <span style={{ color: elder.accent, fontWeight: 600 }}>{kv.value}</span>
-              </div>
-            ))}
+            {kvRows.map((kv) => {
+              // The on-chain-proof chip renders whenever a real id is present,
+              // independent of `source` — a blobId/accountId IS the proof. The
+              // coral "● Walrus" source badge stays keyed off source below.
+              const hasProof = Boolean(kv.blobId ?? kv.accountId);
+              return (
+                <div
+                  key={kv.key}
+                  data-testid={`${testIdPrefix}-0g-kv-row`}
+                  data-source={kv.source}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: tokens.space.sm,
+                    padding: '3px 6px',
+                    background: 'rgba(255,255,255,0.18)',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      minWidth: 0,
+                    }}
+                  >
+                    <SourceBadge source={kv.source} testId={`${testIdPrefix}-0g-kv-badge`} />
+                    <span
+                      style={{
+                        color: tokens.text.onParchmentDim,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {kv.key}
+                    </span>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {hasProof && (
+                      <ProofChip
+                        blobId={kv.blobId}
+                        accountId={kv.accountId}
+                        testId={`${testIdPrefix}-0g-kv-proof`}
+                      />
+                    )}
+                    <span style={{ color: elder.accent, fontWeight: 600 }}>{kv.value}</span>
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {demoState?.notes && (
-          <div>
-            <SectionHeader>owner notes</SectionHeader>
-            <p style={{ margin: `${tokens.space.sm} 0 0`, fontSize: '11px', lineHeight: 1.4 }}>
-              {demoState.notes}
-            </p>
-          </div>
-        )}
-
         <div data-testid={`${testIdPrefix}-0g-crud`} data-source={eventsSource}>
-          <SectionHeader>memory CRUD</SectionHeader>
+          <SectionHeader>Walrus Memory CRUD</SectionHeader>
           <ul
             style={{
               listStyle: 'none',
@@ -244,6 +372,103 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
                 </span>
               </li>
             ))}
+          </ul>
+        </div>
+
+        <div
+          data-testid={`${testIdPrefix}-0g-reflections`}
+          data-source={reflectionsSource}
+        >
+          <SectionHeader>Walrus Reflections</SectionHeader>
+          {reflectionsSource === 'stub' && (
+            <div
+              data-testid={`${testIdPrefix}-0g-reflections-awaiting`}
+              style={{
+                marginTop: tokens.space.sm,
+                padding: '4px 8px',
+                fontFamily: tokens.font.mono,
+                fontSize: '9px',
+                letterSpacing: '0.04em',
+                color: tokens.text.muted,
+                background: 'rgba(0,0,0,0.06)',
+                border: `1px dashed ${tokens.border.parchmentEdge}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span style={{ color: tokens.text.accent }}>◌</span>
+              awaiting live data — sample reflections shown
+            </div>
+          )}
+          <ul
+            style={{
+              listStyle: 'none',
+              margin: `${tokens.space.sm} 0 0`,
+              padding: 0,
+              fontFamily: tokens.font.body,
+              fontSize: '11px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            {reflectionRows.map((r, i) => {
+              // `onWalrus` drives the coral row accent + source badge (correct —
+              // that's the source signal). The proof chip below keys off id
+              // presence instead: a blobId/accountId IS the on-chain proof.
+              const onWalrus = isWalrus(r.source);
+              const hasProof = Boolean(r.blobId ?? r.accountId);
+              return (
+                <li
+                  key={r.blobId ?? r.accountId ?? `${r.tick ?? 'x'}-${r.text.slice(0, 24)}-${i}`}
+                  data-testid={`${testIdPrefix}-0g-reflection-row`}
+                  data-source={r.source}
+                  style={{
+                    padding: '6px 8px',
+                    background: onWalrus
+                      ? 'rgba(217,119,87,0.10)'
+                      : 'rgba(255,255,255,0.18)',
+                    borderLeft: `2px solid ${onWalrus ? WALRUS_CORAL : tokens.border.parchmentEdge}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <SourceBadge source={r.source} testId={`${testIdPrefix}-0g-reflection-badge`} />
+                    {typeof r.tick === 'number' && (
+                      <span
+                        style={{
+                          fontFamily: tokens.font.mono,
+                          fontSize: '9px',
+                          color: tokens.text.muted,
+                        }}
+                      >
+                        T{r.tick}
+                      </span>
+                    )}
+                    {hasProof && (
+                      <ProofChip
+                        blobId={r.blobId}
+                        accountId={r.accountId}
+                        testId={`${testIdPrefix}-0g-reflection-proof`}
+                      />
+                    )}
+                  </div>
+                  <span style={{ color: tokens.text.onParchment, lineHeight: 1.4 }}>
+                    {r.text}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
@@ -301,6 +526,91 @@ function Field({ k, v }: { k: string; v: string }) {
       <span style={{ color: tokens.text.onParchmentDim }}>{k}</span>
       <span style={{ color: tokens.text.onParchment, fontWeight: 600 }}>{v}</span>
     </>
+  );
+}
+
+/**
+ * Storage-source badge. `"walrus"` rows get a coral "● Walrus" pill signalling
+ * encrypted, per-Elder-owned decentralized storage; everything else gets a
+ * muted "local" pill.
+ */
+function SourceBadge({ source, testId }: { source: string; testId?: string }) {
+  const onWalrus = isWalrus(source);
+  return (
+    <span
+      data-testid={testId}
+      data-source={source}
+      title={
+        onWalrus
+          ? 'Encrypted on Walrus — owned per-Elder on Sui'
+          : 'Local scratch memory (not on decentralized storage)'
+      }
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '3px',
+        flexShrink: 0,
+        padding: '1px 6px',
+        borderRadius: '999px',
+        fontFamily: tokens.font.mono,
+        fontSize: '8px',
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        color: onWalrus ? WALRUS_CORAL : tokens.text.muted,
+        background: onWalrus ? 'rgba(217,119,87,0.14)' : 'rgba(0,0,0,0.06)',
+        border: `1px solid ${onWalrus ? 'rgba(217,119,87,0.5)' : tokens.border.parchmentEdge}`,
+      }}
+    >
+      <span aria-hidden style={{ fontSize: '7px', lineHeight: 1 }}>●</span>
+      {onWalrus ? 'Walrus' : 'local'}
+    </span>
+  );
+}
+
+/**
+ * On-chain-proof chip — renders a short monospace id linking to the right
+ * explorer: a Walrus blob id → Walruscan, else a Sui object/account id →
+ * Suiscan. Only rendered when a real id is present (never fabricated).
+ */
+function ProofChip({
+  blobId,
+  accountId,
+  testId,
+}: {
+  blobId?: string;
+  accountId?: string;
+  testId?: string;
+}) {
+  // Prefer the Walrus blob id (the strongest "encrypted on Walrus" proof);
+  // fall back to the Sui object/account id.
+  const kind: 'blob' | 'object' = blobId ? 'blob' : 'object';
+  const id = blobId ?? accountId;
+  if (!id) return null;
+  return (
+    <a
+      data-testid={testId}
+      data-proof-kind={kind}
+      href={proofUrl(kind, id)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`On-chain proof (${kind === 'blob' ? 'Walrus blob' : 'Sui object'}) — ${id}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        flexShrink: 0,
+        padding: '1px 5px',
+        borderRadius: tokens.radius.sm,
+        fontFamily: tokens.font.mono,
+        fontSize: '8px',
+        textDecoration: 'none',
+        color: WALRUS_CORAL,
+        background: 'rgba(217,119,87,0.08)',
+        border: `1px solid rgba(217,119,87,0.35)`,
+      }}
+    >
+      {shortId(id)}
+    </a>
   );
 }
 

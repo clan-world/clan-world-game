@@ -24,10 +24,20 @@ purposes:
     env: dev
     canonical: 58741   # Vite dev server for apps/landing
 
+  - name: clan-world-retention-dev
+    type: frontend
+    env: dev
+    canonical: 58742   # Vite dev server for apps/retention
+
   - name: clan-world-backend-dev
     type: backend
     env: dev
     canonical: 38740   # Hono dev server for apps/server (Convex local emulator port too)
+
+  - name: clan-world-retention-api-dev
+    type: backend
+    env: dev
+    canonical: 38742   # Local API server for apps/retention
 
   - name: clan-world-frontend-test
     type: frontend

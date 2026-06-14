@@ -16,7 +16,7 @@ type CommsView = 'axl' | 'bulletin';
 interface CommsLine {
   tick: number;
   kind: CommsKind;
-  speaker: string;          // 'orchestrator' | 'iNFT Owner' | 'clan-N'
+  speaker: string;          // 'orchestrator' | 'owner' | 'clan-N'
   body: string;
   recipients?: number[];    // whisper-only: which clans the sender targeted
 }
@@ -170,14 +170,14 @@ function ViewToggle({
     >
       <ToggleButton
         active={view === 'axl'}
-        label="AXL"
+        label="Private"
         sublabel="private"
         onClick={() => setView('axl')}
         testId={`${testIdPrefix}-comms-toggle-axl`}
       />
       <ToggleButton
         active={view === 'bulletin'}
-        label="0G Bulletin"
+        label="Bulletin"
         sublabel="public"
         onClick={() => setView('bulletin')}
         testId={`${testIdPrefix}-comms-toggle-bulletin`}
@@ -283,7 +283,7 @@ function CommsBubble({
     >
       {/*
         Header row layout (3-col grid):
-          - HUMAN: [empty]  [centered "[HUMAN] iNFT Owner"]  [steering-message chip + tick]
+          - HUMAN: [empty]  [centered "[HUMAN] owner"]  [steering-message chip + tick]
           - ORCH:  [empty]  [centered "[ORCH] orchestrator"]  [world-event chip + tick]
           - WHISPER (peer): [speaker on left] [—] [tick on right]
           - WHISPER (self): [speaker on left] [—] [sent-to chips + tick on right]

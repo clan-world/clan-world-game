@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@clan-world/shared": "workspace:*",
+    "@mysten-incubation/memwal": "0.0.7",
+    "@mysten/sui": "2.17.0",
     "tsx": "4.19.2"
   },
   "devDependencies": {

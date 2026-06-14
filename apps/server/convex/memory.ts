@@ -2,16 +2,16 @@ import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
- * Memory query/mutation layer for the cockpit ZeroG tab.
+ * Memory query/mutation layer for the cockpit Agent tab.
  *
  * Two surfaces:
  *
  *   1. memoryEntries — long-term KV store the elder agent has written. Already
- *      written by the chain indexer via `inft.mirrorMemoryEntry` and seeded
- *      below. The cockpit "kv state" section reads this newest-first.
+ *      written by mirror mutations and seeded below. The cockpit KV section
+ *      reads this newest-first.
  *
  *   2. memoryEvents — append-only audit log of read/write hits on those keys,
- *      surfaced as the cockpit "memory CRUD" section. Each event is one tick
+ *      surfaced as the cockpit memory CRUD section. Each event is one tick
  *      operation; the tick number is the foreign key into world time. New
  *      table introduced in this PR (see schema.ts).
  *
@@ -41,7 +41,14 @@ export const seedEntry = internalMutation({
     clanId: v.number(),
     key: v.string(),
     value: v.string(),
-    source: v.optional(v.union(v.literal("local"), v.literal("0g"), v.literal("demo"))),
+    source: v.optional(
+      v.union(
+        v.literal("local"),
+        v.literal("0g"),
+        v.literal("demo"),
+        v.literal("walrus"),
+      ),
+    ),
     dataHash: v.optional(v.string()),
     txHash: v.optional(v.string()),
   },

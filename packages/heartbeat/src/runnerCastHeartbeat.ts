@@ -30,6 +30,10 @@ export interface RunnerHeartbeatConfig {
   convexWebhookUrl?: string;
   /** Shared webhook auth secret. */
   webhookSharedSecret?: string;
+  /** Dev-only affordance: advance a local anvil fork clock before heartbeats. */
+  advanceForkTime?: boolean;
+  /** Optional tx gas limit. Dev fork defaults high to avoid estimate/call mismatch. */
+  gasLimit?: bigint;
 }
 
 /**
@@ -76,6 +80,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
     contractAddress: contractAddress as `0x${string}`,
     convexWebhookUrl,
     webhookSharedSecret: env['WEBHOOK_SHARED_SECRET'],
+    advanceForkTime: shouldAdvanceForkTime(env, env['RPC_URL_PRIMARY'] || env['RPC_URL_FALLBACK']),
+    gasLimit: resolveHeartbeatGasLimit(env),
   };
 }
 
@@ -96,6 +102,9 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   private readonly receiptTimeoutMs: number;
   private readonly convexWebhookUrl?: string;
   private readonly webhookSharedSecret?: string;
+  private readonly rpcUrl?: string;
+  private readonly advanceForkTime: boolean;
+  private readonly gasLimit?: bigint;
 
   constructor(cfg: RunnerHeartbeatConfig) {
     const pk = normalizePk(cfg.privateKey);
@@ -111,6 +120,9 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     this.receiptTimeoutMs = cfg.receiptTimeoutMs ?? 15_000;
     this.convexWebhookUrl = cfg.convexWebhookUrl;
     this.webhookSharedSecret = cfg.webhookSharedSecret;
+    this.rpcUrl = cfg.rpcUrl;
+    this.advanceForkTime = cfg.advanceForkTime ?? false;
+    this.gasLimit = cfg.gasLimit;
   }
 
   async callHeartbeat(): Promise<{ txHash: string }> {
@@ -122,6 +134,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         abi: CLAN_WORLD_ABI,
         functionName: 'heartbeat',
         args: [],
+        ...(this.gasLimit === undefined ? {} : { gas: this.gasLimit }),
       });
       // Wait for confirmation per the seam contract ("not fire-and-forget").
       const receipt = await this.publicClient.waitForTransactionReceipt({
@@ -139,10 +152,13 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         // instrumentation diagnoses this), revisit with decodeErrorResult on the
         // receipt revert data.
         const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
-        if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
+        if (
+          next !== undefined &&
+          await this.isNextHeartbeatStillFuture(next, receipt.blockNumber)
+        ) {
           throw new HeartbeatRateLimitedError(next);
         }
-        throw new Error(`heartbeat tx ${hash} reverted on-chain`);
+        throw new Error(`heartbeat tx ${hash} reverted on-chain; ${await this.heartbeatDiagnostics(receipt.blockNumber)}`);
       }
       await this.postHeartbeatWebhook({
         txHash: hash,
@@ -181,10 +197,10 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       // No decoded reason (e.g. a custom error with no ABI match) — only here do
       // we fall back to the timestamp heuristic for the rate-limit case.
       const next = await this.readNextHeartbeatAtTs().catch(() => undefined);
-      if (next !== undefined && next > Math.floor(Date.now() / 1000)) {
+      if (next !== undefined && await this.isNextHeartbeatStillFuture(next)) {
         throw new HeartbeatRateLimitedError(next);
       }
-      throw err;
+      throw await this.withHeartbeatDiagnostics(err);
     }
   }
 
@@ -198,6 +214,42 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     return Number(interval);
   }
 
+  async readChainNowMs(): Promise<number> {
+    // Latest block timestamp — anvil forks keep a persistent internal clock
+    // offset (evm_increaseTime survives for the node's lifetime), so chain
+    // time can sit minutes ahead of wall time while still advancing at wall
+    // pace. Scheduling against wall time then over-sleeps by the offset every
+    // cycle. Measured from the latest block, so it under-estimates by the age
+    // of that block — which only delays the next fire, never causes a
+    // rate-limited revert.
+    return this.readBlockTimestampMs();
+  }
+
+  async advanceForkTimeTo(targetUnixTs: number): Promise<boolean> {
+    if (!this.advanceForkTime) return false;
+    if (!this.rpcUrl) throw new Error('advanceForkTime requires an explicit RPC URL');
+    if (!isLocalForkRpcUrl(this.rpcUrl)) {
+      throw new Error(`advanceForkTime refused for non-local RPC URL: ${this.rpcUrl}`);
+    }
+
+    const latestUnixTs = Math.floor(await this.readChainNowMs() / 1000);
+    if (latestUnixTs >= targetUnixTs) return false;
+
+    try {
+      await this.sendForkRpc('evm_setNextBlockTimestamp', [toQuantityHex(targetUnixTs)]);
+    } catch {
+      const refreshedUnixTs = Math.floor(await this.readChainNowMs() / 1000);
+      if (refreshedUnixTs >= targetUnixTs) return false;
+      await this.sendForkRpc('evm_increaseTime', [toQuantityHex(targetUnixTs - refreshedUnixTs)]);
+    }
+    await this.sendForkRpc('evm_mine', []);
+    return true;
+  }
+
+  isForkTimeAdvanceEnabled(): boolean {
+    return this.advanceForkTime;
+  }
+
   async readNextHeartbeatAtTs(): Promise<number> {
     const state = await this.publicClient.readContract({
       address: this.contractAddress,
@@ -207,6 +259,68 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     });
     // viem decodes the named tuple into an object with the same field names.
     return Number((state as { nextHeartbeatAtTs: bigint }).nextHeartbeatAtTs);
+  }
+
+  private async isNextHeartbeatStillFuture(
+    nextHeartbeatAtTs: number,
+    blockNumber?: bigint | number | null,
+  ): Promise<boolean> {
+    // CLASSIFY AGAINST CHAIN TIME ONLY. This decides whether a mined/simulated
+    // revert is a benign rate-limit (still-in-window) vs. a real failure that
+    // must be surfaced to retry/alert. On an anvil fork wall-clock time can sit
+    // minutes off chain time (persistent evm_increaseTime offset), so a
+    // Date.now() fallback here MISCLASSIFIES reverts in both directions: it can
+    // mask a real revert as a benign rate-limit, or flip a genuine rate-limit
+    // into a hard failure. If we cannot read the actual on-chain block
+    // timestamp, we have NO basis to call this benign — fail CONSERVATIVELY by
+    // returning false so the caller surfaces the revert as a real failure.
+    const chainNowMs = await this.readBlockTimestampMs(blockNumber).catch(() => undefined);
+    if (chainNowMs === undefined) return false;
+    return nextHeartbeatAtTs * 1000 > chainNowMs;
+  }
+
+  private async readBlockTimestampMs(blockNumber?: bigint | number | null): Promise<number> {
+    const block = blockNumber === undefined || blockNumber === null
+      ? await this.publicClient.getBlock({ blockTag: 'latest' })
+      : await this.publicClient.getBlock({ blockNumber: BigInt(blockNumber) });
+    return Number(block.timestamp) * 1000;
+  }
+
+  private async sendForkRpc(method: string, params: unknown[]): Promise<unknown> {
+    if (!this.rpcUrl) throw new Error(`${method} requires an explicit RPC URL`);
+    const response = await fetch(this.rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params,
+      }),
+    });
+    if (!response.ok) throw new Error(`${method} failed: HTTP ${response.status}`);
+    const payload = await response.json() as { result?: unknown; error?: { message?: string } };
+    if (payload.error) throw new Error(`${method} failed: ${payload.error.message ?? 'RPC error'}`);
+    return payload.result;
+  }
+
+  private async withHeartbeatDiagnostics(err: unknown): Promise<Error> {
+    const diagnostics = await this.heartbeatDiagnostics().catch(diagErr =>
+      `diagnostics failed: ${messageFrom(diagErr)}`);
+    const error = new Error(`${messageFrom(err)}; ${diagnostics}`);
+    (error as Error & { cause?: unknown }).cause = err;
+    return error;
+  }
+
+  private async heartbeatDiagnostics(blockNumber?: bigint | number | null): Promise<string> {
+    const [chainNowMs, nextHeartbeatAtTs] = await Promise.all([
+      this.readBlockTimestampMs(blockNumber).catch(() => undefined),
+      this.readNextHeartbeatAtTs().catch(() => undefined),
+    ]);
+    const chainNowTs = chainNowMs === undefined ? 'unknown' : String(Math.floor(chainNowMs / 1000));
+    const nextTs = nextHeartbeatAtTs === undefined ? 'unknown' : String(nextHeartbeatAtTs);
+    const gasLimit = this.gasLimit === undefined ? 'auto' : this.gasLimit.toString();
+    return `heartbeat diagnostics: chainBlockTs=${chainNowTs} nextHeartbeatAtTs=${nextTs} wallTs=${Math.floor(Date.now() / 1000)} gasLimit=${gasLimit}`;
   }
 
   private async postHeartbeatWebhook(args: {
@@ -324,4 +438,54 @@ function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
   // Preserve protocol/port; strip trailing slash if URL had no explicit path.
   return url.toString().replace(/\/$/, '');
+}
+
+function shouldAdvanceForkTime(
+  env: NodeJS.ProcessEnv,
+  rpcUrl: string | undefined,
+): boolean {
+  if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '1') return isLocalForkRpcUrl(rpcUrl);
+  if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '0') return false;
+  return env['CHAIN_NETWORK'] === 'dev' && isLocalForkRpcUrl(rpcUrl);
+}
+
+function resolveHeartbeatGasLimit(env: NodeJS.ProcessEnv): bigint | undefined {
+  const raw = env['HEARTBEAT_GAS_LIMIT'];
+  if (raw !== undefined && raw !== '') return parsePositiveBigIntEnv('HEARTBEAT_GAS_LIMIT', raw);
+  return env['CHAIN_NETWORK'] === 'dev' ? 25_000_000n : undefined;
+}
+
+function isLocalForkRpcUrl(rpcUrl: string | undefined): boolean {
+  if (!rpcUrl) return false;
+  let url: URL;
+  try {
+    url = new URL(rpcUrl);
+  } catch {
+    return false;
+  }
+  const hostname = url.hostname.toLowerCase();
+  return hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname === 'host.docker.internal' ||
+    hostname === 'anvil-fork';
+}
+
+function toQuantityHex(value: number): `0x${string}` {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`invalid JSON-RPC quantity: ${value}`);
+  }
+  return `0x${value.toString(16)}`;
+}
+
+function parsePositiveBigIntEnv(name: string, raw: string): bigint {
+  if (!/^[1-9][0-9]*$/.test(raw)) {
+    throw new Error(`${name} must be a positive integer, got ${raw}`);
+  }
+  return BigInt(raw);
+}
+
+function messageFrom(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

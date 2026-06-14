@@ -161,7 +161,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
         setStrategy(ess.strategy);
         setNotes(ess.notes);
         setAuth('live');
-        pushToast('success', 'iNFT unsealed · welcome, ælder-keeper');
+        pushToast('success', 'NFT unsealed · welcome, ælder-keeper');
       }, decryptDuration);
     }, sealDelay);
   }, [agent.id, pushToast, tt]);
@@ -192,7 +192,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
       if (notes !== committedNotes) fields.push('notes');
       setEssenceStatus({
         kind: 'success',
-        body: `essence sealed · ${fields.join(' + ')} written to 0G`,
+        body: `essence sealed · ${fields.join(' + ')} written to agent memory`,
       });
     }, 900);
   }, [signing, strategy, notes, committedStrategy, committedNotes, tt]);

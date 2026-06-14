@@ -78,6 +78,25 @@ secrets:
   # Operator secret for enqueueing commands into the Convex bus.
   bus-operator:
     file: ${BUS_OPERATOR_SECRET_FILE:-./agents/secrets/bus-operator.key}
+  # Per-Elder MemWal (Walrus episodic memory) credentials — issue #692.
+  #
+  # Each file is a per-Elder credentials.json containing the Ed25519 DELEGATE
+  # private key + accountId + relayerUrl (provisioned by scripts/walrus/
+  # provision-elders.mjs). 🚨 These hold private keys — NEVER commit them.
+  # Defaults point at agents/secrets/ (gitignored). Operators should set
+  # MEMWAL_CREDS_FILE_N to the host provisioning path, e.g.
+  #   MEMWAL_CREDS_FILE_1=~/.secrets/clanworld-elder-walrus/elder-1/credentials.json
+  # The MemWal MCP reads ~/.memwal/credentials.json; run.sh's env-guard only
+  # launches the memwal server when MEMWAL_MCP_ENABLED=true, so a missing/dummy
+  # creds file is harmless while the flag is off (the default).
+  memwal-creds-1:
+    file: ${MEMWAL_CREDS_FILE_1:-./agents/secrets/memwal-creds-1.json}
+  memwal-creds-2:
+    file: ${MEMWAL_CREDS_FILE_2:-./agents/secrets/memwal-creds-2.json}
+  memwal-creds-3:
+    file: ${MEMWAL_CREDS_FILE_3:-./agents/secrets/memwal-creds-3.json}
+  memwal-creds-4:
+    file: ${MEMWAL_CREDS_FILE_4:-./agents/secrets/memwal-creds-4.json}
 
 # Shared building blocks (YAML anchors, NOT compose services).
 # Profiles let us reuse the same elder service block in both dev and prod with
@@ -185,7 +204,25 @@ services:
   # ---------------------------------------------------------------------------
   anvil-fork:
     image: ghcr.io/foundry-rs/foundry:v1.2.0
-    entrypoint: anvil
+    # The anvil_data named volume is created empty + root-owned, but the foundry
+    # image runs anvil as non-root uid 1000 (foundry). Without the chown below,
+    # anvil cannot write /data/anvil-state.json — it silently spams ~71MB
+    # timestamped state-dump snapshots into the container writable layer
+    # (~240GB observed) AND the fork never persists (re-forks on restart).
+    # Fix: start as root, chown /data to the foundry uid, then drop back to
+    # foundry via setpriv before exec'ing anvil. Result: a single overwriting
+    # /data/anvil-state.json, zero tmp dump accumulation, state survives restart.
+    # Same volume-ownership pattern as the Coolify ssh-dir chown-to-app-uid fix.
+    user: root
+    entrypoint:
+      - /bin/sh
+      # -e so a failed chown/setpriv fails the container loudly instead of
+      # silently exec'ing anvil into the original broken (root-owned) state.
+      - -ec
+      - |
+        chown foundry:foundry /data
+        exec setpriv --reuid foundry --regid foundry --init-groups anvil "$@"
+      - anvil
     command:
       - --host=0.0.0.0
       - --fork-url=${RPC_URL_PRIMARY:?RPC_URL_PRIMARY required for fork seed}
@@ -326,9 +363,17 @@ services:
       INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
       ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-1
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
+      # MemWal episodic memory (issue #692). Default OFF — run.sh only selects
+      # the elder+memwal MCP config when this is "true" AND the binary exists,
+      # so the live boot path is never broken by flipping this. Flip per-Elder
+      # via MEMWAL_MCP_ENABLED_1, or all four via MEMWAL_MCP_ENABLED.
+      MEMWAL_MCP_ENABLED: ${MEMWAL_MCP_ENABLED_1:-${MEMWAL_MCP_ENABLED:-false}}
+      # Default memory namespace pinned per-Elder for clean isolation.
+      MEMWAL_NAMESPACE: elder-1
     secrets:
       - bus-elder-1
       - elder-wallet-1
+      - memwal-creds-1
     volumes:
       # Shared bind-mount — entrypoint.sh execs /opt/clan-world/shared/run.sh
       # from this tree, and run.sh symlinks home-claude/{settings.json,CLAUDE.md}
@@ -372,9 +417,17 @@ services:
       INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
       ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-2
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
+      # MemWal episodic memory (issue #692). Default OFF — run.sh only selects
+      # the elder+memwal MCP config when this is "true" AND the binary exists,
+      # so the live boot path is never broken by flipping this. Flip per-Elder
+      # via MEMWAL_MCP_ENABLED_2, or all four via MEMWAL_MCP_ENABLED.
+      MEMWAL_MCP_ENABLED: ${MEMWAL_MCP_ENABLED_2:-${MEMWAL_MCP_ENABLED:-false}}
+      # Default memory namespace pinned per-Elder for clean isolation.
+      MEMWAL_NAMESPACE: elder-2
     secrets:
       - bus-elder-2
       - elder-wallet-2
+      - memwal-creds-2
     volumes:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-2-home:/home/elder/.claude
@@ -408,9 +461,17 @@ services:
       INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
       ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-3
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
+      # MemWal episodic memory (issue #692). Default OFF — run.sh only selects
+      # the elder+memwal MCP config when this is "true" AND the binary exists,
+      # so the live boot path is never broken by flipping this. Flip per-Elder
+      # via MEMWAL_MCP_ENABLED_3, or all four via MEMWAL_MCP_ENABLED.
+      MEMWAL_MCP_ENABLED: ${MEMWAL_MCP_ENABLED_3:-${MEMWAL_MCP_ENABLED:-false}}
+      # Default memory namespace pinned per-Elder for clean isolation.
+      MEMWAL_NAMESPACE: elder-3
     secrets:
       - bus-elder-3
       - elder-wallet-3
+      - memwal-creds-3
     volumes:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-3-home:/home/elder/.claude
@@ -444,9 +505,17 @@ services:
       INDEXER_SECRET: ${INDEXER_SECRET:?INDEXER_SECRET required for elder bulletin/cockpit writes}
       ELDER_WALLET_KEY_PATH: /run/secrets/elder-wallet-4
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
+      # MemWal episodic memory (issue #692). Default OFF — run.sh only selects
+      # the elder+memwal MCP config when this is "true" AND the binary exists,
+      # so the live boot path is never broken by flipping this. Flip per-Elder
+      # via MEMWAL_MCP_ENABLED_4, or all four via MEMWAL_MCP_ENABLED.
+      MEMWAL_MCP_ENABLED: ${MEMWAL_MCP_ENABLED_4:-${MEMWAL_MCP_ENABLED:-false}}
+      # Default memory namespace pinned per-Elder for clean isolation.
+      MEMWAL_NAMESPACE: elder-4
     secrets:
       - bus-elder-4
       - elder-wallet-4
+      - memwal-creds-4
     volumes:
       - ./agents/shared:/opt/clan-world/shared:ro
       - elder-4-home:/home/elder/.claude

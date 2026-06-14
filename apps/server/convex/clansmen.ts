@@ -115,6 +115,16 @@ export interface ClansmanRow {
   mission: string;
   location: string;
   eta: number | null;
+  /**
+   * Absolute wall-clock time (unix seconds) when the active mission settles, or
+   * null when idle/dead. Derived from the tick epoch relative to the current
+   * tick (tickEpochStartedAt + (settlesAtTick - currentTick) *
+   * tickDurationSeconds) — tickEpochStartedAt is when the *current* tick began,
+   * so the settle is projected forward from now. This lets the UI show a
+   * human-readable clock time ("ETA 3:42:10 AM") instead of a raw tick/timestamp
+   * number. The client formats this with the viewer's local timezone.
+   */
+  etaTs: number | null;
   cooldown: number;
   hunger: number;
   /**
@@ -123,6 +133,43 @@ export interface ClansmanRow {
    * clan reads as DEAD instead of "Idle / ready".
    */
   isDead: boolean;
+}
+
+/**
+ * Project a mission's settle *tick* onto wall-clock time (unix seconds) using
+ * the tick epoch, so the UI can render a real clock time ("ETA 3:42:10 AM")
+ * instead of a raw tick/timestamp number.
+ *
+ * etaTs = tickEpochStartedAt + (settlesAtTick - currentTick) * tickDurationSeconds
+ *
+ * CRITICAL: `tickEpochStartedAt` is the wall-clock time the *current* tick
+ * began (when `currentTick` started) — NOT tick 0. This matches the WorldMap
+ * fractional-tick formula, which treats it as "when the current tick began"
+ * (subTickProgress = (now - tickEpochStartedAt) / tickDuration). So the
+ * projection must be *relative to currentTick*: how many ticks the settle is
+ * from now, scaled by the tick duration. Projecting from a notional tick-0
+ * epoch (the pre-r2 `+ settlesAtTick * tickDurationSeconds`) renders every ETA
+ * hours off.
+ *
+ * Returns null when there's no live ETA (`eta === null`, i.e. idle/dead) OR
+ * when the tick epoch hasn't been surfaced yet (`tickEpochStartedAt <= 0`) — in
+ * the latter case the projection would be garbage/relative-to-zero, so we leave
+ * it null and let the tab fall back to the relative-ticks label rather than
+ * render a misleading 1970-epoch clock.
+ *
+ * Exported as a pure function so the derivation is unit-testable (and the test
+ * fails if the epoch-guard, the currentTick-relative projection, or the
+ * formula is reverted).
+ */
+export function deriveEtaTs(
+  eta: number | null,
+  settlesAtTick: number,
+  currentTick: number,
+  tickEpochStartedAt: number,
+  tickDurationSeconds: number,
+): number | null {
+  if (eta === null || tickEpochStartedAt <= 0) return null;
+  return tickEpochStartedAt + (settlesAtTick - currentTick) * tickDurationSeconds;
 }
 
 export const getClanClansmen = query({
@@ -202,6 +249,19 @@ export const getClanClansmen = query({
       const cooldownEndsAtTs = numberLike(fieldAt(clansman, "cooldownEndsAtTs"));
       const tickEpochStartedAt = numberLike(snap?.tickEpochStartedAt);
       const nowSeconds = tickEpochStartedAt + currentTick * tickDurationSeconds;
+
+      // Absolute wall-clock settle time (unix seconds). See deriveEtaTs: we
+      // project the settle *tick* onto the tick epoch so the UI can render a
+      // real clock time rather than a raw number. Null when idle/dead or when
+      // the epoch hasn't surfaced yet (tab falls back to the relative-ticks
+      // label in that case).
+      const etaTs = deriveEtaTs(
+        eta,
+        settlesAtTick,
+        currentTick,
+        tickEpochStartedAt,
+        tickDurationSeconds,
+      );
       const cooldown =
         cooldownEndsAtTs > nowSeconds
           ? Math.max(
@@ -225,6 +285,7 @@ export const getClanClansmen = query({
         // both fields are forced to a "no countdown" state so the row reads as
         // permanently fallen rather than "cooldown 3t / ready next tick".
         eta: isDead ? null : eta,
+        etaTs: isDead ? null : etaTs,
         cooldown: isDead ? 0 : cooldown,
         hunger,
         isDead,

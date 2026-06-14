@@ -61,7 +61,7 @@ export class FilePeerInbox implements IElderPeerInbox {
     const inboxKey = inboxKeyForClanId(toClanId);
     // PR #136 review #2 — path traversal: validate inbox key is a single safe path
     // segment before composing the filename. Rejects '..', '/', null bytes, and
-    // anything else that could escape the inboxDir. Mirrors axlPeerInbox's guard.
+    // anything else that could escape the inboxDir.
     assertSafeInboxKey(inboxKey);
     const file = path.join(this.inboxDir, `elder-${inboxKey}.jsonl`);
     fs.mkdirSync(path.dirname(file), { recursive: true });

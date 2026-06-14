@@ -331,7 +331,7 @@ EXAMPLES:
 const BULLETIN_POST_HELP = `elder bulletin post <msg...>
 
 Post a public bulletin for your clan. Bulletins are visible to every Elder and
-the iNFT Owner cockpit. Requires ELDER_N env var.
+the owner cockpit. Requires ELDER_N env var.
 
 EXAMPLES:
   elder bulletin post "Defense alliance forming. Bring wheat, I bring iron."

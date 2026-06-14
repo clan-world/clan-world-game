@@ -5,7 +5,7 @@ description: The canonical lean per-tick procedure for an Elder. 3 tool calls ma
 
 # Lean tick — your default per-tick routine
 
-The runner gives you ~60 seconds between ticks. If you spend 5+ minutes deliberating, you fall behind. This skill is your default response to a plain `TICK N Started` marker.
+The runner gives you ~30 seconds between ticks. If you spend 5+ minutes deliberating, you fall behind. This skill is your default response to a plain `TICK N Started` marker.
 
 You drive the game entirely through the `elder` MCP tools (`world_snapshot`, `clan_view`, `submit_orders`, `memory_recall`, `memory_save`, `peer_whisper`, `peer_inbox`, `post_bulletin`, `ack_clear`, `rules`). Call them as tools — never via bash.
 
@@ -26,7 +26,7 @@ You drive the game entirely through the `elder` MCP tools (`world_snapshot`, `cl
 
 Call `memory_recall` with key `active-strategy`.
 
-This pulls forward your most recent saved plan. **Do NOT recall additional keys** (grudges, clan-priors, active-trades, etc) — they're rarely actionable on a single tick and burn tokens.
+This pulls forward your most recent saved plan. **Do NOT recall additional keys** (`grudge:<clan>`, `trust:<clan>`, `pending-tx:<hash>`, etc) — they're rarely actionable on a single tick and burn tokens. (See the `memory-discipline` skill's HARD rules: at most one recall per tick.)
 
 ### Step 2: refresh state — OR SKIP if pre-fetched
 
@@ -38,7 +38,9 @@ That returns the full WorldSnapshot including your clan's clansmen, vault, missi
 
 ### Step 3: decide + submit
 
-Look at:
+**Allocate clansmen with the `clan-strategy` skill** — it's the decision procedure for this step. The 7-rung ladder (food → wood → build-monument → defense → trade → collaborate → collude) assigns each idle clansman to the first failing gate in ~6 cheap threshold comparisons against the snapshot you already have. Pull `clan-strategy` when a clansman's next task isn't obvious, monument progress stalls, winter is near, or you've fallen behind a rival's pace. Apply its **hysteresis** rule (stick on a rung 3–5 ticks) so you don't thrash and re-task mid-mission.
+
+In brief, look at:
 - Each clansman's `currentRegion` and `state` (3=Waiting means idle)
 - Vault levels vs caps (wood 15, iron 5, wheat 40, fish 8)
 - Wheat upkeep is 4 per tick at 4 clansmen — vault wheat ÷ 4 = ticks of food buffer

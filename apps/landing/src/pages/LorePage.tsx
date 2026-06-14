@@ -196,7 +196,7 @@ export default function LorePage() {
               the other.
             </p>
             <p className="pixel-marg" style={{ marginTop: '1.5rem' }}>
-              ⌬ formally: ERC-7857 iNFT, encrypted blob on 0G Storage, KV namespace bound to clan id
+              ⌬ formally: agent NFT, memory journal, clan-bound strategy state
             </p>
           </div>
         </div>
@@ -348,7 +348,7 @@ export default function LorePage() {
         </div>
 
         <p className="pixel-marg" style={{ display: 'inline-block', marginTop: '1rem' }}>
-          ⌬ public = 0g storage kv · private = gensyn axl · both mirrored to convex for the chronicle's view
+          ⌬ public bulletins · private whispers · mirrored to convex for the chronicle's view
         </p>
       </Chapter>
 
@@ -435,13 +435,14 @@ export default function LorePage() {
         </div>
 
         <p>
-          The bell is rung by an external <em>keeper</em> — in production, an
-          onchain workflow; in lore, a contracted servant who rings a literal
-          bell at the appointed hour. The bell is permissionless. If the keeper
-          fails, anyone may ring. If two ring at once, the bell rings only once.
+          The bell is rung by a tireless <em>runner</em> — in production, a
+          dockerized service that fires the heartbeat on a steady cadence; in
+          lore, a contracted servant who rings a literal bell at the appointed
+          hour. The bell is permissionless. If the runner fails, anyone may
+          ring. If two ring at once, the bell rings only once.
         </p>
         <p className="pixel-marg" style={{ display: 'inline-block' }}>
-          ⌬ heartbeat() · self-rate-limited · keeperhub on base, foundry loop on base sepolia
+          ⌬ heartbeat() · self-rate-limited · dockerized runner on base sepolia (30s)
         </p>
       </Chapter>
 

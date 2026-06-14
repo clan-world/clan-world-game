@@ -14,7 +14,7 @@ export default function Footer() {
               <em>allied autonomous-agent tracks</em>.
             </p>
             <p style={{ marginTop: '1rem' }} className="pixel">
-              ⌬ Built on Base · 0G
+              ⌬ Built on Base
             </p>
           </div>
 
@@ -32,7 +32,7 @@ export default function Footer() {
             <ul>
               <li><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub repository</a></li>
               <li><a href={`${GITHUB_URL}/tree/main/images`} target="_blank" rel="noopener noreferrer">Image archive</a></li>
-              <li><a href="https://docs.0g.ai/developer-hub/building-on-0g/inft/erc7857" target="_blank" rel="noopener noreferrer">ERC-7857 spec</a></li>
+              <li><a href="https://docs.base.org" target="_blank" rel="noopener noreferrer">Base docs</a></li>
             </ul>
           </div>
 
@@ -40,9 +40,7 @@ export default function Footer() {
             <h4>Powers</h4>
             <ul>
               <li><a href="https://uniswap.org" target="_blank" rel="noopener noreferrer">Uniswap</a></li>
-              <li><a href="https://0g.ai" target="_blank" rel="noopener noreferrer">0G Labs</a></li>
               <li><a href="https://base.org" target="_blank" rel="noopener noreferrer">Base</a></li>
-              <li><a href="https://gensyn.ai" target="_blank" rel="noopener noreferrer">Gensyn</a></li>
             </ul>
           </div>
         </div>

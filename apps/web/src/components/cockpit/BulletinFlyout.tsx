@@ -173,7 +173,7 @@ function PanelHeader({ onClose }: { onClose: () => void }) {
             color: tokens.text.onParchmentDim,
           }}
         >
-          Powered by 0G KV Storage
+          Public clan bulletins
         </div>
       </div>
       <button

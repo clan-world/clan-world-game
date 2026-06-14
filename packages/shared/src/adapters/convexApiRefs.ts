@@ -39,6 +39,20 @@ type SeedBulletinArgs = {
   txHash?: string;
 };
 
+type MirrorMemoryEntryArgs = {
+  secret: string;
+  clanId: number;
+  key: string;
+  value: string;
+  dataHash?: string;
+  source: 'local' | '0g' | 'demo' | 'walrus';
+  txHash?: string;
+  // Walrus provenance for the cockpit ProofChip — must stay aligned with the
+  // optional fields on the `inft.mirrorMemoryEntry` Convex mutation args.
+  blobId?: string;
+  accountId?: string;
+};
+
 type UpdateRunnerStatusArgs = {
   secret: string;
   runnerId: string;
@@ -60,6 +74,9 @@ type ClanWorldConvexApi = {
   };
   bulletins: {
     seedBulletin: PublicMutation<SeedBulletinArgs>;
+  };
+  inft: {
+    mirrorMemoryEntry: PublicMutation<MirrorMemoryEntryArgs, string>;
   };
   runnerStatus: {
     updateRunnerStatus: PublicMutation<UpdateRunnerStatusArgs, string>;

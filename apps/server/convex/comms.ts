@@ -4,7 +4,7 @@ import { requireIndexerSecret } from "./authShared";
 import { humanSteeringMessageInputFields, orchEventInputFields, whisperInputFields } from "./schema";
 
 /**
- * Combined Comms feed for one clan's AXL view.
+ * Combined Comms feed for one clan's private view.
  *
  * Joins three sources into a single tick-ordered list:
  *   - whispers WHERE fromClanId = clanId OR clanId IN toClanIds
@@ -63,7 +63,7 @@ export const getCombinedComms = query({
     const humans = humanMsgs.map(h => ({
       kind: "human" as const,
       tick: h.tick,
-      speaker: "iNFT Owner",
+      speaker: "Owner",
       body: h.body,
       timestamp: h.timestamp,
     }));

@@ -1,7 +1,6 @@
 import { Component } from 'react';
 import type { ReactNode } from 'react';
 import { Cockpit } from './pages/Cockpit';
-import { OwnerEditor } from './pages/OwnerEditor';
 import { AgentControlPage } from './pages/agent/AgentControlPage';
 import { WorldMapEmbed } from './components/WorldMapEmbed';
 
@@ -92,13 +91,6 @@ function isLegacyCockpitRoute(): boolean {
   );
 }
 
-function isOwnerRoute(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    window.location.pathname.startsWith('/owner')
-  );
-}
-
 /**
  * /agents/:agentId — single-agent control page (mobile-portrait first).
  * Pure mock — no real Solana wallet, no Convex. Routed here BEFORE any
@@ -137,9 +129,6 @@ export function App() {
         <AgentControlPage agentId={agentId} />
       </CockpitErrorBoundary>
     );
-  }
-  if (isOwnerRoute()) {
-    return <OwnerEditor />;
   }
   return <MainApp />;
 }

@@ -5,7 +5,27 @@ import path from 'node:path';
 import type { IChainClient, IConvexClient } from '@clan-world/shared/adapters';
 import type { ClanFullView, Tick, WorldSnapshot } from '@clan-world/shared';
 import { callElderTool } from '../src/mcp.js';
-import { ackFile, inboxFile } from '../src/cli.js';
+import { ackFile, inboxFile, memoryFile } from '../src/cli.js';
+import type { WalrusKvStore } from '../src/walrusKvStore.js';
+
+/** Minimal in-memory fake WalrusKvStore for wiring tests. */
+function makeWalrusKv(opts: {
+  available?: boolean;
+  saveOk?: boolean;
+  recallValue?: string | undefined;
+  onSave?: (key: string, value: string) => void;
+} = {}): WalrusKvStore {
+  return {
+    async isAvailable() { return opts.available ?? true; },
+    async save(key: string, value: string) {
+      opts.onSave?.(key, value);
+      return opts.saveOk === false
+        ? { ok: false as const, reason: 'fake-unavailable' }
+        : { ok: true as const, blobId: 'fakeblob' };
+    },
+    async recall(_key: string) { return opts.recallValue; },
+  } as unknown as WalrusKvStore;
+}
 
 const STUB_SNAPSHOT: WorldSnapshot = {
   tick: 9,
@@ -31,6 +51,7 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
     async postOrchEvent() {},
     async postHumanSteering() {},
     async postBulletin() {},
+    async mirrorMemoryEntry() {},
     ...overrides,
   };
 }
@@ -181,5 +202,88 @@ describe('elder MCP tools', () => {
 
     expect(out.content[0]?.text).toBe('ack cleared');
     expect(fs.existsSync(ackFile(4, tmpDir))).toBe(true);
+  });
+
+  it('memory_save writes the local file AND mirrors a successful Walrus save to Convex (source: walrus)', async () => {
+    const mirrors: Array<{ clanId: number; key: string; value: string; source: string }> = [];
+    let savedToWalrus: { key: string; value: string } | undefined;
+    const out = await callElderTool(
+      'memory_save',
+      { key: 'active-strategy', value: 'hold the ridge' },
+      {
+        convex: makeConvex({
+          async mirrorMemoryEntry(args) { mirrors.push(args); },
+        }),
+        chain: makeChain(),
+        env: { ELDER_N: '3' },
+        homeBase: tmpDir,
+        walrusKv: makeWalrusKv({ onSave: (key, value) => { savedToWalrus = { key, value }; } }),
+      },
+    );
+
+    expect(out.content[0]?.text).toBe('saved active-strategy');
+    // Local file path preserved.
+    const file = JSON.parse(fs.readFileSync(memoryFile(3, tmpDir), 'utf8'));
+    expect(file['active-strategy']).toBe('hold the ridge');
+    // Walrus write happened.
+    expect(savedToWalrus).toEqual({ key: 'active-strategy', value: 'hold the ridge' });
+    // Convex mirror happened with source "walrus" + the elder's clanId.
+    expect(mirrors).toEqual([
+      { clanId: 3, key: 'active-strategy', value: 'hold the ridge', source: 'walrus' },
+    ]);
+  });
+
+  it('memory_save still succeeds + writes the file when Walrus is unavailable (no mirror)', async () => {
+    const mirrors: unknown[] = [];
+    const out = await callElderTool(
+      'memory_save',
+      { key: 'k', value: 'v' },
+      {
+        convex: makeConvex({ async mirrorMemoryEntry(args) { mirrors.push(args); } }),
+        chain: makeChain(),
+        env: { ELDER_N: '1' },
+        homeBase: tmpDir,
+        walrusKv: makeWalrusKv({ saveOk: false }),
+      },
+    );
+
+    expect(out.content[0]?.text).toBe('saved k');
+    const file = JSON.parse(fs.readFileSync(memoryFile(1, tmpDir), 'utf8'));
+    expect(file['k']).toBe('v');
+    expect(mirrors).toEqual([]); // no mirror when Walrus save failed
+  });
+
+  it('memory_recall prefers a Walrus hit over the local file', async () => {
+    fs.mkdirSync(path.dirname(memoryFile(2, tmpDir)), { recursive: true });
+    fs.writeFileSync(memoryFile(2, tmpDir), JSON.stringify({ k: 'file-value' }));
+    const out = await callElderTool(
+      'memory_recall',
+      { key: 'k' },
+      {
+        convex: makeConvex(),
+        chain: makeChain(),
+        env: { ELDER_N: '2' },
+        homeBase: tmpDir,
+        walrusKv: makeWalrusKv({ recallValue: 'walrus-value' }),
+      },
+    );
+    expect(out.content[0]?.text).toBe('walrus-value');
+  });
+
+  it('memory_recall falls back to the local file when Walrus has no hit', async () => {
+    fs.mkdirSync(path.dirname(memoryFile(2, tmpDir)), { recursive: true });
+    fs.writeFileSync(memoryFile(2, tmpDir), JSON.stringify({ k: 'file-value' }));
+    const out = await callElderTool(
+      'memory_recall',
+      { key: 'k' },
+      {
+        convex: makeConvex(),
+        chain: makeChain(),
+        env: { ELDER_N: '2' },
+        homeBase: tmpDir,
+        walrusKv: makeWalrusKv({ recallValue: undefined }),
+      },
+    );
+    expect(out.content[0]?.text).toBe('file-value');
   });
 });

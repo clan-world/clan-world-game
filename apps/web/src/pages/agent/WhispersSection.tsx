@@ -41,7 +41,7 @@ interface Props {
 }
 
 /**
- * Whispers section — sealed-letter conversation between the iNFT owner
+ * Whispers section — sealed-letter conversation between the NFT owner
  * and their elder. Layout (chat-like):
  *
  *   ── ÆLDER WHISPERS ──

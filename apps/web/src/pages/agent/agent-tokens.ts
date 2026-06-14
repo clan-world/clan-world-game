@@ -29,7 +29,7 @@ export const agentTokens = {
     dim:   '#6b2614',             // muted ember (disabled)
   },
   rune: {
-    core:  '#5fc5d4',             // AI / iNFT / arcane signal
+    core:  '#5fc5d4',             // AI / NFT / arcane signal
     glow:  '#8ce0ec',             // pulse highlight
     deep:  '#2d6f7a',             // muted rune
   },

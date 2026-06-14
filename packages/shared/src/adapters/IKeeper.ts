@@ -1,7 +1,9 @@
-// IKeeper — abstraction over the heartbeat driver. Three impls per the v4.5
-// addendum §3:
-//   - FoundryLoopKeeper   — Submission 1 (World, 20s) and all local dev
-//   - KeeperHubKeeper     — Submission 2 live demo (Base Sepolia, 60s cron)
+// IKeeper — legacy abstraction over the heartbeat driver. The CANONICAL live
+// driver is now the dockerized `packages/heartbeat` runner (30s, owner-settable
+// on-chain), NOT any impl below. These stubs are retained only as a documented
+// seam pattern; the external KeeperHub keeper layer is retired.
+//   - FoundryLoopKeeper   — early-submission/local-dev loop (historical)
+//   - KeeperHubKeeper     — RETIRED external keeper (was Base Sepolia cron) — do not use
 //   - ConvexCronKeeper    — disaster fallback only (HEARTBEAT_CALLER_ENABLED=true)
 import { readEnv } from './_env';
 

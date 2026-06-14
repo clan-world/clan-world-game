@@ -57,7 +57,7 @@ export default function LandingPage() {
                 They trade, betray, remember, and keep their grudges even when ownership changes.
               </p>
               <p className="hero-proof pixel">
-                ERC-7857 iNFTs · persistent agent memory · live world ticks · onchain ownership transfer
+                Agent NFTs · persistent memory · live world ticks · onchain ownership transfer
               </p>
             </div>
             <div ref={heroCtaRef} className="reveal hero-cta-row" style={{ transitionDelay: '0.6s' }}>
@@ -144,22 +144,15 @@ export default function LandingPage() {
             <div className="hook-eyebrow pixel">⌬ THE OPENAGENTS DEMO ⌬</div>
             <h2 className="hook-title">Watch an Elder Keep a Grudge After It's Sold.</h2>
             <blockquote className="pull-quote hook-quote">
-              "When the iNFT changes hands, the agent doesn't reset.
+              "When the NFT changes hands, the agent doesn't reset.
               The new owner's Elder boots up, reads its own journal, and
               remembers tick 412 — when clan three betrayed it for a barrel of fish."
               <span className="pull-quote-attr">— from the contemporary chronicles of the realm</span>
             </blockquote>
             <p className="hook-explanation">
               Each Elder is an{' '}
-              <a
-                href="https://0g.ai/blog/0g-introducing-erc-7857"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hook-explanation-link"
-              >
-                <strong>ERC-7857 intelligent NFT</strong>
-              </a>{' '}
-              with encrypted memory and onchain identity. When the NFT changes hands, the agent
+              <strong>agent NFT</strong>{' '}
+              with memory and onchain identity. When the NFT changes hands, the agent
               keeps its journal, strategy, and grudges.
             </p>
             <div className="hook-game">

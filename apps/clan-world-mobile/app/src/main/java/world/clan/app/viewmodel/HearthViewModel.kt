@@ -202,9 +202,10 @@ class HearthViewModel(
 
     /**
      * Auto-refresh cadence for the Hearth snapshot. 30s is a balance
-     * between "feels live" and "burns the user's data" — Convex tick
-     * cadence is 20s in dev, 60s in S2 KeeperHub, so 30s catches at
-     * least one new tick most of the time.
+     * between "feels live" and "burns the user's data" — the on-chain
+     * heartbeat tick cadence is 30s (owner-settable; fired by the
+     * dockerized packages/heartbeat runner), so 30s catches roughly one
+     * new tick per refresh.
      */
     const val REFRESH_INTERVAL_MS = 30_000L
   }

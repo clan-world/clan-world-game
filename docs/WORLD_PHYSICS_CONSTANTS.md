@@ -22,8 +22,8 @@ The **tuning table** for ClanWorld: every adjustable number in the game engine, 
 
 | Constant | Current value | Meaning |
 |---|---|---|
-| `HEARTBEAT_INTERVAL_SECONDS` | 60 | Wall-clock seconds per heartbeat = 1 tick. Configurable up to 1h; 60s canonical. |
-| `SEASON_DURATION_TICKS` | 360 | Ticks per season = 6h at 60s/tick. |
+| `heartbeatIntervalSeconds()` | 30 | Wall-clock seconds per heartbeat = 1 tick. Owner-settable on-chain up to 1h (`setHeartbeatIntervalSeconds`); **30s is the current canonical cadence** (was 60s earlier in development). |
+| `SEASON_DURATION_TICKS` | 360 | Ticks per season = 3h at the current 30s/tick. |
 | `WINTER_START_TICK` | 110 | First winter opens at tick 110 (first winter completes at 120). |
 | `WINTER_DURATION_TICKS` | 10 | Winter lasts 10 ticks. |
 | `WINTER_PERIOD_TICKS` | 110 | Winter recurs every 110 ticks ("year" length). |
@@ -224,7 +224,7 @@ The **tuning table** for ClanWorld: every adjustable number in the game engine, 
 |---|---|---|
 | `memoryWipeTickInterval` | 50 | Elder context wiped every 50 ticks (same value as §2; agent-layer). |
 | `ANCIENT_WISDOM.md` | agent-writable | Workspace file read at session start. 🆕 intended read-only, updated via elder CLI only. |
-| Key-value scratchpad | persists across wipes | `elder memory save/recall`. ⚠️ designed for 0G iNFT storage — 🆕 0G being removed; backed by normal store in new engine. |
+| Key-value scratchpad | persists across wipes | `elder memory save/recall`; file-backed via `FileMemoryStore` at `~/.world/clanworld-runner/state/elder-{N}-memory.json`. Convex `memoryEntries` is a separate cockpit mirror — flushing Convex does NOT reset the scratchpad. |
 
 ## 12. Revival & admin recovery
 

@@ -6,6 +6,93 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+## [2.17.0] — 2026-06-14
+
+**Hackathon sprint.** ClanWorld is a live, fully on-chain strategy game where four autonomous AI "Elders" each run a clan on Base Sepolia. This release lands an encrypted, agent-owned memory backend on **Walrus**, a **Dynamic**-powered public mint flow, a controlled deceit-vs-honesty personality experiment, a root-cause fix for the chronic heartbeat stall, doubled game pacing, a 7-rung strategy doctrine, and a full docs overhaul. **Read the two sponsor stories first — Walrus encrypted agent memory and Dynamic wallet onboarding — everything else is the supporting cast that makes the live demo run.**
+
+### ✦ Sponsor highlight 1 — Walrus encrypted agent memory
+
+**What you'll see:** an Elder reasons about its clan, writes down what it learned, gets its entire context window wiped — then *recalls what it knew* and keeps playing as the same "self." Its memory lives encrypted on Walrus (Sui), owned by the agent, not by us.
+
+Each Elder is deliberately **wiped every 50 ticks** — its whole conversation history cleared. Without durable memory a wiped Elder is an amnesiac: it forgets its strategy, its grudges, its half-finished deals. Walrus closes that gap. Before a wipe the Elder consolidates what matters; after the wipe it recalls, **cross-checks the recollection against live chain state**, and resumes. Continuity of self across a hard reset is the thing to watch.
+
+Each Elder gets **two memory layers on Walrus, isolated per agent**:
+
+- **KV fact-book — `memory_save` / `memory_recall` (always live).** Exact key→value notes (`active-strategy`, `trust:iron-guard`, `pending-tx:0x…`), backed by Walrus through `packages/agents/src/walrusKvStore.ts`: a deterministic `kv:<key> = <value>` encoding written via the MemWal SDK's `rememberAndWait`, read back with a semantic `recall` that re-parses the tag and requires an **exact key match** before trusting a hit (a near-miss neighbour can never be returned as a wrong value). Successful writes return a Walrus **blobId**, mirrored to Convex (`source: "walrus"`) so the cockpit renders a proof chip on the live row.
+- **Episodic journal — `memwal_remember` / `memwal_recall` (conditional).** Free-text reflections with fuzzy semantic top-K recall — the *story and the lesson*, not the number ("clan-2 betrayed our trade at tick 30 — never deal with them unguarded"), tagged `[deal]`/`[threat]`/`[lesson]`. Served by a separate `memwal-mcp` stdio binary, gated per-Elder.
+
+**Per-Elder isolation is real:** one Elder == one MemWal account == one Ed25519 delegate == its own `elder-N` namespace; four mainnet accounts + delegates are provisioned. The live-wiring PR installs the `memwal-mcp` binary in-container, bridges per-Elder credentials from Docker secrets, opens egress to the Walrus relayer, and adds a Convex mirror + cockpit ProofChip showing each encrypted memory blob's Walrus blobId on the live dashboard. **It degrades gracefully** — missing creds or an unreachable relayer make `save` return `{ ok: false }` and `recall` return `undefined`; the Elder falls back to its local store and keeps playing. All calls are time-boxed so a hung relayer can't stall a tick. The remember/recall path is proven end-to-end (in-container smoke + tests; a real round-trip wrote and recalled a Walrus blob at semantic score 0.78). Two on-disk skills teach the agent to use it well: `memory-discipline` (the *name-the-key→KV, need-the-story→episodic* rule + stable key conventions) and `final-tick-continuity` (the pre-wipe checklist + post-wipe recall-then-verify ritual).
+
+> **Honest scope:** the episodic Walrus lane ships **default-off** (`MEMWAL_MCP_ENABLED=false`, graceful-degradation gated) — out of the box Elders boot with the always-on KV memory; demo with the flag on for the full two-layer story. The "unified-key" design (an Elder's Base/EVM game key also owning its Sui memory account) is landed as an *optional* mode, not the live default.
+
+### ✦ Sponsor highlight 2 — Dynamic wallet onboarding
+
+**What you'll see:** a visitor opens the public mint page, clicks **Connect a Sui wallet**, signs one transaction, and free-mints the ClanWorld logo NFT on Sui mainnet — no seed-phrase ceremony, no separate wallet app.
+
+[Dynamic](https://www.dynamic.xyz/) is the **wallet onboarding + connect + sign layer** for the public free-mint app (`apps/mint`). It handles the part that normally turns users away: connecting (or creating) a wallet and getting a transaction signed.
+
+- The app wraps itself in a **`DynamicContextProvider`** configured with **`SuiWalletConnectors`** (`apps/mint/src/main.tsx`), keyed by `VITE_DYNAMIC_ENVIRONMENT_ID` (injected at build, with a loud console error if missing).
+- A **`DynamicWidget`** renders the connect/sign UI; the mint button reads the connected wallet via **`useDynamicContext()` → `primaryWallet`** (`apps/mint/src/MintButton.tsx`).
+- The mint flow is defensive: it gates to **Sui mainnet** with an authoritative live network check, uses a synchronous re-entry lock against double-clicks, builds the `clan_logo_nft::mint` Move call, signs via the Dynamic wallet's `signAndExecuteTransaction`, then **confirms on-chain effects** (`status === 'success'`) before declaring success — a returned digest alone isn't trusted.
+- The mint app deploys as a **Walrus Site** nested under the game at `clanworld.wal.app/mint`, so wallet flow and world share one decentralized origin.
+
+> **Scope note:** Dynamic is **player-facing onboarding only** — there is no Dynamic usage in the Elder/agent runtime; Elders sign with their own provisioned keys.
+
+### ⚙ Stability — the heartbeat finally holds
+
+**What you'll see:** the game advances on a steady cadence instead of stalling. The chronic "heartbeat #652" flap is fixed at the root.
+
+The sprint chased and discarded three wrong theories (early-fire, frozen-clock, gas-estimation) before the real cause:
+
+- **Root cause: the runner wallet was out of gas on the anvil fork.** An empty `0x` revert while a plain `cast call` succeeds is the signature of insufficient funds, not a logic bug. Lesson banked: check balance first.
+- **Auto-funding at fork bootstrap** credits the runner wallet during fork setup, so gas-starvation can't recur on a fresh fork.
+- **Fork-time-advance** — the scheduler advances the fork's chain time before scheduling, fixing a ~63-minute phantom sleep.
+- **Wall-paced cadence** — cycles pace to wall-clock intervals (≈30s) instead of firing every ~4s in fork-advance mode.
+- **Rate-limit revert detection** — viem wraps reverts in `ContractFunctionExecutionError`; the scheduler now unwraps correctly so a rate-limited cycle takes the clean wait-for-window path.
+
+Supporting fixes: the **anvil state leak** (chown `/data` so `--state` writes one file instead of ~240GB of per-restart dumps), the **chain-clock anchor** for offset forks, and a **ready-probe fix** for Claude Code ≥2.1.x whose placeholder hint silently broke the tmux readiness check.
+
+### 🎮 Pacing — playable on a demo timeline
+
+**What you'll see:** clans gather and build fast enough to watch, instead of crawling.
+
+- **Heartbeat interval cut** and **gather yields doubled** (wood, iron, wheat, fish), deployed to Base Sepolia via a `diamondCut` REPLACE of the facets that inline these constants. Carry caps and upkeep left untouched (deliberate); the crit multiplier stays multiplicative so it auto-doubles with the base. (Constants were tuned across the sprint — read the live diamond for exact numbers.)
+- Cockpit polish: smaller ttyd terminal font, and the clansman action list now shows **human-readable ETAs and action names** instead of raw tick numbers.
+
+### 🧠 Personality — a controlled deceit-vs-honesty experiment
+
+**What you'll see:** four Elders in the *same* live world, two playing honest and two with bounded strategic deceit — a live A/B on whether deception wins or reliability outlasts it over a season.
+
+A **2×2 lab notebook** that deliberately separates *aggression* from *deceit* (verified in `runtime/elders/personalities/`):
+
+| Elder | Clan | Posture | Treatment |
+|-------|------|---------|-----------|
+| elder-1 | Storm Riders | Aggressive | **Honest control** — says what it'll do and does it; wins by force + tempo |
+| elder-2 | Iron Guard | Defensive | **Honest control** — reputation-for-reliability broker |
+| elder-3 | Crimson | Aggressive | **Deceitful** — loud, volatile opportunist (half-truths, feigned strength, long-con) |
+| elder-4 | Verdant Wardens | Defensive | **Deceitful** — quiet patient concealment in a warm honest-*seeming* voice |
+
+The headline contrast is the two *styles* of deceit (Crimson's loud volatility vs Verdant's quiet concealment); the two honest controls (one aggressive, one defensive) anchor the baseline so you can tell whether a winner's edge is *posture* or *honesty*. Deceit is **bounded by an explicit contract** — bluffing intent and feigning scarcity are allowed; lying about tool results, fabricating memories, or reneging on a paid defender contract is forbidden (anything that makes an agent look *broken rather than cunning*). Watch monument rung and trust-drift over the season for the outcome.
+
+### 🪜 Strategy — the 7-rung win ladder
+
+**What you'll see:** Elders that allocate clansmen with a clear doctrine instead of flailing — and still play with distinct personalities.
+
+A new on-disk `clan-strategy` skill gives every Elder a **strict-priority 7-rung allocator** — FOOD → WOOD → BUILD (monument) → DEFENSE → TRADE → COLLABORATE → COLLUDE — run as ~6 cheap threshold comparisons against the world snapshot it already fetched (no extra tool calls). The thesis: *you win by building the tallest monument fastest; survival is the gate, not the goal.* Crucially it's a **pressure allocator, not a personality replacement** — the deceit/honesty lean still owns every tie-break, so the four clans don't collapse into one generic optimizer (anti-monoculture by design). Long-form reasoning + the diplomacy playbook live in the sibling `LADDER.md`.
+
+### 📚 Docs & DX — readable from a cold start
+
+**What you'll see:** a README and doc set that describe the *real* current system, not stale hackathon scaffolding.
+
+- **README fully revamped** to reflect the real Base Sepolia diamond, Walrus encrypted memory, and Dynamic wallet integration — with the two sponsor stories headlined.
+- **Architecture doc** describing the current dockerized container topology, service roles, and data flows.
+- **Fresh-session checklist** — step-by-step operator guide for standing up a clean fork (wallet-funding order, service start sequence, the gotchas that bite first), plus a consolidated operator-levers runbook.
+- **Retired tech stripped** from runtime, env templates, contracts, schema, cockpit copy, and docs — legacy 0G memory/iNFT, Gensyn AXL transport, and World mini-app surfaces removed; stale runbooks archived.
+- **Contract test coverage expanded** — boundary conditions, untested revert paths, and call-order / front-run defenses for the diamond.
+- **CI path filters** so unrelated pushes skip the expensive contract/ABI/TypeChain jobs.
+
 ## [2.16.0] — 2026-05-26
 
 **WORLD_PHYSICS spec + real elder CLI.** A complete, code-verified game-engine specification — built collaboratively as a spec-alignment exercise (owner states intent → subagent verifies against the contracts → reconcile + cite, surfacing ~30 code-vs-intent gaps as the rebuild to-do) — plus the real elder CLI/MCP finally wired into the dockerized image.
