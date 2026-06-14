@@ -3,6 +3,10 @@
 # (legacy elders / auto-operator wallets) to dockerized elder wallets.
 # It intentionally transfers clans 1-4 away from their current owners. Never
 # run this against prod or any RPC that is not the dev anvil fork.
+#
+# It ALSO funds the heartbeat runner wallet on the fork (anvil_setBalance) so
+# the runner never goes gas-starved after a re-fork — reverted heartbeat txs
+# still burn gas, so the runner's balance drains over time and the world stalls.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -68,6 +72,20 @@ elder_address_for() {
 fund_account() {
   local address="$1"
   compose_cast rpc anvil_setBalance "$address" "$BALANCE_HEX" >/dev/null
+}
+
+# Derive the heartbeat runner address. Prefer deriving from RUNNER_PRIVATE_KEY
+# (sourced from .env / .env.local above, same key the heartbeat container uses)
+# so the funded address always tracks the configured runner wallet. If the key
+# is unavailable, fall back to the configurable HEARTBEAT_RUNNER_ADDRESS env var
+# which defaults to the known dev runner wallet.
+runner_address() {
+  local key="${RUNNER_PRIVATE_KEY:-}"
+  if [[ -n "$key" ]]; then
+    cast wallet address "$key"
+    return 0
+  fi
+  printf '%s\n' "${HEARTBEAT_RUNNER_ADDRESS:-0xBC34eB46EF3Ad429C3Bcef049dc8ccca6f786cc7}"
 }
 
 clan_owner() {
@@ -143,6 +161,15 @@ echo "[provision] DEV/ANVIL ONLY: transferring clans 1-4 to dockerized elder wal
 echo "[provision] This is the intended auto-operator/legacy-owner -> elder ownership hand-off."
 assert_dev_anvil_rpc
 fund_account "$PROVISIONER"
+
+# Fund the heartbeat runner wallet. Every reverted heartbeat tx still burns gas,
+# so the runner's balance bleeds out over time; without this it can run dry after
+# a re-fork and the world stalls (the freeze this step exists to prevent). Same
+# generous balance as the elders, dev/anvil-only (inside the guards above).
+RUNNER_ADDRESS="$(runner_address)"
+echo "[provision] funded heartbeat runner $RUNNER_ADDRESS"
+fund_account "$RUNNER_ADDRESS"
+
 warn_world_preflight "before ownership hand-off"
 
 for n in 1 2 3 4; do
@@ -182,6 +209,6 @@ for n in 1 2 3 4; do
   fi
 done
 
-echo "[provision] OK: elder wallets are funded and own clans 1-4 on the anvil fork."
+echo "[provision] OK: elder wallets + heartbeat runner ($RUNNER_ADDRESS) are funded and elders own clans 1-4 on the anvil fork."
 warn_world_preflight "after ownership hand-off"
 echo "[provision] IMPORTANT: run one real elder clan submit-orders smoke on this SAME anvil state before trusting autonomous elders."
