@@ -141,30 +141,32 @@ MCP_CONFIG_ELDER_ONLY="/opt/clan-world/shared/elder-mcp.elder-only.json"
 # Bridge the per-Elder MemWal credentials from the docker secret mount into the
 # location memwal-mcp reads ($HOME/.memwal/credentials.json). Docker secrets land
 # read-only at /run/secrets/<name>; memwal-mcp's auth.js resolves creds via
-# homedir() + "/.memwal/credentials.json", so we symlink. The secret-path
-# derivation and the symlink itself happen ONLY inside the enabled branch
-# below — `ELDER_ID` is already validated as required at the top of this
-# script (fail-closed, exit 2), but keeping the expansion out of the always-run
-# top scope avoids any set -u surprise on the live boot path.
-
-if [ "${MEMWAL_MCP_ENABLED:-false}" = "true" ] && [ -x "$MEMWAL_BIN" ]; then
-  # Link the per-Elder creds secret into the path memwal-mcp reads. Any failure
-  # here (missing secret, non-symlink file already present, R/O home) is
-  # NON-FATAL — we never want the live boot path to die for a creds glitch. On
-  # failure we keep the full config selected anyway: memwal-mcp then serves its
-  # auth-required stub (remember/recall return a login prompt) without crashing
-  # claude, and the elder + KV memory are unaffected.
-  MEMWAL_CREDS_SECRET="/run/secrets/memwal-creds-${ELDER_ID#elder-}"
-  MEMWAL_CREDS_DEST="$HOME/.memwal/credentials.json"
-  if [ -r "$MEMWAL_CREDS_SECRET" ]; then
-    if mkdir -p "$HOME/.memwal" 2>/dev/null && ln -sfn "$MEMWAL_CREDS_SECRET" "$MEMWAL_CREDS_DEST" 2>/dev/null; then
-      echo "[run.sh] MemWal creds linked: $MEMWAL_CREDS_SECRET -> $MEMWAL_CREDS_DEST"
-    else
-      echo "[run.sh] WARNING: failed to link MemWal creds ($MEMWAL_CREDS_SECRET -> $MEMWAL_CREDS_DEST). memwal-mcp will serve auth-required until creds resolve. Boot continues." >&2
-    fi
+# homedir() + "/.memwal/credentials.json", so we symlink. This linking is
+# DECOUPLED from MEMWAL_MCP_ENABLED on purpose: we link whenever the secret is
+# present so that enabling the flag later does NOT depend on creds-link ordering
+# (no boot replay, no race between flag flip and creds availability). `ELDER_ID`
+# is already validated as required at the top of this script (fail-closed,
+# exit 2), so referencing it here is safe under `set -u`. The whole block is
+# fully NON-FATAL — a missing/unreadable secret or a R/O home only warns and
+# continues; we never crash the live boot path for a creds glitch.
+MEMWAL_CREDS_SECRET="/run/secrets/memwal-creds-${ELDER_ID#elder-}"
+MEMWAL_CREDS_DEST="$HOME/.memwal/credentials.json"
+if [ -r "$MEMWAL_CREDS_SECRET" ]; then
+  if mkdir -p "$HOME/.memwal" 2>/dev/null && ln -sfn "$MEMWAL_CREDS_SECRET" "$MEMWAL_CREDS_DEST" 2>/dev/null; then
+    echo "[run.sh] MemWal creds linked: $MEMWAL_CREDS_SECRET -> $MEMWAL_CREDS_DEST"
   else
-    echo "[run.sh] WARNING: MEMWAL_MCP_ENABLED=true but creds secret $MEMWAL_CREDS_SECRET missing/unreadable — memwal-mcp will serve auth-required (no remember/recall) until creds present" >&2
+    echo "[run.sh] WARNING: failed to link MemWal creds ($MEMWAL_CREDS_SECRET -> $MEMWAL_CREDS_DEST). memwal-mcp will serve auth-required until creds resolve. Boot continues." >&2
   fi
+else
+  # No secret mounted for this Elder yet (expected under the default-off
+  # rollout). Non-fatal: if/when MemWal is enabled, memwal-mcp serves its
+  # auth-required stub (remember/recall return a login prompt) until creds
+  # appear; the elder + KV memory are unaffected.
+  echo "[run.sh] MemWal creds secret $MEMWAL_CREDS_SECRET absent/unreadable — skipping creds link (boot continues)"
+fi
+
+# --- MCP config selection (the ONLY part gated on MEMWAL_MCP_ENABLED) -------
+if [ "${MEMWAL_MCP_ENABLED:-false}" = "true" ] && [ -x "$MEMWAL_BIN" ]; then
   echo "[run.sh] MemWal enabled (flag set + binary present) — using elder+memwal MCP config"
   MCP_CONFIG="$MCP_CONFIG_FULL"
 else

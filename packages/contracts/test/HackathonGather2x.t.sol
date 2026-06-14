@@ -74,15 +74,15 @@ contract HackathonGather2xTest is Test {
         return world.getClansman(csId);
     }
 
-    /// @dev HEARTBEAT_INTERVAL is now 20s, so a single tick advance schedules
-    ///      the next heartbeat exactly 20s out.
-    function test_heartbeatIntervalIs20() public {
-        assertEq(world.heartbeatIntervalSeconds(), 20, "interval == 20");
+    /// @dev HEARTBEAT_INTERVAL is 30s (ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS),
+    ///      so a single tick advance schedules the next heartbeat exactly 30s out.
+    function test_heartbeatIntervalIs30() public {
+        assertEq(world.heartbeatIntervalSeconds(), 30, "interval == 30");
         uint64 before = world.getWorldState().nextHeartbeatAtTs;
         vm.warp(before);
         world.heartbeat();
         uint64 after_ = world.getWorldState().nextHeartbeatAtTs;
-        assertEq(after_, uint64(block.timestamp) + 20, "next heartbeat is +20s");
+        assertEq(after_, uint64(block.timestamp) + 30, "next heartbeat is +30s");
     }
 
     /// @dev WOOD non-crit yield is now 2e18/tick (was 1e18). Use prevrandao
