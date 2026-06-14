@@ -126,7 +126,10 @@ describe('context-reset tick modulo — boundary at 0, 1, 49, 50, 51, 99, 100', 
     const block = composeSituationBlock({ elder: 1, clanId: '1', tick: 50 });
     expect(block).toContain('TICK 50 Started');
     expect(block).toContain('FINAL TICK');
-    expect(block).toContain('elder ack-clear');
+    // Final-tick guidance: the wipe warning + the memory_save call-to-action.
+    // (Wording updated 2026-06-14 — was 'elder ack-clear', reworded in source.)
+    expect(block).toContain('message history is wiped after this tick');
+    expect(block).toContain('memory_save');
     // Must NOT also carry the rich-briefing copy (that's tick 51's job).
     expect(block).not.toContain('Fresh context');
   });
