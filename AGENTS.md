@@ -4,7 +4,7 @@ Top-level instructions for any agent (human or LLM) working in this repo. Keep t
 
 > **🚧 V3 — Post-ETHGlobal continuation.** Forked from `clan-world-v2` at tag `demo-2026-05-06` (HEAD `5503747`). Use this repo for active development. The v2 repo (`clan-world-v2`) is **frozen** at `demo-2026-05-06` for the May 6 ETHGlobal demo — do not modify it. v3 has its own Convex deployment (`valuable-kudu-985`) and its own diamond contract (set after first deploy).
 
-> **Active V3 scope:** Base Sepolia + 0G + AXL + KeeperHub. Historical mobile-app hackathon material is archived under `docs/archive/` and is not part of the active build.
+> **Active V3 scope:** Base Sepolia + Sui Walrus storage + agent memories + KeeperHub. Historical mobile-app hackathon material is archived under `docs/archive/` and is not part of the active build.
 
 ## 1. Project Overview
 
@@ -28,10 +28,10 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 
 | | Active V3 Demo |
 |---|---|
-| Track | OpenAgents Track 2 (iNFT transfer demo) |
+| Track | Sui Walrus storage + agent memories |
 | Chain | Base Sepolia |
 | Heartbeat | KeeperHub workflow, 60s ticks |
-| Stretch deps | 0G Storage KV, 0G iNFT (ERC-7857), AXL whispers, KeeperHub |
+| Stretch deps | Walrus storage, KeeperHub |
 
 ## 3. Gitflow Light — 4-level branching + strict trust gates
 
@@ -76,7 +76,7 @@ Every parallel stream talks to its dependencies through one of four adapter inte
 | `IChainClient` | contracts → all | `CLAN_WORLD_USE_STUB_CHAIN=true` | Wave 1 |
 | `IConvexClient` | backend → frontend, agents, orchestrator | `CLAN_WORLD_USE_STUB_CONVEX=true` | Wave 1 |
 | `IKeeper` | ops → orchestrator | `KEEPER_MODE=foundry-loop\|keeperhub\|convex` | Wave 2 (foundry-loop), Wave 5 (keeperhub) |
-| `ILLMClient` | agents → narrator/utility | `CLAN_WORLD_USE_STUB_LLM=true` | Submission 2 (ZeroG) |
+| `ILLMClient` | agents → narrator/utility | `CLAN_WORLD_USE_STUB_LLM=true` | Submission 2 |
 
 Pattern + worked example: `docs/conventions/adapter-interfaces.md`.
 
@@ -119,7 +119,7 @@ Start at the package-level `AGENTS.md` for whatever you're touching, then dive i
 **Reference (`docs/reference/`):**
 - `architecture-decisions.md` — every validated decision from the addendum
 - `prize-strategy.md` — OpenAgents Track 2 punchline
-- `sponsor-tech.md` — 0G Storage, ERC-7857, AXL, KeeperHub notes
+- `sponsor-tech.md` — storage and KeeperHub notes
 
 **Guides (`docs/guides/`):**
 - `stream-contracts.md` — Foundry workflow, deploy script, typechain
@@ -149,4 +149,3 @@ Start at the package-level `AGENTS.md` for whatever you're touching, then dive i
 - **Two-wallet model (S2):** treasury wallet for high-value ops is offline-signed; agent wallets are hot but capped.
 - **No secrets in commits.** `.env*` files (except `.env.template` and `.env.example`) are gitignored.
 - **Webhook auth:** keepers and Convex share a `WEBHOOK_SHARED_SECRET` header — do not log it.
-- **0G iNFT key custody (S2):** the iNFT transfer demo punchline depends on key authorization handover; treat the key blob as a secret artifact.

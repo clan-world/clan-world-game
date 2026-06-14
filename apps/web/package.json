@@ -14,7 +14,6 @@
     "playwright": "playwright"
   },
   "dependencies": {
-    "@clan-world/contract-types": "workspace:*",
     "@clan-world/shared": "workspace:*",
     "@clerk/backend": "^2.16.0",
     "@clerk/clerk-react": "^5.61.6",
@@ -23,8 +22,7 @@
     "pixi-viewport": "^6.0.3",
     "pixi.js": "^8.18.1",
     "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "viem": "^2.48.4"
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

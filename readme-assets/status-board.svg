@@ -113,7 +113,7 @@
           <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
           <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
         </g>
-        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">0G iNFT owner oracle (per-agent)</text>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">NFT owner oracle (per-agent)</text>
         <text x="44" y="40" font-size="12" fill="#5b3f1a">Source-of-truth ownership tied to Solana</text>
       </g>
       <g transform="translate(0, 116)">
@@ -122,7 +122,7 @@
           <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
           <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
         </g>
-        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Global iNFT manager on 0G</text>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Global NFT manager</text>
         <text x="44" y="40" font-size="12" fill="#5b3f1a">Indexes the whole agent fleet</text>
       </g>
       <g transform="translate(0, 172)">
@@ -131,8 +131,8 @@
           <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
           <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
         </g>
-        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Solana-signed → 0G paymaster relay</text>
-        <text x="44" y="40" font-size="12" fill="#5b3f1a">Validate signature on 0G, paymaster pays gas</text>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Solana-signed paymaster relay</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Validate signature, paymaster pays gas</text>
       </g>
       <g transform="translate(0, 228)">
         <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
@@ -141,7 +141,7 @@
           <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
         </g>
         <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Production marketplace settlement</text>
-        <text x="44" y="40" font-size="12" fill="#5b3f1a">Atomic Solana ↔ 0G iNFT swap</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Atomic Solana ↔ NFT swap</text>
       </g>
       <g transform="translate(0, 284)">
         <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
@@ -176,7 +176,7 @@
           <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
           <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
         </g>
-        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">SKR-priced limited iNFT drops</text>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">SKR-priced limited NFT drops</text>
         <text x="44" y="40" font-size="12" fill="#5b3f1a">Special editions for Seeker holders</text>
       </g>
       <g transform="translate(0, 508)">

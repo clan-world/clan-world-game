@@ -13,7 +13,6 @@ the demo tomorrow to bring the game back to a live, ticking state.
 - **Heartbeat loop**: stopped (`pkill -f clanworld-heartbeat-loop`)
 - **Runner**: tmux session `clanworld-runner` killed
 - **Elder REPLs**: 4 tmux sessions killed (`elder-1..4`)
-- **AXL containers**: still running (docker — they were paused-by-noise but no quota cost; if any died, run `cd ~/code/omnipass-world/clan-world-v2/infra/axl && docker compose up -d`)
 
 ## Revive sequence
 
@@ -29,20 +28,11 @@ This re-registers the `real-indexer-snapshot-refresh` (every 5s) and
 `real-indexer-log-poller` (every 3s) crons on the dev deployment. The
 cockpit will start reflecting fresh on-chain state once these run.
 
-### 2. Verify AXL docker mesh is up
-
-```bash
-docker ps --format "{{.Names}} {{.Status}}" | grep axl
-```
-
-Expect 4 containers `axl-axl-{1,2,3,4}-1` with `Up ... (healthy)`. If
-any are down: `cd ~/code/omnipass-world/clan-world-v2/infra/axl && docker compose up -d`.
-
-### 3. Start a fresh season (if desired)
+### 2. Start a fresh season (if desired)
 
 If the demo wants a fresh tick=0 start, redeploy the diamond. But if
 the existing diamond at tick ~178 is OK to demo, skip this — just
-proceed to step 4.
+proceed to step 3.
 
 To start a fresh season ON THE EXISTING DIAMOND: not possible without
 redeploy (clan state is shared across seasons; a fresh season just
@@ -50,7 +40,7 @@ resets ranking). To start AT TICK 0: redeploy. See
 `packages/contracts/script/Deploy.s.sol` and the codex-redeploy prompt
 template at `/tmp/codex-redeploy-prompt.md` (or recreate).
 
-### 4. Start the heartbeat loop
+### 3. Start the heartbeat loop
 
 ```bash
 setsid nohup ~/bin/clanworld-heartbeat-loop > /dev/null 2>&1 < /dev/null &
@@ -61,7 +51,7 @@ tail -3 /tmp/clanworld-heartbeat.log
 
 Should see `heartbeat OK gasUsed ... tx=...` within 60s.
 
-### 5. Start the runner
+### 4. Start the runner
 
 ```bash
 # IMPORTANT: clear the elder marker files BEFORE starting the runner.
@@ -77,13 +67,10 @@ tmux new-session -d -s clanworld-runner -c "$PWD" \
 
 # Verify
 sleep 12
-tmux capture-pane -t clanworld-runner -p | grep -E "memory=|peer="
+tmux capture-pane -t clanworld-runner -p | grep -E "runner|tick|heartbeat"
 ```
 
-Expected: `[runner] memory=local-file peer=axl`. If `peer=file`,
-AXL_API_KEY/AXL_NETWORK_ID/AXL_PEER_ID_CLAN_* are missing from `.env.local`.
-
-### 6. Start the 4 elder REPLs
+### 5. Start the 4 elder REPLs
 
 ```bash
 for n in 1 2 3 4; do
@@ -98,7 +85,7 @@ for n in 1 2 3 4; do
 done
 ```
 
-### 7. Verify game live
+### 6. Verify game live
 
 ```bash
 set -a; source ~/code/omnipass-world/clan-world-v2/.env.local; set +a
@@ -121,7 +108,6 @@ Expect all 4 elders at the same/adjacent tick within ~2 minutes.
 
 ## Known issues (carried over)
 
-- **0G mainnet save reverts** — `OG_STORAGE_ENABLED` is commented out in `.env.local`. Memory is file-based. Don't flip it back on without fixing the `FLOW_CONTRACT` estimate-gas revert (likely SDK/contract version mismatch). Investigate post-demo.
 - **Heartbeat loop death pattern** — fixed by dropping `set -euo pipefail` from `~/bin/clanworld-heartbeat-loop`. Loop now survives transient cast failures (rate-limit reverts during heartbeat throttle). See memory `feedback_bash_pipefail_grep_set_e_loop_death.md`.
 - **Runner duplicate-tick trap** — runner won't deliver to elders if `~/.world/clanworld-runner/state/elder-*-last-tick.txt` markers contain stale ticks > current chain tick. Always clear before runner start (step 5 above does this).
 - **Runner heartbeat reverts when loop is also running** — both runner and heartbeat-loop send `heartbeat()` with the deployer key. Whichever lands second reverts due to rate-limit. Harmless but noisy. For a clean log, can skip starting the loop (step 4) — the runner will heartbeat alone — but loop is recommended as redundancy in case runner crashes.

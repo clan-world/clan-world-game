@@ -41,13 +41,6 @@ cp .env.template .env.local
 | `VITE_CLAN_WORLD_USE_STUB_*=false` | hardcode | want real chain + real Convex by default |
 | `VITE_CLAN_WORLD_USE_STUB_LLM=true` | hardcode | LLM stubbed for local dev unless testing real elder loop |
 | `VITE_CLANWORLD_DEMO_MODE=false` | hardcode | demo mode is for hackathon submission only |
-| `ZERO_G_RPC_URL=https://evmrpc.0g.ai` | hardcode | 0G mainnet RPC |
-| `INDEXER_RPC=https://indexer-storage-turbo.0g.ai` | hardcode | 0G indexer |
-| `FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526` | hardcode | 0G flow contract (currently broken — see "Known Issues" below) |
-| `OG_STORAGE_ENABLED` | leave commented out | 0G save reverts at gas estimate; using FileMemoryStore fallback for now |
-| `AXL_API_KEY` | any non-empty string for local | bearer auth, local dev |
-| `AXL_NETWORK_ID=testnet` | hardcode | |
-| `AXL_NODE_URL_CLAN_1..4` + `AXL_PEER_ID_CLAN_1..4` | run `infra/axl/setup.sh` after `docker compose up -d` to generate | per-clan AXL nodes; only needed if running peer whispers locally |
 | `KEEPER_MODE=foundry-loop` | hardcode | game-day operator mode |
 | `HEARTBEAT_CALLER_ENABLED=false` | hardcode | runner heartbeat disabled (loop runs separately) |
 | `CLANWORLD_USE_FAKE_HEARTBEAT=false` | hardcode | use real chain heartbeat |
@@ -106,7 +99,6 @@ Phase branches bundle features. Open feature PRs against the active phase branch
 
 ## 6. Known issues / gotchas
 
-- **0G mainnet save reverts.** The `submit()` call on `FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526` reverts at gas estimate even though all 4 elder wallets have full 50 0G balance. Likely SDK/contract version drift. Workaround: leave `OG_STORAGE_ENABLED` commented out; runner falls back to `FileMemoryStore` (local JSON at `~/.world/clanworld-runner/state/elder-N-memory.json`). Game works fully without 0G persistence, just doesn't survive runner restarts.
 - **Heartbeat loop must drop `set -e` + `pipefail`.** See `~/bin/clanworld-heartbeat-loop` and memory `feedback_bash_pipefail_grep_set_e_loop_death.md` — bash daemons that pipe through grep on flaky-RPC output silently die in 15-30min if `pipefail` is set.
 - **Runner duplicate-tick trap.** If `~/.world/clanworld-runner/state/elder-*-last-tick.txt` markers contain stale ticks > current chain tick, the runner won't deliver new tick events to elders. Always clear before `runner start`: `rm -f ~/.world/clanworld-runner/state/elder-*-last-tick.txt`.
 - **`convex deploy` ≠ `convex dev --once`.** `convex deploy` creates/updates a separate **PROD** deployment (not what you want for dev). Use `convex dev --once` to push code/env changes to your existing dev deployment. Memory: `feedback_convex_deploy_vs_dev_once.md`.

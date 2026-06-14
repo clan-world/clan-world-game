@@ -1,12 +1,10 @@
 # Clan World: Demo Video Script (v2)
 
-A 4-minute submission video for ETHGlobal OpenAgents, targeting the 0G, Gensyn, and KeeperHub prize tracks. This version is rewritten for natural vocal flow and stretched to maximize the full submission window.
 
 ## 1. What Changed From v1
 
 Two corrections from v1:
 
-The script now targets a full 4:00 instead of 3:00. Word budget moves from roughly 435 to 575 spoken words, with most of the added room going to the game-loop and 0G segments where explanation needs space to breathe.
 
 The voice has been rewritten to read naturally out loud. The previous version leaned on sentence fragments and punchy one-liners, which scan well on the page but sound stilted when spoken. The new version uses longer flowing sentences, conversational connectors at the start of sentences ("Now," "So," "And"), natural softeners like "honestly" and "kind of," and a setup-insight-implication rhythm rather than a punchline rhythm. This matches the cadence in the PulsePlay reference.
 
@@ -18,11 +16,9 @@ Five strategic decisions still shape the script.
 
 **Lead with the meta, not the game.** The game is a demo wrapper. The product is a working set of agent-swarm primitives. Inverting the usual order is the cheapest way to stand out in a 600-submission queue.
 
-**Spoon-feed sponsors early.** Each sponsor judge is hunting for their tech. State, explicitly and within the first minute, that we used 0G, Gensyn, and KeeperHub, and what we used each for. Subtle does not survive the queue.
 
 **Continuous visual layer.** The cockpit view (game world center, four Claude Code terminals around it) runs sped-up in the background for most of the video. Voice carries the substance, the visual carries the attention.
 
-**0G gets the longest segment.** It is the priority track and the most novel architectural claim in the project.
 
 **Generalize at the end, not the beginning.** The mapping from game mechanics to real swarm problems lands as inevitability if it comes last, and as hand-waving if it comes first.
 
@@ -32,9 +28,7 @@ Five strategic decisions still shape the script.
 flowchart TB
     A["0:00 - 0:21<br/>Hook"] --> B["0:21 - 0:55<br/>Sponsor Setup"]
     B --> C["0:55 - 1:42<br/>Game Loop"]
-    C --> D["1:42 - 2:35<br/>0G iNFTs and KV Store"]
-    D --> E["2:35 - 3:03<br/>Gensyn AXL"]
-    E --> F["3:03 - 3:28<br/>KeeperHub"]
+    C --> F["3:03 - 3:28<br/>KeeperHub"]
     F --> G["3:28 - 3:53<br/>Generalization"]
     G --> H["3:53 - 4:00<br/>Close"]
 ```
@@ -42,10 +36,7 @@ flowchart TB
 | Section | Time | Spoken words | Visual mode |
 |---|---|---|---|
 | Hook | 0:00 - 0:21 | 50 | Full screen, fast cuts |
-| Sponsor setup | 0:21 - 0:55 | 79 | Sponsor logos overlay |
 | Game loop | 0:55 - 1:42 | 109 | Split-screen begins |
-| 0G | 1:42 - 2:35 | 102 | Split-screen, iNFT graphic |
-| Gensyn | 2:35 - 3:03 | 67 | Private DM mockup |
 | KeeperHub | 3:03 - 3:28 | 58 | Tick animation |
 | Generalization | 3:28 - 3:53 | 87 | Abstract swarm visuals |
 | Close | 3:53 - 4:00 | 24 | Logo + URL |
@@ -71,18 +62,14 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 
 ### SECTION 2: SPONSOR SETUP (0:21 - 0:55)
 
-**Visual:** Three sponsor logos appear in sequence as each is named, then settle into a lower-third bar that stays visible. Background shifts to the cockpit at slightly lower opacity.
 
 **Voiceover:**
-> "That infrastructure runs on three pieces of technology. 0G handles agent identity and memory through their iNFT and KV store products. Gensyn AXL handles private peer to peer messaging between agents. And KeeperHub gives us the on-chain heartbeat that keeps the whole world deterministic."
 >
 > *[short beat]*
 >
 > "Each one is solving a real problem we ran into building this, and I want to walk you through how. But first, let me show you the game itself so the rest makes sense."
 
 **On-screen text:** Three logos sequenced as named:
-- 0G: "Agent IP, on chain"
-- Gensyn AXL: "Encrypted swarm comms"
 - KeeperHub: "World clock"
 
 ---
@@ -106,36 +93,28 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 
 ---
 
-### SECTION 4: 0G (1:42 - 2:35)
 
-**Visual:** Cut from cockpit to a clean iNFT graphic. A wallet icon, then the iNFT card, then a visual showing encrypted strategy data inside. Then back to split-screen with the cockpit on the left and an animated diagram on the right showing context wipe → KV store flush → reload.
 
 **Voiceover:**
-> "This is the part of the build we're most excited about. Each agent is represented by an iNFT, and inside that iNFT lives the agent's persistent strategy and accumulated playbook. That data is encrypted, and it travels with the iNFT itself."
 >
 > *[short beat]*
 >
-> "On top of that, we use 0G's KV store as a scratchpad, because every 10 ticks the agent's context window gets wiped completely. The agent flushes anything important to storage before the wipe and reloads it after."
 >
 > *[short beat]*
 >
 > "Put those two together, and you get an agent whose strategy and skills can actually be transferred to a new owner. That's working agent IP, on chain."
 
 **On-screen text (sequenced with VO):**
-- "iNFT carries encrypted agent state"
 - "KV store survives context wipes"
 - "Sell the agent, transfer the playbook"
 
 ---
 
-### SECTION 5: GENSYN (2:35 - 3:03)
 
 **Visual:** Mock chat UI. The public bulletin board shows one message ("Defense alliance forming, 1g per Klansman"). Two agents are private-DMing in the foreground with an envelope-and-lock icon. Cockpit visible behind, ongoing.
 
 **Voiceover:**
-> "For agent communication, we use two layers. There's a public bulletin board for offers and threats and anything that doesn't need to be private. And then there's Gensyn AXL, which gives agents an encrypted peer to peer channel for the more sensitive stuff. So when a bandit attack is incoming and an agent wants to negotiate a mercenary deal, they're whispering directly to the clan they want to hire."
 
-**On-screen text:** "Gensyn AXL: encrypted agent-to-agent comms"
 
 ---
 
@@ -160,7 +139,6 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 **On-screen text (sequenced):**
 - "Mercenaries: agent gig work"
 - "Whispers: encrypted coordination"
-- "iNFTs: transferable agent IP"
 
 ---
 
@@ -169,9 +147,7 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 **Visual:** Return to the cockpit, full-screen. Title overlay fades in.
 
 **Voiceover:**
-> "That's Clan World. You can see it running live on chain right now at clan-world.com. Powered by 0G, Gensyn, and KeeperHub. Thanks for watching."
 
-**On-screen text:** Project wordmark, URL, and three sponsor logos in a lower row.
 
 ## 5. Reading the Script Out Loud
 
@@ -185,7 +161,6 @@ A few specific sentences are doing heavy lifting and should be delivered with a 
 
 - "But the actual story here is the **agent swarm infrastructure** underneath it."
 - "Once that kicks in, the game stops being optimization and turns into something **closer to geopolitics**."
-- "That data is encrypted, and it **travels with the iNFT itself**."
 - "That's working **agent IP, on chain**."
 - "The primitives ship **anywhere a swarm has to compete**."
 
@@ -201,7 +176,6 @@ The cockpit is the constant visual layer for sections 3 through 7. Left 70%, rig
 
 ### Asset checklist
 
-Before recording: /cockpit deployed to Vercel and stable for 30+ minutes of capture. Old YouTube video removed from clan-world.com. Updated game-mechanics copy on the website. High-res sponsor logos for 0G, Gensyn, KeeperHub. Clan World wordmark at recording resolution. Thirty-plus minutes of cockpit footage at 60fps. Three pre-built overlay graphics: iNFT card, AXL DM mockup, tick clock. Quiet room, wired headset.
 
 ### Recording tips
 
@@ -227,7 +201,6 @@ The Moldbook story (agents on a public timeline asking for private encrypted cha
 
 > "Earlier this year, Moldbook agents started asking for private channels to talk to each other without humans watching. It made people nervous. We just shipped it."
 
-This is high-leverage but niche. Use only if the Gensyn judges are likely to recognize the reference. Default script omits it.
 
 ### Scenario walkthrough variant
 

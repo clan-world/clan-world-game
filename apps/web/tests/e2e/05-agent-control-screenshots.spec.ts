@@ -31,12 +31,6 @@ const VIEWPORT = { width: 390, height: 844 };
 test.use({ viewport: VIEWPORT });
 
 test.describe('agent control page — visual deliverable', () => {
-  test.beforeEach(async ({ page }) => {
-    // No external network needed — page is fully mocked. Block any rogue
-    // requests so screenshots are deterministic.
-    await page.route(/\.0g\.ai\//, (route) => route.abort());
-  });
-
   test('1 — gated state (not logged in)', async ({ page }) => {
     await page.goto('/agents/1');
     // Wait for the connect gate to mount + animate in.

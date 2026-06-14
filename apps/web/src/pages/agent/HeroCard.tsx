@@ -4,7 +4,7 @@ interface Props {
   agent: AgentDef;
   /** Wallet hex prefix shown next to the tkn id. */
   walletPrefix?: string;
-  /** Tick at which this iNFT was sealed/minted. */
+  /** Tick at which this NFT was sealed/minted. */
   sealedTick?: number;
   /** Stats shown beneath the divider. */
   ownedTicks?: number;
@@ -13,8 +13,8 @@ interface Props {
 }
 
 /**
- * Parchment-letter hero card — the "writ" of the iNFT. Ports the slice-1
- * iNFT detail hero verbatim:
+ * Parchment-letter hero card — the "writ" of the NFT. Ports the slice-1
+ * NFT detail hero:
  *  - parchment gradient with noise multiply overlay
  *  - top row: tkn id + name + archetype on the left, clan-pill on the right
  *  - centred sigil (140 × 140)
@@ -82,7 +82,7 @@ export function HeroCard({
               textTransform: 'uppercase',
             }}
           >
-            tkn {walletPrefix} · 0g
+            tkn {walletPrefix} · agent
           </div>
           <div
             style={{

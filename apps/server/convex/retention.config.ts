@@ -51,7 +51,6 @@ export const TIME_WINDOW_TABLES = [
   "tickHistory",
   "memoryEvents",
   "goldTxReceipts",
-  "inftTransfers",
 ] as const;
 
 export type TimeWindowTable = (typeof TIME_WINDOW_TABLES)[number];

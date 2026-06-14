@@ -196,7 +196,7 @@ export default function LorePage() {
               the other.
             </p>
             <p className="pixel-marg" style={{ marginTop: '1.5rem' }}>
-              ⌬ formally: ERC-7857 iNFT, encrypted blob on 0G Storage, KV namespace bound to clan id
+              ⌬ formally: agent NFT, memory journal, clan-bound strategy state
             </p>
           </div>
         </div>
@@ -348,7 +348,7 @@ export default function LorePage() {
         </div>
 
         <p className="pixel-marg" style={{ display: 'inline-block', marginTop: '1rem' }}>
-          ⌬ public = 0g storage kv · private = gensyn axl · both mirrored to convex for the chronicle's view
+          ⌬ public bulletins · private whispers · mirrored to convex for the chronicle's view
         </p>
       </Chapter>
 

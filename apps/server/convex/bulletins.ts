@@ -3,9 +3,8 @@ import { v } from "convex/values";
 import { requireIndexerSecret } from "./authShared";
 
 /**
- * Bulletins query layer. The bulletins table itself was added in an earlier
- * milestone (0G KV storage proofs); this file adds the cockpit-side queries
- * + a seed mutation for local testing.
+ * Bulletins query layer. This file adds the cockpit-side queries plus a seed
+ * mutation for local testing.
  *
  * Slot semantics: each clan gets a bounded ring of bulletin slots. `slot`
  * monotonically increments with each post; `updatedAt` is the wall-clock

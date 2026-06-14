@@ -1,6 +1,5 @@
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
-import { useMemo } from 'react';
 import { useSafeQuery as useQuery } from '../../../hooks/useSafeQuery';
 import { api } from '../../../../../server/convex/_generated/api';
 
@@ -45,14 +44,6 @@ const STUB_BULLETINS: BulletinRow[] = [
   { age: '5t', body: '"Crimson moves — watch the river."'  },
 ];
 
-interface DemoInftState {
-  tokenId: string;
-  owner: string;
-  dataHash: string;
-  notes?: string;
-  data?: Array<{ label: string; dataHash: string; uri: string }>;
-}
-
 /** Coerce the stored bulletin slot/updatedAt pair into a short "Nt" age label. */
 function bulletinAge(slot: number, currentSlot: number): string {
   const diff = Math.max(0, currentSlot - slot);
@@ -60,17 +51,6 @@ function bulletinAge(slot: number, currentSlot: number): string {
 }
 
 export function ZeroGTab({ elder, testIdPrefix }: Props) {
-  const demoState = useMemo<DemoInftState | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const raw = window.localStorage.getItem(`clanworld:inft-demo:${elder.clanId}`);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as DemoInftState;
-    } catch {
-      return null;
-    }
-  }, [elder.clanId]);
-
   // ─── Live Convex queries with stub fallback ────────────────────────────
   // Every section follows the same discipline as CommsTab:
   //   - useQuery returns undefined while loading → fallback to stub
@@ -81,17 +61,12 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
   const liveEvents = useQuery(api.memory.getEventsByClan, { clanId: elder.clanId });
   const liveBulletins = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
 
-  // KV state: prefer iNFT demo localStorage if present (legacy demo path),
-  // else live memoryEntries, else stub. The iNFT-demo branch wins because
-  // the existing demo flow writes a hand-crafted state-root we want to show.
+  // KV state: prefer live memoryEntries, else stub.
   const memorySource: 'live' | 'stub' =
-    demoState?.data && demoState.data.length > 0
-      ? 'stub'
-      : liveMemory && liveMemory.length > 0
+    liveMemory && liveMemory.length > 0
         ? 'live'
         : 'stub';
   const kvRows: KvRow[] =
-    demoState?.data?.map((entry) => ({ key: entry.label, value: entry.uri })) ??
     (liveMemory && liveMemory.length > 0
       ? liveMemory.map((m) => ({ key: m.key, value: m.value }))
       : STUB_KV);
@@ -137,9 +112,9 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
         gap: tokens.space.md,
       }}
     >
-      {/* iNFT metadata */}
+      {/* NFT metadata */}
       <section>
-        <SectionHeader>iNFT — Elder #{elder.clanId}</SectionHeader>
+        <SectionHeader>NFT — Elder #{elder.clanId}</SectionHeader>
         <div
           style={{
             marginTop: tokens.space.sm,
@@ -150,19 +125,18 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
             fontSize: '10px',
           }}
         >
-          <Field k="token_id"     v={demoState?.tokenId ?? `0x${(0xe1de7000 + elder.clanId).toString(16)}`} />
-          <Field k="owner"        v={demoState?.owner ?? 'demo-owner'} />
+          <Field k="token_id"     v={`0x${(0xe1de7000 + elder.clanId).toString(16)}`} />
+          <Field k="owner"        v="demo-owner" />
           <Field k="archetype"    v={elder.archetype} />
-          <Field k="state_root"   v={demoState?.dataHash ?? '0xa1b2…f7e9'} />
-          <Field k="encrypted"    v="◉ tee-attested" />
+          <Field k="state_root"   v="local-memory" />
           <Field k="version"      v="v0.4.6" />
         </div>
       </section>
 
-      {/* KV state + memory CRUD side-by-side on wide, stacked on narrow */}
+      {/* Walrus memory sections side-by-side on wide, stacked on narrow */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: tokens.space.md }}>
         <div data-testid={`${testIdPrefix}-0g-kv`} data-source={memorySource}>
-          <SectionHeader>kv state</SectionHeader>
+          <SectionHeader>Walrus KV State</SectionHeader>
           <div
             style={{
               marginTop: tokens.space.sm,
@@ -190,17 +164,8 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
           </div>
         </div>
 
-        {demoState?.notes && (
-          <div>
-            <SectionHeader>owner notes</SectionHeader>
-            <p style={{ margin: `${tokens.space.sm} 0 0`, fontSize: '11px', lineHeight: 1.4 }}>
-              {demoState.notes}
-            </p>
-          </div>
-        )}
-
         <div data-testid={`${testIdPrefix}-0g-crud`} data-source={eventsSource}>
-          <SectionHeader>memory CRUD</SectionHeader>
+          <SectionHeader>Walrus Memory CRUD</SectionHeader>
           <ul
             style={{
               listStyle: 'none',

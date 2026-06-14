@@ -1,8 +1,7 @@
 /**
  * Shared auth helper for public mutations that must be gated by INDEXER_SECRET.
  *
- * Pattern mirrors `inft.ts.requireIndexerSecret`: callers (orchestrator,
- * indexer, demo seed scripts) pass `secret: <string>` as a mutation arg, and
+ * Callers (orchestrator, indexer, demo seed scripts) pass `secret: <string>` as a mutation arg, and
  * the handler calls this helper before doing any writes. If INDEXER_SECRET is
  * unset on the Convex deployment, mutations reject all writes (fail-closed).
  *

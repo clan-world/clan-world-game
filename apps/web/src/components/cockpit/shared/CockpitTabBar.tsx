@@ -14,7 +14,7 @@ export const TABS: ReadonlyArray<TabDef> = [
   { id: 'terminal', icon: '▣', label: 'TERM' },
   { id: 'vault',    icon: '◈', label: 'VAULT' },
   { id: 'clansman', icon: '☗', label: 'CLAN' },
-  { id: '0g',       icon: '◉', label: '0G' },
+  { id: '0g',       icon: '◉', label: 'AGENT' },
   { id: 'comms',    icon: '✉', label: 'COMMS' },
   { id: 'admin',    icon: '⚙', label: 'ADMIN' },
 ];

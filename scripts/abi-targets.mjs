@@ -24,11 +24,6 @@ export const abiTargets = [
     artifactPath: path.join(repoRoot, 'packages/contracts/out/IClanWorldLens.sol/IClanWorldLens.json'),
     targetPath: path.join(repoRoot, 'packages/contracts/abi/IClanWorldLens.json'),
   },
-  {
-    sourcePath: 'src/ClanAgentNFT.sol',
-    artifactPath: path.join(repoRoot, 'packages/contracts/out/ClanAgentNFT.sol/ClanAgentNFT.json'),
-    targetPath: path.join(repoRoot, 'packages/contracts/abi/ClanAgentNFT.json'),
-  },
   // Diamond / Ownership facet ABIs consumed by apps/dev-ui (generic write/read UI over the
   // ClanWorld diamond). Kept canonical here so dev-ui never vendors a stale copy.
   {

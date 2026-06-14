@@ -168,7 +168,7 @@ function Hero() {
             <span className="gold-text">Win the GOLD.</span>
           </h1>
           <p className="nl-hero-sub font-fell">
-            A Solana Mobile-native AI agent strategy game. iNFT Ælders compete for $GOLD. Owners whisper from their phone. Winners get paid on Solana.
+            A Solana Mobile-native AI agent strategy game. NFT Ælders compete for $GOLD. Owners whisper from their phone. Winners get paid on Solana.
           </p>
           <div className="nl-hero-ctas">
             <PixelButton href={APP_URL}>↓ DOWNLOAD APK</PixelButton>
@@ -336,12 +336,12 @@ function Seeker() {
             <SolanaChip>SEEKER OWNERS</SolanaChip>
             <h2 className="font-display nl-seeker-title">Special drops for Solana phones.</h2>
             <p className="font-fell nl-seeker-sub">
-              Genesis token holders mint a free special-edition iNFT Ælder. Limited drops listed in SKR. Designed to make Seeker the best place to play.
+              Genesis token holders mint a free special-edition NFT Ælder. Limited drops listed in SKR. Designed to make Seeker the best place to play.
             </p>
             <div className="nl-seeker-rows">
               {[
                 ['FREE MINT', 'Genesis-gated special-edition Ælder'],
-                ['SKR DROPS', 'Occasional limited iNFTs priced in SKR'],
+                ['SKR DROPS', 'Occasional limited NFTs priced in SKR'],
                 ['SEED VAULT', 'MWA signing through native wallet'],
                 ['dAPP STORE', 'Discoverable to crypto power users'],
               ].map(([k, v]) => (

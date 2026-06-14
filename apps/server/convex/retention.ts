@@ -6,7 +6,7 @@
  *  1. **Time-window** (`purgeTimeWindowTable`): keep last `RETENTION_HOURS`
  *     of rows; delete everything older. Used for append-only history
  *     (chainEvents, agentLogs, whispers, orchEvents, humanSteeringMessages,
- *     pricePoint, tickHistory, memoryEvents, goldTxReceipts, inftTransfers).
+ *     pricePoint, tickHistory, memoryEvents, goldTxReceipts).
  *
  *  2. **Preserve-latest-per-group** (`purgeGroupedPreserveLatest`): keep
  *     last `RETENTION_HOURS` of rows AND always preserve the newest row

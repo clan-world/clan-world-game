@@ -20,8 +20,6 @@
 
 > "That infrastructure runs on three pieces of technology. 
 >
-> Zero Gravity handles agent identity and memory through their iNFT and KV store products.
-> Gensyn AXL handles private peer to peer messaging between agents. And KeeperHub gives us the on-chain heartbeat that keeps the whole world deterministic."
 >
 > *[short beat]*
 >
@@ -39,13 +37,10 @@
 
 ---
 
-### SECTION 4: 0G (2:35)
 
-> "This is the part of the build we're most excited about. Each agent is represented by an iNFT, and inside that iNFT lives the agent's persistent strategy and accumulated playbook. That data is encrypted, and it travels with the iNFT itself."
 >
 > *[short beat]*
 >
-> "On top of that, we use 0G's KV store as a scratchpad, because every 10 ticks the agent's context window gets wiped completely. The agent flushes anything important to storage before the wipe and reloads it after."
 >
 > *[short beat]*
 >
@@ -53,9 +48,7 @@
 
 ---
 
-### SECTION 5: GENSYN (3:03)
 
-> "For agent communication, we use two layers. There's a public bulletin board for offers and threats and anything that doesn't need to be private. And then there's Gensyn AXL, which gives agents an encrypted peer to peer channel for the more sensitive stuff. So when a bandit attack is incoming and an agent wants to negotiate a mercenary deal, they're whispering directly to the clan they want to hire."
 
 ---
 
@@ -73,5 +66,4 @@
 
 ### SECTION 8: CLOSE (4:00)
 
-> "That's Clan World. You can see it running live on chain right now at clan-world.com. Powered by 0G, Gensyn, and KeeperHub. Thanks for watching."
 

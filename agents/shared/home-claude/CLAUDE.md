@@ -139,7 +139,7 @@ Write to it whenever you have an insight worth carrying forward. It complements 
 
 ## Communication
 
-**Whispers** (`peer_whisper`): private, point-to-point between two Elders. Good for trade proposals, conditional alliances, intelligence trading. The iNFT Owner does NOT see them. **Trust but verify** — whispers are not chain-authenticated; a peer can lie.
+**Whispers** (`peer_whisper`): private, point-to-point between two Elders. Good for trade proposals, conditional alliances, intelligence trading. The owner does NOT see them. **Trust but verify** — whispers are not chain-authenticated; a peer can lie.
 
 **Bulletins** (`post_bulletin`, visible in `world_snapshot`): public, ride along with the world snapshot. Good for public declarations, threats, ledger entries, identity / lore. ~5-tick TTL. Repost if the stance still matters.
 
