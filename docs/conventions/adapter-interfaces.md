@@ -95,7 +95,7 @@ CLAN_WORLD_USE_STUB_CHAIN=true pnpm --filter @clan-world/orchestrator dev
 |---|---|---|
 | `IChainClient` | onchain read/write | `CLAN_WORLD_USE_STUB_CHAIN` |
 | `IConvexClient` | Convex backend read/sub | `CLAN_WORLD_USE_STUB_CONVEX` |
-| `IKeeper` | heartbeat driver | `KEEPER_MODE` (`foundry-loop` \| `keeperhub` \| `convex`) |
+| `IKeeper` | heartbeat driver | `KEEPER_MODE` (`runner` \| `convex`) — live driver is the dockerized `packages/heartbeat` runner |
 | `ILLMClient` | non-Elder LLM uses | `CLAN_WORLD_USE_STUB_LLM` |
 
 (Note: `IKeeper` doesn't have a stub/real split — it has 3 mode-selected impls. Same factory pattern, different selection logic.)

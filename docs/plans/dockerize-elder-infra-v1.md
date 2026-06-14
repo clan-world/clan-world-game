@@ -664,7 +664,7 @@ This replaces today's central `clanworld-runner.service` send-keys daemon. The l
 3. Calls `eth_chainId` against the resolved RPC; logs the response.
 4. Asserts: `dev` profile observed chain ID is in `{84532, 31337}` (anvil-fork-of-base-sepolia or anvil-default), `prod` profile observed chain ID is `84532` (Base Sepolia mainnet).
 5. Logs the diamond address, queries `diamond.owner()`, confirms not zero-address.
-6. ONLY then enters the 60s heartbeat loop.
+6. ONLY then enters the heartbeat loop (30s canonical cadence, read from on-chain `heartbeatIntervalSeconds()`).
 
 **Single-caller preflight (Finding 29 fix).** Before sending the first `heartbeat()`, the entrypoint runs `agents/heartbeat/preflight-single-caller.sh`:
 1. SSH-equivalent check on host: `systemctl --user is-active clanworld-runner.service` — abort if active.

@@ -99,6 +99,11 @@ if [[ -r /etc/resolv.conf ]]; then
 fi
 
 # --- Allowed external hosts (HTTPS only) ------------------------------------
+# NOTE: A records are resolved ONCE here at boot and the resulting IPs are
+# pinned. Hosts behind rotating-IP CDNs can drift; for the MemWal relayer this
+# is acceptable because it resolves to a stable IPv4 A record (verified
+# 2026-06-14). If a future relayer move breaks egress, re-running the firewall
+# (container restart) re-resolves.
 ALLOWED_HOSTS=(
   api.anthropic.com
   claude.ai
@@ -106,6 +111,12 @@ ALLOWED_HOSTS=(
   accounts.anthropic.com
   statsig.anthropic.com
   sentry.io
+  # MemWal (Walrus episodic memory) relayer — issue #692. The MemWal MCP server
+  # reaches this over HTTPS for remember/recall. WITHOUT this entry, remember/
+  # recall FAIL SILENTLY inside the sandboxed Elder container (the doc's #1
+  # demo-day risk — docs/walrus-memory-docker-handoff.md). The relayer URL is
+  # carried in each Elder's credentials.json (relayerUrl field).
+  relayer.memory.walrus.xyz
 )
 
 log "resolving and allowing HTTPS to allowed hosts"

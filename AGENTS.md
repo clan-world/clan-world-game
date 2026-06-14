@@ -4,7 +4,7 @@ Top-level instructions for any agent (human or LLM) working in this repo. Keep t
 
 > **🚧 V3 — Post-ETHGlobal continuation.** Forked from `clan-world-v2` at tag `demo-2026-05-06` (HEAD `5503747`). Use this repo for active development. The v2 repo (`clan-world-v2`) is **frozen** at `demo-2026-05-06` for the May 6 ETHGlobal demo — do not modify it. v3 has its own Convex deployment (`valuable-kudu-985`) and its own diamond contract (set after first deploy).
 
-> **Active V3 scope:** Base Sepolia + Sui Walrus storage + agent memories + KeeperHub. Historical mobile-app hackathon material is archived under `docs/archive/` and is not part of the active build.
+> **Active V3 scope:** Base Sepolia diamond (`0x098fa5c2dc8372cde5c99db47365fa84b69f7af1`, 84532) + self-hosted Convex + dockerized elders + dockerized 30s heartbeat runner; Sui Walrus storage for agent memories is the next backend (replacing the retired sponsor memory layer). Retired sponsor integrations (memory/iNFT, whisper transport, external keeper) are gone — see `docs/archive/`. Current-truth map: `docs/index.md` → `docs/architecture/current-architecture.md`.
 
 ## 1. Project Overview
 
@@ -29,9 +29,9 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 | | Active V3 Demo |
 |---|---|
 | Track | Sui Walrus storage + agent memories |
-| Chain | Base Sepolia |
-| Heartbeat | KeeperHub workflow, 60s ticks |
-| Stretch deps | Walrus storage, KeeperHub |
+| Chain | Base Sepolia diamond `0x098fa5c2…7af1` (84532) |
+| Heartbeat | Dockerized `packages/heartbeat` runner, 30s ticks (owner-settable on-chain) |
+| Next deps | Walrus Memory (replaces the retired sponsor memory layer) |
 
 ## 3. Gitflow Light — 4-level branching + strict trust gates
 
@@ -75,20 +75,20 @@ Every parallel stream talks to its dependencies through one of four adapter inte
 |---|---|---|---|
 | `IChainClient` | contracts → all | `CLAN_WORLD_USE_STUB_CHAIN=true` | Wave 1 |
 | `IConvexClient` | backend → frontend, agents, orchestrator | `CLAN_WORLD_USE_STUB_CONVEX=true` | Wave 1 |
-| `IKeeper` | ops → orchestrator | `KEEPER_MODE=foundry-loop\|keeperhub\|convex` | Wave 2 (foundry-loop), Wave 5 (keeperhub) |
+| `IKeeper` | ops → heartbeat runner | dockerized `packages/heartbeat` runner is the live tick driver (Convex cron = disaster fallback) | Live |
 | `ILLMClient` | agents → narrator/utility | `CLAN_WORLD_USE_STUB_LLM=true` | Submission 2 |
 
 Pattern + worked example: `docs/conventions/adapter-interfaces.md`.
 
 ## 6. Validated Architecture Decisions
 
-Per `docs/planning/V1/07 clanworld_v4_5_alignment_addendum.md` (authoritative; supersedes prior specs).
+Current-truth source: `docs/architecture/current-architecture.md` + `docs/WORLD_PHYSICS.md` (the v4.x alignment addenda are archived under `docs/archive/planning/`).
 
 | Decision | Choice | Rationale |
 |---|---|---|
 | Realms | One Base Sepolia realm | Cuts coordination story in half; one frontend, one Convex deployment |
-| Tick cadence | 20s for S1 + dev, 60s for S2 KeeperHub | KeeperHub cron has 1-min floor; S1 wants tight demo |
-| Heartbeat caller | Foundry loop primary (S1), KeeperHub (S2 live), Convex cron = disaster fallback | Foundry has no cadence floor; Convex stays for DR |
+| Tick cadence | 30s live (owner-settable via `setHeartbeatIntervalSeconds`) | Dockerized runner has no cadence floor; 30s is the current canonical interval |
+| Heartbeat caller | Dockerized `packages/heartbeat` runner (live), Convex cron = disaster fallback | Runner is the only writer of `heartbeat()`; Convex stays for DR |
 | Indexer trigger | Webhook-primary, 5s poll = safety net | Lower latency than 5s poll, eliminates race vs `TickAdvanced` |
 | Webhook payload | Minimal: `{chain, engineAddress, txHash, firedAtTs, source}` — NO `currentTick` | Avoid extra RPC read; Convex re-derives from chain |
 | Convex deployment | Single deployment, reconfigured between submissions (or two toggled by env var) | One realm at a time → no cross-chain logic ever needed |
@@ -116,16 +116,19 @@ Start at the package-level `AGENTS.md` for whatever you're touching, then dive i
 - `packages/agents/AGENTS.md` — `elder` CLI toolbelt conventions
 - `packages/shared/AGENTS.md` — types + adapter pattern
 
+**Start here:**
+- `docs/index.md` — docs map
+- `docs/architecture/current-architecture.md` — live topology + data flow + tick lifecycle
+- `docs/runbooks/fresh-session-checklist.md` — start-of-session checklist (incl. gas sweep)
+
 **Reference (`docs/reference/`):**
-- `architecture-decisions.md` — every validated decision from the addendum
-- `prize-strategy.md` — OpenAgents Track 2 punchline
-- `sponsor-tech.md` — storage and KeeperHub notes
+- `architecture-decisions.md` — every validated decision
 
 **Guides (`docs/guides/`):**
 - `stream-contracts.md` — Foundry workflow, deploy script, typechain
 - `stream-backend.md` — Convex setup, MOCK_MODE
 - `stream-frontend.md` — Vite dev, region polygons, Pixi notes
-- `stream-agents.md` — Elder boot, orchestrator, toolbelt CLI
+- (elder boot / runtime: see `agents/README.md` + `docs/architecture/current-architecture.md`; the legacy `stream-agents.md` orchestrator guide is archived)
 - `stream-ops.md` — Makefile, demo-reset, agent funding
 
 **Conventions (`docs/conventions/`):**

@@ -1,10 +1,11 @@
 /**
  * IHeartbeatCaller — caller of ClanWorld.heartbeat() on-chain.
  *
- * S2 bootstrap: runner-side `cast send` (or viem writeContract) using a dedicated runner wallet.
- *   The runner calls heartbeat() after each Elder settle window (default 90s).
- * Phase 6: KeeperHub workflow fires heartbeat() automatically; runner stops calling it
- *   and instead consumes the resulting /keeperHubHeartbeat webhook via Convex.
+ * Live driver: the dockerized `packages/heartbeat` runner calls heartbeat() via
+ *   viem writeContract using a dedicated runner wallet, self-scheduling off the
+ *   on-chain `heartbeatIntervalSeconds()` (30s canonical). The external KeeperHub
+ *   keeper layer is retired; the runner is the canonical tick driver (Convex cron
+ *   is a disaster-only fallback).
  *
  * Contract:
  * - Caller must be permissionless: anyone may call heartbeat(); the contract self-rate-limits.

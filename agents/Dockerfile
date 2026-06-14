@@ -47,6 +47,20 @@ RUN curl -fsSL -o /usr/local/bin/ttyd \
 RUN npm install -g @anthropic-ai/claude-code @openai/codex tsx \
     && npm cache clean --force
 
+# MemWal MCP server — Walrus episodic memory (issue #692, follow-up to PR1 #666).
+# Pinned to 0.0.5 (the version proven in the mainnet round-trip). The package's
+# "bin" field exposes `memwal-mcp` (dist/bin/memwal-mcp.js); the global install
+# drops it on PATH at $(npm bin -g). Symlink into /usr/local/bin/memwal-mcp so it
+# matches the path that agents/shared/elder-mcp.json + run.sh's env-guard expect.
+# The Elder runtime only launches it when MEMWAL_MCP_ENABLED=true AND this binary
+# is executable (see agents/shared/run.sh), so a build that ever skipped this
+# layer still boots cleanly via the elder-only MCP config.
+RUN npm install -g @mysten-incubation/memwal-mcp@0.0.5 \
+    && ln -sf "$(npm root -g)/@mysten-incubation/memwal-mcp/dist/bin/memwal-mcp.js" /usr/local/bin/memwal-mcp \
+    && chmod 0755 /usr/local/bin/memwal-mcp \
+    && test -x /usr/local/bin/memwal-mcp \
+    && npm cache clean --force
+
 # pnpm workspace support for the real @clan-world/agents CLI. Keep pnpm pinned
 # to the root packageManager version so lockfile installs are reproducible.
 RUN corepack enable \

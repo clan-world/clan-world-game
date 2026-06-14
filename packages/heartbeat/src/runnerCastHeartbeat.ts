@@ -265,7 +265,17 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     nextHeartbeatAtTs: number,
     blockNumber?: bigint | number | null,
   ): Promise<boolean> {
-    const chainNowMs = await this.readBlockTimestampMs(blockNumber).catch(() => Date.now());
+    // CLASSIFY AGAINST CHAIN TIME ONLY. This decides whether a mined/simulated
+    // revert is a benign rate-limit (still-in-window) vs. a real failure that
+    // must be surfaced to retry/alert. On an anvil fork wall-clock time can sit
+    // minutes off chain time (persistent evm_increaseTime offset), so a
+    // Date.now() fallback here MISCLASSIFIES reverts in both directions: it can
+    // mask a real revert as a benign rate-limit, or flip a genuine rate-limit
+    // into a hard failure. If we cannot read the actual on-chain block
+    // timestamp, we have NO basis to call this benign — fail CONSERVATIVELY by
+    // returning false so the caller surfaces the revert as a real failure.
+    const chainNowMs = await this.readBlockTimestampMs(blockNumber).catch(() => undefined);
+    if (chainNowMs === undefined) return false;
     return nextHeartbeatAtTs * 1000 > chainNowMs;
   }
 
