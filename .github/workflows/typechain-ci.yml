@@ -101,6 +101,9 @@ jobs:
               # convex.json (sibling of convex/) sets the codegen functions dir
               - 'packages/sdk/convex.json'
               - 'apps/server/convex.json'
+              # the codegen steps run `pnpm run codegen` in these package dirs
+              - 'packages/sdk/package.json'
+              - 'apps/server/package.json'
               - 'pnpm-lock.yaml'
               - 'package.json'
               - 'pnpm-workspace.yaml'
