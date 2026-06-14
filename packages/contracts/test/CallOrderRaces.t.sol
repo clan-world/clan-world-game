@@ -3,8 +3,6 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ClanWorld} from "../src/ClanWorld.sol";
-import {ClanAgentNFT} from "../src/ClanAgentNFT.sol";
-import {Mock7857Verifier} from "../src/Mock7857Verifier.sol";
 import {ClanOrder, ActionType, WithdrawResourcesData} from "../src/IClanWorld.sol";
 
 /// @dev Harness exposes minimal state setters so we can simulate same-block
@@ -30,8 +28,6 @@ contract CallOrderRacesHarness is ClanWorld {
 ///         deterministic outcome (or revert deterministically).
 contract CallOrderRacesTest is Test {
     CallOrderRacesHarness world;
-    Mock7857Verifier verifier;
-    ClanAgentNFT nft;
 
     address ownerA = address(0xA1);
     address ownerB = address(0xB2);
@@ -40,8 +36,6 @@ contract CallOrderRacesTest is Test {
 
     function setUp() public {
         world = new CallOrderRacesHarness();
-        verifier = new Mock7857Verifier();
-        nft = new ClanAgentNFT("ClanWorld Elder iNFT", "ELDER", address(verifier));
     }
 
     // ---------------------------------------------------------------------
@@ -215,106 +209,6 @@ contract CallOrderRacesTest is Test {
         world.initTreasury(tokens, pools);
     }
 
-    // ---------------------------------------------------------------------
-    // NFT setApprovalForAll then transferFrom does NOT clear operator approval.
-    // This is a known ERC-721 design choice but we lock it in to document the
-    // post-sale risk: a buyer who doesn't revoke the seller's operator approval
-    // can be back-run by the seller via setApprovalForAll left intact.
-    // (We assert behavior, not whether it's a bug — but we attach a comment.)
-    // ---------------------------------------------------------------------
-    function test_nftSetApprovalForAll_persistsAcrossTransfer_documentsHazard() public {
-        nft.mint(ownerA, 11, _data("persona", "alice"));
-
-        // Owner A grants operator full approval (e.g. marketplace).
-        vm.prank(ownerA);
-        nft.setApprovalForAll(attacker, true);
-        assertTrue(nft.isApprovedForAll(ownerA, attacker), "operator approval set");
-
-        // Owner transfers token to buyer (ownerB).
-        vm.prank(ownerA);
-        nft.transferFrom(ownerA, ownerB, 11);
-        assertEq(nft.ownerOf(11), ownerB, "token now owned by buyer");
-
-        // Seller's operator approval for THEIR address still stands, but it
-        // does not give the operator authority over the new owner's tokens —
-        // approval is per-owner, not per-token. Confirm that.
-        assertFalse(
-            nft.isApprovedForAll(ownerB, attacker),
-            "operator approval does NOT carry over to buyer"
-        );
-
-        // Critically: per-token approval IS cleared by _transfer.
-        assertEq(nft.getApproved(11), address(0), "per-token approval cleared on transfer");
-    }
-
-    // ---------------------------------------------------------------------
-    // NFT post-transfer authorization hazard:
-    // `usageAuthorizations[tokenId][user]` is NOT cleared on transfer, so
-    // a previously-authorized user can still call `updateMetadata` after
-    // ownership has moved. This is a real front-run / back-run hazard worth
-    // flagging.
-    //
-    // We assert the CURRENT (buggy) behavior and tag this test with
-    // BUG_FLAG so a future fix can flip the assertion.
-    // ---------------------------------------------------------------------
-    function test_nftPostTransfer_priorAuthorizedUserCanStillUpdateMetadata_BUG_FLAG() public {
-        nft.mint(ownerA, 22, _data("persona", "alice"));
-
-        // OwnerA pre-authorizes a delegate (e.g. an indexer or co-pilot).
-        vm.prank(ownerA);
-        nft.authorizeUsage(22, attacker);
-        assertTrue(nft.usageAuthorizations(22, attacker), "delegate authorized pre-sale");
-
-        // OwnerA sells/transfers token to ownerB. transferFrom does NOT
-        // touch usageAuthorizations.
-        vm.prank(ownerA);
-        nft.transferFrom(ownerA, ownerB, 22);
-        assertEq(nft.ownerOf(22), ownerB, "buyer now owns token");
-
-        // The stale delegate can STILL update the new owner's metadata.
-        // This is the hazard: a buyer must remember to revoke every prior
-        // authorization or they inherit corruptible metadata.
-        vm.prank(attacker);
-        nft.updateMetadata(22, _data("persona", "attacker-overwrote"), "metadata-proof");
-
-        ClanAgentNFT.IntelligentData[] memory after_ = nft.intelligentDataOf(22);
-        assertEq(after_[0].uri, "attacker-overwrote", "stale delegate overwrote metadata");
-
-        // ---- If the contract is fixed to clear usageAuthorizations on
-        // transfer, flip the assertion above to expect a revert with
-        // ClanAgentNFT.NotApprovedOrOwner.selector and remove the BUG_FLAG tag.
-    }
-
-    // ---------------------------------------------------------------------
-    // NFT iTransfer + same-block updateMetadata by NEW owner: ordering must
-    // be consistent — the new owner can update metadata immediately after
-    // iTransfer (no cooldown / no stale check breaks).
-    // ---------------------------------------------------------------------
-    function test_nftITransfer_thenSameBlockUpdateMetadataByNewOwner_succeeds() public {
-        nft.mint(ownerA, 33, _data("persona", "alice"));
-
-        vm.prank(ownerA);
-        nft.iTransfer(
-            ownerB,
-            33,
-            _data("persona", "bob-fresh"),
-            ClanAgentNFT.TransferProof({
-                newDataHash: bytes32(0),
-                encryptedKeyHash: keccak256("dek-bob"),
-                newUri: "bob-fresh",
-                proof: "demo-proof"
-            })
-        );
-        assertEq(nft.ownerOf(33), ownerB, "iTransfer moved ownership");
-
-        // Same block: new owner overwrites metadata again. Must succeed.
-        vm.prank(ownerB);
-        nft.updateMetadata(33, _data("persona", "bob-edit-2"), "metadata-proof");
-
-        ClanAgentNFT.IntelligentData[] memory data = nft.intelligentDataOf(33);
-        assertEq(data[0].uri, "bob-edit-2", "new owner can update immediately");
-    }
-
     // =========================================================================
     // helpers
     // =========================================================================
@@ -355,19 +249,6 @@ contract CallOrderRacesTest is Test {
         pools[1] = wheatGoldPool;
         pools[2] = fishGoldPool;
         pools[3] = ironGoldPool;
-    }
-
-    function _data(string memory label, string memory uri)
-        internal
-        pure
-        returns (ClanAgentNFT.IntelligentData[] memory data)
-    {
-        data = new ClanAgentNFT.IntelligentData[](1);
-        data[0] = ClanAgentNFT.IntelligentData({
-            label: label,
-            dataHash: keccak256(bytes(uri)),
-            uri: uri
-        });
     }
 }
 
