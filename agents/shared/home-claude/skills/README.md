@@ -5,7 +5,13 @@ Every Elder container gets these skills R/O-mounted into `/home/elder/.claude/sk
 ## Current shared skills
 
 - **`lean-tick/`** — the canonical 3-command per-tick procedure. The default response to a plain `TICK N Started` marker.
+- **`deposit-discipline/`** — harvested resources are worthless until deposited; the deposit-lag failure mode and how to avoid starving a clan.
+- **`world-physics/`** — mission mechanics, carry caps, yields, the gather/deposit cycle.
 - **`research-mindset/`** — heuristics for open-ended autonomous work. Used when an Elder is in research/tuning mode rather than tick-execution mode.
+- **`memory-discipline/`** — using the two memory systems well: KV facts (`memory_save` / `memory_recall`) vs episodic reflections (`memwal_remember` / `memwal_recall`), stable keys, tagging, anti-patterns, the wipe ritual. Pull on demand.
+- **`final-tick-continuity/`** — vague-by-design framework for what to consolidate before a memory wipe. Triggered by the runner's wipe warning.
+
+That's 6 — the cap. Promote nothing else to shared without retiring one first.
 
 ## Adding a new shared skill
 
