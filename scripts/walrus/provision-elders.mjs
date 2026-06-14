@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -24,6 +25,14 @@ const { Ed25519Keypair } = await import(
 );
 const { Secp256k1Keypair } = await import(
   moduleFile("@mysten", "sui", "dist", "keypairs", "secp256k1", "index.mjs")
+);
+// Used for M3: deriving the EVM address from a secp256k1 private key so we can
+// verify entry.address matches entry.privateKey before trusting the pairing.
+const { secp256k1: nobleSecp256k1 } = await import(
+  moduleFile("@noble", "curves", "secp256k1.js")
+);
+const { keccak_256 } = await import(
+  moduleFile("@noble", "hashes", "sha3.js")
 );
 const { SuiJsonRpcClient, getJsonRpcFullnodeUrl } = await import(
   moduleFile("@mysten", "sui", "dist", "jsonRpc", "index.mjs")
@@ -184,11 +193,40 @@ function loadOrCreateOwner(elderNumber) {
   };
 }
 
+// Derives the checksummed EVM address from a secp256k1 hex private key using
+// the standard keccak256(uncompressedPubKey[1..64]) → last 20 bytes formula.
+// No external packages beyond what is already on NODE_PATH (@noble/curves + @noble/hashes).
+function deriveEvmAddress(privateKeyHex) {
+  const privBytes = hexToBytes(privateKeyHex);
+  // Uncompressed pubkey = 0x04 || x (32 bytes) || y (32 bytes) = 65 bytes total.
+  const uncompressed = nobleSecp256k1.getPublicKey(privBytes, false);
+  // EVM address = keccak256 of the 64-byte body (skip the 0x04 prefix), take last 20 bytes.
+  const hash = keccak_256(uncompressed.slice(1));
+  return "0x" + Buffer.from(hash.slice(12)).toString("hex");
+}
+
 let elderWalletsCache = null;
 function loadElderBaseKey(elderNumber) {
   if (!elderWalletsCache) {
     if (!existsSync(ELDER_WALLETS_PATH)) {
-      throw new Error(`Elder Base wallets file not found: ${ELDER_WALLETS_PATH}`);
+      throw new Error(`Elder Base wallets file not found: ~/.secrets/clanworld-elder-wallets.json`);
+    }
+    // H1: Permission gate — this file is the root owner secret for Base + Sui identities.
+    // Refuse to consume it if group or world bits are set (file must be 0o600 or tighter;
+    // parent dir must be 0o700 or tighter).
+    const fileStat = statSync(ELDER_WALLETS_PATH);
+    if ((fileStat.mode & 0o077) !== 0) {
+      throw new Error(
+        `Elder Base wallets file has unsafe permissions (${(fileStat.mode & 0o777).toString(8)}); ` +
+          `expected 0600 or tighter. Run: chmod 600 ~/.secrets/clanworld-elder-wallets.json`,
+      );
+    }
+    const dirStat = statSync(dirname(ELDER_WALLETS_PATH));
+    if ((dirStat.mode & 0o077) !== 0) {
+      throw new Error(
+        `Elder Base wallets parent dir has unsafe permissions (${(dirStat.mode & 0o777).toString(8)}); ` +
+          `expected 0700 or tighter. Run: chmod 700 ~/.secrets`,
+      );
     }
     elderWalletsCache = JSON.parse(readFileSync(ELDER_WALLETS_PATH, "utf8"));
   }
@@ -203,6 +241,18 @@ function loadElderBaseKey(elderNumber) {
       `No Base private key with index=${elderNumber} in ${ELDER_WALLETS_PATH} ` +
         `(expected 1-based "elders[].index"; found indices: ${elders.map((e) => e.index).join(",")})`,
     );
+  }
+  // M3: verify the JSON's stated `address` actually matches the private key, so
+  // the "same key, two chains" artifact can never present a stale/mismatched EVM
+  // address as the paired identity of a permanent on-chain Sui owner.
+  if (entry.address) {
+    const derived = deriveEvmAddress(entry.privateKey);
+    if (derived.toLowerCase() !== String(entry.address).toLowerCase()) {
+      throw new Error(
+        `Elder ${elderNumber} Base wallet address mismatch: file says ${entry.address} but the ` +
+          `private key derives ${derived}. Refusing to provision under a mismatched identity.`,
+      );
+    }
   }
   return { privateKey: entry.privateKey, baseAddress: entry.address };
 }
@@ -223,6 +273,12 @@ function makeWalletSigner(keypair) {
         transaction,
         options: { showEffects: true, showObjectChanges: true },
       });
+      const status = result.effects?.status?.status;
+      if (status && status !== "success") {
+        throw new Error(
+          `owner tx ${result.digest} reverted on-chain: ${result.effects?.status?.error ?? status}`,
+        );
+      }
       return { digest: result.digest };
     },
     async signPersonalMessage(message) {
