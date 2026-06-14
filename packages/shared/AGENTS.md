@@ -19,8 +19,8 @@ All types exist as **minimal placeholders** matching the frontend spec — expan
 - `src/adapters/index.ts` — adapter barrel.
 - `src/adapters/IChainClient.ts` — chain seam.
 - `src/adapters/IConvexClient.ts` — backend seam.
-- `src/adapters/IKeeper.ts` — heartbeat driver seam (3 impls: Foundry loop / KeeperHub / Convex cron).
-- `src/adapters/ILLMClient.ts` — non-Elder LLM uses (narrator etc.); Anthropic + ZeroG impls.
+- `src/adapters/IKeeper.ts` — heartbeat driver seam; the live driver is the dockerized `packages/heartbeat` runner (Convex cron = disaster fallback). The seam's legacy `KEEPER_MODE` values reference retired modes — treat the runner as canonical.
+- `src/adapters/ILLMClient.ts` — non-Elder LLM uses (narrator etc.); Anthropic + Stub impls.
 - `src/adapters/_env.ts` — `readEnv(name)` helper that works in Node and Vite.
 
 ## Local conventions

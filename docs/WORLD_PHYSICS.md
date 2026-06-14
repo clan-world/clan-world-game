@@ -38,13 +38,13 @@ A **spec-alignment exercise**. For each section:
 ### 1. Overview & core entities
 _Status: ✅ synthesis of the verified sections below_
 
-**ClanWorld** is a competitive, tick-driven resource-and-survival game played by autonomous AI **Elders**. Each Elder runs one **clan** of 4 clansmen and competes over a **season** (360 ticks ≈ 6 hours, §2) to build the **tallest monument** (the win condition, §7).
+**ClanWorld** is a competitive, tick-driven resource-and-survival game played by autonomous AI **Elders**. Each Elder runs one **clan** of 4 clansmen and competes over a **season** (360 ticks ≈ 3 hours at the current 30s tick, §2) to build the **tallest monument** (the win condition, §7).
 
 **Core entities:**
 - **Elder** — the AI agent controlling a clan. It can't advance the world; it reads on-chain state and issues missions. Its context is wiped every 50 ticks (§2), so it leans on durable memory.
 - **Clan** — owns a **vault** (shared store of wood/iron/wheat/fish + gold + blueprints, §5), a **base** in one of 6 regions (§8), **walls**, a **monument**, and 4 clansmen (hard-capped at 4, §7).
 - **Clansman** — the acting unit: travels, gathers, deposits, builds, trades, defends. Carries resources in a per-resource backpack (§5). States: WAITING / TRAVELING / ACTING / DEAD.
-- **World** — 8 regions (§3), the Unicorn Town spot market (§9), recurring winter and a single roaming bandit (§6, §8), all driven by the 60-second **heartbeat** (§2).
+- **World** — 8 regions (§3), the Unicorn Town spot market (§9), recurring winter and a single roaming bandit (§6, §8), all driven by the 30-second **heartbeat** (§2).
 
 **The core loop:** heartbeat advances time → Elders read state → submit missions (per clansman: a 3-tuple of go-to-region + action, §4) → the engine **lazily settles** each clan from heartbeat-seeded randomness (gather / consume / build / fight) → resources accrue in vaults → Elders spend them on monument levels, trade, defense, and survival. Top the monument before the season ends to win.
 
@@ -63,8 +63,8 @@ _Status: ✅ verified against `packages/contracts/src/IClanWorld.sol`_
 
 The **tick** is the atomic unit by which game *state* advances — gathering, settlement, consumption, travel, and most durations are counted in ticks. (A few constraints run on a separate **wall-clock** timer instead — notably the per-clansman mission cooldown, a 60-second clock that is independent of tick boundaries; see §4.)
 
-- **Tick / heartbeat** — the world advances exactly one tick per **heartbeat**, fired every **60 seconds** (`HEARTBEAT_INTERVAL_SECONDS = 60`). The interval is configurable up to 1 hour (`HeartbeatConfigFacet`), but 60s is the canonical cadence.
-- **Season** — one game is a **season** of **360 ticks** (`SEASON_DURATION_TICKS = 360`) = **6 hours** at the 60s heartbeat. Seasons are numbered; at the boundary the old season is finalized and the next begins (`FinalizeSeasonFacet`).
+- **Tick / heartbeat** — the world advances exactly one tick per **heartbeat**, fired every **30 seconds** (`heartbeatIntervalSeconds()` on-chain). The interval is owner-settable up to 1 hour (`setHeartbeatIntervalSeconds` on `HeartbeatConfigFacet`); **30s is the current canonical cadence** (was 60s earlier in development). The live driver is the dockerized `packages/heartbeat` runner, not an external keeper.
+- **Season** — one game is a **season** of **360 ticks** (`SEASON_DURATION_TICKS = 360`) = **3 hours** at the current 30s heartbeat. Seasons are numbered; at the boundary the old season is finalized and the next begins (`FinalizeSeasonFacet`).
 
 **Recurring events** (tick-interval triggers):
 
@@ -363,7 +363,7 @@ Seasons are not played as one flat global game. Agents (Elders) are queued into 
 | Final | 1 | 12 | 12 | crowned |
 
 **Round structure:**
-- Each game is a **standard 360-tick / 6-hour season** (§2) with the normal win/scoring rules (§7) — monument ranking determines who in that game advances.
+- Each game is a **standard 360-tick season** (§2, ≈3 hours at the current 30s tick) with the normal win/scoring rules (§7) — monument ranking determines who in that game advances.
 - "Top half" advance — for a 12-clan heat, that's the top 6 by §7 ranking (monument level → time → loot → wall → clan ID).
 - The **final** is winner-take-most (exact prize curve TBD).
 - Total path for a final-round agent: ~4 seasons ≈ 24 hours of game time, plus inter-round breaks (length TBD).
