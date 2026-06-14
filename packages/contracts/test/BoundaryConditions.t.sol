@@ -31,14 +31,6 @@ contract BoundaryHarness is ClanWorld {
         // isWinter() does not depend on the tick seed; only on currentTick.
     }
 
-    /// @notice Re-implements the same saturating-add semantics as the private
-    ///         `_addTicksClamped(tick, delta)` in ClanWorld.sol. The internal
-    ///         function is `private`, so we mirror it here for direct testing.
-    ///         If either implementation diverges, the boundary test will fail.
-    function addTicksClampedExposed(uint64 tick, uint64 delta) external pure returns (uint64) {
-        if (type(uint64).max - tick < delta) return type(uint64).max;
-        return tick + delta;
-    }
 }
 
 /// @notice Tests boundary conditions for tick math, winter cycle, upgrade level
@@ -60,37 +52,19 @@ contract BoundaryConditionsTest is Test {
     }
 
     // =========================================================================
-    // 1) _addTicksClamped uint64 boundary (saturating add at type(uint64).max).
-    //    Reached via a harness mirror because the live submitClanOrders path
-    //    cannot be steered close enough to type(uint64).max: the backlog
-    //    guard at submitClanOrders (line ~3347) does `lastSettled + 200`
-    //    in unchecked Solidity 0.8 arithmetic, which itself reverts on
-    //    overflow whenever `lastSettled > type(uint64).max - 200`. So any
-    //    currentTick above (max - 200) is unreachable through orders.
-    //    The harness mirror is verified by exercising several non-clamp
-    //    inputs that match the live code's branch (delta=0, normal add).
+    // 1) _addTicksClamped uint64 saturation is intentionally NOT covered here.
+    //    The private `_addTicksClamped` saturating-add branch is unreachable
+    //    through any public entry point: the submitClanOrders backlog guard
+    //    (`lastSettled + 200` in checked 0.8 arithmetic) reverts on overflow
+    //    whenever currentTick > type(uint64).max - 200, so the clamp can never
+    //    fire in production. A harness mirror of the algorithm was removed
+    //    (codex R1, 2026-06-14) because re-implementing the function in-test
+    //    only proves the mirror, not the production path = test theater.
+    //    The reachable (non-clamp) path is exercised by the real order/mission
+    //    settlement suites (MissionTiming, Gathering, HeartbeatOrdering, etc.),
+    //    which assert settlesAtTick/arrivalTick == base + duration via the
+    //    live _addTicksClamped call.
     // =========================================================================
-
-    function test_addTicksClampedSaturatesAtUint64Max() public view {
-        uint64 max = type(uint64).max;
-        // delta=0 short-circuit: identity
-        assertEq(world.addTicksClampedExposed(0, 0), 0, "0+0=0");
-        assertEq(world.addTicksClampedExposed(max, 0), max, "max+0=max");
-        // Pure non-clamp addition
-        assertEq(world.addTicksClampedExposed(100, 200), 300, "100+200=300");
-        assertEq(world.addTicksClampedExposed(max - 10, 5), max - 5, "(max-10)+5=max-5");
-        // Exact boundary: tick + delta == max — must NOT clamp (no overflow)
-        assertEq(world.addTicksClampedExposed(max - 5, 5), max, "(max-5)+5=max exactly (no clamp)");
-        // One past boundary: tick + delta would be max+1 — MUST clamp to max
-        assertEq(world.addTicksClampedExposed(max - 4, 5), max, "(max-4)+5 clamps to max");
-        // Far past boundary
-        assertEq(world.addTicksClampedExposed(max, 1), max, "max+1 clamps to max");
-        assertEq(world.addTicksClampedExposed(max, max), max, "max+max clamps to max");
-        assertEq(world.addTicksClampedExposed(max - 1, max), max, "(max-1)+max clamps to max");
-        // Symmetric: tick=0 with delta near max — no clamp until delta>max
-        assertEq(world.addTicksClampedExposed(0, max), max, "0+max=max (no clamp)");
-        assertEq(world.addTicksClampedExposed(1, max), max, "1+max clamps to max");
-    }
 
     // =========================================================================
     // 2) Winter cycle boundary ticks
