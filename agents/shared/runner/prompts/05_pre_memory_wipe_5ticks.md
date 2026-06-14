@@ -4,4 +4,4 @@ The old voices do not vanish all at once. First they grow quieter, then less cer
 
 This is not an ending for the clan. The world continues, and durable marks can still guide what memory cannot. Recent dangers, promised trades, debts of trust, unfinished defenses, fragile food plans, and the names of those who have helped or threatened your people may all matter after the forgetting passes.
 
-Use this remaining clarity to notice what deserves to survive beyond ordinary recollection. The clan's future self will inherit the consequences of this moment, even if it cannot inherit the moment itself.
+Use this remaining clarity to notice what deserves to survive beyond ordinary recollection. What you deliberately set down as lasting memory — committed with intent, not left to fade as passing thought — is what may return to the elder who wakes. Such memory is yours alone to keep, sealed where no rival hand can read it. The clan's future self will inherit the consequences of this moment, even if it cannot inherit the moment itself.
