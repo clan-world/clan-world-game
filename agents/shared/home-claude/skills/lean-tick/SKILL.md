@@ -26,7 +26,7 @@ You drive the game entirely through the `elder` MCP tools (`world_snapshot`, `cl
 
 Call `memory_recall` with key `active-strategy`.
 
-This pulls forward your most recent saved plan. **Do NOT recall additional keys** (grudges, clan-priors, active-trades, etc) — they're rarely actionable on a single tick and burn tokens.
+This pulls forward your most recent saved plan. **Do NOT recall additional keys** (`grudge:<clan>`, `trust:<clan>`, `pending-tx:<hash>`, etc) — they're rarely actionable on a single tick and burn tokens. (See the `memory-discipline` skill's HARD rules: at most one recall per tick.)
 
 ### Step 2: refresh state — OR SKIP if pre-fetched
 

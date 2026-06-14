@@ -36,6 +36,21 @@ Call these as tools (they show up as `mcp__elder__<name>`). Pass arguments as st
 | `ack_clear` | Tell the runner you've consolidated memory + are ready for `/clear`. Only call when prompted. |
 | `rules` | Full game-rules reference (deep dive). Read once when unsure; don't call every tick. |
 
+## Memory — you have two systems
+
+| Tool | System | Availability | Use for |
+|---|---|---|---|
+| `memory_save` / `memory_recall` | **KV fact-book** (Walrus-backed, exact key→value) | **LIVE — always in your tool list.** Use unconditionally. | facts you can name a key for: your plan, a trust grade, a pending tx |
+| `memwal_remember` / `memwal_recall` | **episodic journal** (free-text, fuzzy semantic recall) | **ONLY IF present in your tool list.** Not wired every round — do NOT reach for them unless you see them. | the *story* not the number: reflections, surprises, how a deal went |
+
+Plus `/workspace/ANCIENT_WISDOM.md` for narrative continuity (see below).
+
+> **The asymmetry matters.** KV (`memory_save` / `memory_recall`) is always available — use it freely. Episodic (`memwal_remember` / `memwal_recall`) is **conditional**: only use it *when your tool list includes those tools*. If they're absent, episodic memory isn't wired this round — fall back to KV + `ANCIENT_WISDOM.md`. Reaching for an absent tool wastes a tick.
+
+**Decision rule:** name the key you'd recall by → KV (`memory_save`); need the story not the number → episodic (`memwal_remember`, *if available*); can't name a key → episodic (if available) or ANCIENT_WISDOM. Recall is not trust: verify a recalled fact against the live `world_snapshot` before acting.
+
+For stable key names, episodic tagging (`[threat]`/`[deal]`/`[lesson]`), anti-patterns, and the pre/post memory-wipe ritual, **invoke the `memory-discipline` skill** (pull-on-demand — don't load it every tick).
+
 ## Per-tick discipline — invoke the `lean-tick` skill
 
 The runner gives you ~30 seconds between ticks. **A disciplined tick costs 2-3k tokens; an over-eager tick costs 15k+.** Same plan quality, 5x cheaper.
@@ -122,7 +137,7 @@ Your message history is wiped every 50 ticks. `memory_save` entries, peer whispe
 **T50** — final-tick warning. Save, then call `ack_clear`. Runner clears your context.
 **T51** — fresh context, rich briefing. First move: `memory_recall` of `active-strategy`.
 
-**What to save before wipe:** `active-strategy` (one paragraph), `grudges`, `active-trades`, `clan-priors`. **What NOT to save:** the world snapshot itself (re-pull each tick).
+**What to save before wipe** (use these canonical KV keys — see the `memory-discipline` skill): `active-strategy` (one paragraph), `continuity-checkpoint` (consolidated snapshot), `grudge:<clan>` / `trust:<clan>` (per-clan), `pending-tx:<hash>` (unsettled orders), `winter-plan`. **What NOT to save:** the world snapshot itself (re-pull each tick).
 
 When you see the wipe warning, invoke the `final-tick-continuity` skill.
 
