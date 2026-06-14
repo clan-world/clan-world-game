@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
 import { isSuiWallet } from '@dynamic-labs/sui';
 import { Transaction } from '@mysten/sui/transactions';
@@ -22,6 +22,9 @@ export default function MintButton() {
   const [activeNetwork, setActiveNetwork] = useState<string | undefined>(
     undefined,
   );
+  // Synchronous re-entry lock: a rapid second click can fire before React
+  // re-renders the disabled button, so a state flag alone isn't enough.
+  const mintingRef = useRef(false);
 
   const suiWallet =
     primaryWallet && isSuiWallet(primaryWallet) ? primaryWallet : null;
@@ -51,14 +54,15 @@ export default function MintButton() {
   }, [suiWallet]);
 
   async function handleMint() {
-    // Re-entry guard + set minting state BEFORE any await, so the button is
-    // disabled immediately and a double-click during the network check can't
-    // fire a second mint.
-    if (!suiWallet || minting) return;
+    // Synchronous re-entry guard (a second rapid click runs before React
+    // re-renders the disabled button), then set minting state before any await.
+    if (!suiWallet || mintingRef.current) return;
+    mintingRef.current = true;
     setState({ status: 'minting' });
     try {
-      // Mainnet guard — never attempt a mint on the wrong network. Inside the
-      // try so a getActiveNetwork() rejection surfaces as an error state.
+      // Mainnet guard — authoritative live check (the displayed activeNetwork
+      // can be stale after an in-session network switch). Inside the try so a
+      // getActiveNetwork() rejection surfaces as an error state.
       const net = await suiWallet.getActiveNetwork();
       setActiveNetwork(net);
       if (net !== MAINNET_NETWORK) {
@@ -101,6 +105,8 @@ export default function MintButton() {
         status: 'error',
         message: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      mintingRef.current = false;
     }
   }
 
@@ -109,7 +115,7 @@ export default function MintButton() {
       <button
         className="mint-btn"
         onClick={handleMint}
-        disabled={!connected || minting || wrongNetwork}
+        disabled={!connected || minting}
       >
         {minting
           ? 'Minting…'

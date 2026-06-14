@@ -19,6 +19,7 @@ set -euo pipefail
 # otherwise bake a broken site (mint wallet dead / game can't reach Convex).
 : "${VITE_DYNAMIC_ENVIRONMENT_ID:?set VITE_DYNAMIC_ENVIRONMENT_ID before deploying (apps/mint)}"
 : "${VITE_CONVEX_URL:?set VITE_CONVEX_URL before deploying (apps/web)}"
+: "${VITE_CLAN_WORLD_CONTRACT_ADDRESS:?set VITE_CLAN_WORLD_CONTRACT_ADDRESS before deploying (apps/web — else the game defaults to no-diamond)}"
 
 SITE_OBJECT="${SITE_OBJECT:-0x407f079c2f235a588546008550ce1f479fce8a0ad10525ab17802cc63adce125}"
 EPOCHS="${EPOCHS:-5}"
