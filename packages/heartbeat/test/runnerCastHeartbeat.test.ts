@@ -122,6 +122,18 @@ describe('configFromEnv', () => {
     }).gasLimit).toBe(1_234_567n);
   });
 
+  it('does not let HEARTBEAT_ADVANCE_FORK_TIME enable a non-local RPC', () => {
+    const cfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CHAIN_NETWORK: 'dev',
+      RPC_URL_PRIMARY: 'https://base-sepolia.example',
+      HEARTBEAT_ADVANCE_FORK_TIME: '1',
+    });
+
+    expect(cfg.advanceForkTime).toBe(false);
+  });
+
   it('derives CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL when explicit URL is unset', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -460,6 +472,57 @@ describe('RunnerCastHeartbeat', () => {
     await expect(heartbeat.advanceForkTimeTo(120)).resolves.toBe(false);
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses fork time RPCs against a non-local URL even if constructed enabled', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://base-sepolia.example',
+      advanceForkTime: true,
+    });
+
+    await expect(heartbeat.advanceForkTimeTo(120)).rejects.toThrow(/non-local RPC URL/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('refreshes chain time before evm_increaseTime fallback delta', async () => {
+    viemMocks.getBlock
+      .mockResolvedValueOnce({ timestamp: 10n })
+      .mockResolvedValueOnce({ timestamp: 11n });
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ error: { message: 'set timestamp unsupported' } }),
+      } satisfies Partial<Response>)
+      .mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ result: '0x1' }),
+      } satisfies Partial<Response>);
+    vi.stubGlobal('fetch', fetch);
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'http://anvil-fork:8545',
+      advanceForkTime: true,
+    });
+
+    await expect(heartbeat.advanceForkTimeTo(12)).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledWith(
+      'http://anvil-fork:8545',
+      expect.objectContaining({
+        body: expect.stringContaining('"method":"evm_increaseTime"'),
+      }),
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      'http://anvil-fork:8545',
+      expect.objectContaining({
+        body: expect.stringContaining('"params":["0x1"]'),
+      }),
+    );
   });
 
   it('detects a viem-wrapped rate-limit revert by reason ALONE (no timestamp help)', async () => {

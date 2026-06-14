@@ -34,6 +34,7 @@ export interface HeartbeatSchedulerDeps {
 export const HEARTBEAT_SAFETY_MARGIN_MS = 1_500;
 export const HEARTBEAT_JITTER_MS = HEARTBEAT_SAFETY_MARGIN_MS;
 export const HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS = 2_000;
+export const HEARTBEAT_RATE_LIMIT_RETRY_MAX = 5;
 export const HEARTBEAT_RETRY_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000] as const;
 const HOT_LOOP_GUARD_MS = 1_000;
 const ALERT_DEDUP_WINDOW_MS = 5 * 60 * 1_000;
@@ -163,6 +164,7 @@ async function runHeartbeatScheduler(
       runnerId,
       heartbeatIntervalSeconds,
       nextHeartbeatAtTs,
+      lastBeatWallMs,
     });
     if (result.success) {
       lastAlertAtMs.clear();
@@ -182,7 +184,7 @@ async function runHeartbeatScheduler(
       continue;
     }
 
-    if (result.aborted || result.lastFireResult === 'rate-limited') continue;
+    if (result.aborted) continue;
     const currentMs = nowMs();
     const alertClass = result.lastFireResult;
     const lastAlertForClassAtMs = lastAlertAtMs.get(alertClass);
@@ -212,6 +214,7 @@ async function attemptHeartbeatWithBackoff(
     runnerId: string;
     heartbeatIntervalSeconds?: number;
     nextHeartbeatAtTs?: number;
+    lastBeatWallMs?: number;
   },
 ): Promise<
   | { success: true }
@@ -221,6 +224,8 @@ async function attemptHeartbeatWithBackoff(
   const nowMs = deps.nowMs ?? (() => Date.now());
 
   let attempt = 0;
+  let rateLimitedWaits = 0;
+  let lastRateLimitedWallMs: number | undefined;
   while (attempt <= HEARTBEAT_RETRY_BACKOFF_MS.length) {
     try {
       const { txHash } = await deps.heartbeatCaller.callHeartbeat();
@@ -254,17 +259,30 @@ async function attemptHeartbeatWithBackoff(
           heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
           nextHeartbeatAtTs,
         });
+        if (rateLimitedWaits >= HEARTBEAT_RATE_LIMIT_RETRY_MAX) {
+          return {
+            success: false,
+            aborted: false,
+            message: `${lastFailureMessage}; rate-limit retry cap exceeded`,
+            lastFireResult: 'rate-limited',
+          };
+        }
+        rateLimitedWaits++;
         const schedulerNowMs = await prepareHeartbeatWindow({
           deps,
           nextHeartbeatAtTs,
           fallbackNowMs: nowMs,
         });
-        const waitMs = nextHeartbeatAtTs === undefined
-          ? HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS
-          : Math.max(
-            HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS,
-            computeHeartbeatDelayMs(nextHeartbeatAtTs, schedulerNowMs),
-          );
+        const waitMs = computeRateLimitWaitMs({
+          deps,
+          heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
+          lastBeatWallMs: deps.lastBeatWallMs,
+          lastRateLimitedWallMs,
+          nextHeartbeatAtTs,
+          schedulerNowMs,
+          wallNowMs: nowMs(),
+        });
+        lastRateLimitedWallMs = nowMs();
         deps.log.info(
           `heartbeat rate-limited; retrying after ${waitMs}ms (nextHeartbeatAtTs=${nextHeartbeatAtTs ?? 'unknown'})`,
         );
@@ -349,6 +367,35 @@ function computeForkWallDelayMs(args: {
   const intervalMs = (args.heartbeatIntervalSeconds ?? 30) * 1000;
   const lastBeatWallMs = args.lastBeatWallMs ?? args.wallNowMs - intervalMs;
   return computeWallIntervalDelayMs(intervalMs, lastBeatWallMs, args.wallNowMs);
+}
+
+function computeRateLimitWaitMs(args: {
+  deps: HeartbeatSchedulerDeps;
+  heartbeatIntervalSeconds: number | undefined;
+  lastBeatWallMs: number | undefined;
+  lastRateLimitedWallMs: number | undefined;
+  nextHeartbeatAtTs: number | undefined;
+  schedulerNowMs: number;
+  wallNowMs: number;
+}): number {
+  if (isForkTimeAdvanceEnabled(args.deps)) {
+    const cadenceAnchorWallMs = args.lastRateLimitedWallMs ?? args.wallNowMs;
+    return Math.max(
+      HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS,
+      computeForkWallDelayMs({
+        heartbeatIntervalSeconds: args.heartbeatIntervalSeconds,
+        lastBeatWallMs: cadenceAnchorWallMs,
+        wallNowMs: args.wallNowMs,
+      }),
+    );
+  }
+
+  return args.nextHeartbeatAtTs === undefined
+    ? HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS
+    : Math.max(
+      HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS,
+      computeHeartbeatDelayMs(args.nextHeartbeatAtTs, args.schedulerNowMs),
+    );
 }
 
 async function readSchedulerNowMs(

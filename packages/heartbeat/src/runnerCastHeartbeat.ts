@@ -228,6 +228,9 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   async advanceForkTimeTo(targetUnixTs: number): Promise<boolean> {
     if (!this.advanceForkTime) return false;
     if (!this.rpcUrl) throw new Error('advanceForkTime requires an explicit RPC URL');
+    if (!isLocalForkRpcUrl(this.rpcUrl)) {
+      throw new Error(`advanceForkTime refused for non-local RPC URL: ${this.rpcUrl}`);
+    }
 
     const latestUnixTs = Math.floor(await this.readChainNowMs() / 1000);
     if (latestUnixTs >= targetUnixTs) return false;
@@ -235,7 +238,9 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     try {
       await this.sendForkRpc('evm_setNextBlockTimestamp', [toQuantityHex(targetUnixTs)]);
     } catch {
-      await this.sendForkRpc('evm_increaseTime', [toQuantityHex(targetUnixTs - latestUnixTs)]);
+      const refreshedUnixTs = Math.floor(await this.readChainNowMs() / 1000);
+      if (refreshedUnixTs >= targetUnixTs) return false;
+      await this.sendForkRpc('evm_increaseTime', [toQuantityHex(targetUnixTs - refreshedUnixTs)]);
     }
     await this.sendForkRpc('evm_mine', []);
     return true;
@@ -429,7 +434,7 @@ function shouldAdvanceForkTime(
   env: NodeJS.ProcessEnv,
   rpcUrl: string | undefined,
 ): boolean {
-  if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '1') return true;
+  if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '1') return isLocalForkRpcUrl(rpcUrl);
   if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '0') return false;
   return env['CHAIN_NETWORK'] === 'dev' && isLocalForkRpcUrl(rpcUrl);
 }

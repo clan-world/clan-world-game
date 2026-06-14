@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeHeartbeatDelayMs,
+  HEARTBEAT_RATE_LIMIT_RETRY_MAX,
   HEARTBEAT_RETRY_BACKOFF_MS,
   HEARTBEAT_SAFETY_MARGIN_MS,
   startHeartbeatScheduler,
@@ -171,6 +172,66 @@ describe('heartbeatScheduler', () => {
     expect(postRunnerStatus).toHaveBeenCalledWith(
       expect.objectContaining({ lastFireResult: 'success', nextHeartbeatAtTs: 33 }),
     );
+
+    abort.abort();
+  });
+
+  it('surfaces persistent rate limits after a bounded number of waits', async () => {
+    vi.setSystemTime(0);
+    const callHeartbeat = vi.fn().mockRejectedValue(new HeartbeatRateLimitedError(0));
+    const abort = new AbortController();
+    const alert = vi.fn().mockImplementation(async () => {
+      abort.abort();
+      return { ok: true };
+    });
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readNextHeartbeatAtTs() { return 0; },
+    });
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      alert,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 +
+      HEARTBEAT_RATE_LIMIT_RETRY_MAX * 2_000,
+    );
+
+    expect(callHeartbeat).toHaveBeenCalledTimes(HEARTBEAT_RATE_LIMIT_RETRY_MAX + 1);
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(alert.mock.calls[0]?.[0]).toContain('rate-limit retry cap exceeded');
+
+    abort.abort();
+  });
+
+  it('paces rate-limit retries by wall interval in fork-advance mode', async () => {
+    vi.setSystemTime(0);
+    const callHeartbeat = vi.fn().mockRejectedValue(new HeartbeatRateLimitedError(0));
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readHeartbeatIntervalSeconds() { return 30; },
+      async readChainNowMs() { return 0; },
+      async advanceForkTimeTo() { return false; },
+      isForkTimeAdvanceEnabled: () => true,
+      async readNextHeartbeatAtTs() { return 0; },
+    });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     abort.abort();
   });
