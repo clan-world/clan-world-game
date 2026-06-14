@@ -93,19 +93,33 @@ describe('configFromEnv', () => {
   });
 
   it('enables fork time advance only for dev local fork RPCs by default', () => {
-    expect(configFromEnv({
+    const devCfg = configFromEnv({
       RUNNER_PRIVATE_KEY: '1'.repeat(64),
       CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
       CHAIN_NETWORK: 'dev',
       RPC_URL_PRIMARY: 'http://anvil-fork:8545',
-    }).advanceForkTime).toBe(true);
+    });
+    expect(devCfg.advanceForkTime).toBe(true);
+    expect(devCfg.gasLimit).toBe(25_000_000n);
 
+    const prodCfg = configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CHAIN_NETWORK: 'prod',
+      RPC_URL_PRIMARY: 'https://base-sepolia.example',
+    });
+    expect(prodCfg.advanceForkTime).toBe(false);
+    expect(prodCfg.gasLimit).toBeUndefined();
+  });
+
+  it('honors explicit HEARTBEAT_GAS_LIMIT', () => {
     expect(configFromEnv({
       RUNNER_PRIVATE_KEY: '1'.repeat(64),
       CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
       CHAIN_NETWORK: 'prod',
       RPC_URL_PRIMARY: 'https://base-sepolia.example',
-    }).advanceForkTime).toBe(false);
+      HEARTBEAT_GAS_LIMIT: '1234567',
+    }).gasLimit).toBe(1_234_567n);
   });
 
   it('derives CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL when explicit URL is unset', () => {
@@ -221,8 +235,30 @@ describe('RunnerCastHeartbeat', () => {
 
     await expect(heartbeat.callHeartbeat()).resolves.toEqual({ txHash: hash });
 
+    expect(viemMocks.writeContract.mock.calls[0]?.[0]).not.toHaveProperty('gas');
     expect(existsSync(heartbeatSuccessFile)).toBe(true);
     expect(readFileSync(heartbeatSuccessFile, 'utf8')).toBe('123');
+  });
+
+  it('sends heartbeat with an explicit gas limit when configured', async () => {
+    const hash = `0x${'a'.repeat(64)}` as const;
+    viemMocks.writeContract.mockResolvedValue(hash);
+    viemMocks.waitForTransactionReceipt.mockResolvedValue({
+      status: 'success',
+      blockNumber: 123n,
+    });
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+      gasLimit: 25_000_000n,
+    });
+
+    await expect(heartbeat.callHeartbeat()).resolves.toEqual({ txHash: hash });
+
+    expect(viemMocks.writeContract).toHaveBeenCalledWith(
+      expect.objectContaining({ gas: 25_000_000n }),
+    );
   });
 
   it('swallows EACCES when heartbeat success file cannot be written', () => {
@@ -408,6 +444,22 @@ describe('RunnerCastHeartbeat', () => {
         body: expect.stringContaining('"method":"evm_mine"'),
       }),
     );
+  });
+
+  it('does not move fork time backward when the chain timestamp is already ahead', async () => {
+    viemMocks.getBlock.mockResolvedValue({ timestamp: 130n });
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'http://anvil-fork:8545',
+      advanceForkTime: true,
+    });
+
+    await expect(heartbeat.advanceForkTimeTo(120)).resolves.toBe(false);
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('detects a viem-wrapped rate-limit revert by reason ALONE (no timestamp help)', async () => {

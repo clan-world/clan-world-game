@@ -216,6 +216,42 @@ describe('heartbeatScheduler', () => {
     );
   });
 
+  it('does not advance fork time when chain time is already past nextHeartbeatAtTs', async () => {
+    vi.setSystemTime(20_000);
+    const abort = new AbortController();
+    const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
+    const advanceForkTimeTo = vi.fn(async () => {
+      throw new Error('must not move fork time backward');
+    });
+    const callHeartbeat = vi.fn(async () => {
+      abort.abort();
+      return { txHash: '0x1' };
+    });
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readChainNowMs() { return 13_000; },
+      advanceForkTimeTo,
+      readNextHeartbeatAtTs: vi.fn()
+        .mockResolvedValueOnce(10)
+        .mockResolvedValue(40),
+    });
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      convex: { postRunnerStatus },
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(advanceForkTimeTo).not.toHaveBeenCalled();
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+    expect(postRunnerStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ lastFireResult: 'success' }),
+    );
+  });
+
   it('exits silently when aborted during retry sleep', async () => {
     const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
     const alert = vi.fn().mockResolvedValue({ ok: true });

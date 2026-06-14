@@ -32,6 +32,8 @@ export interface RunnerHeartbeatConfig {
   webhookSharedSecret?: string;
   /** Dev-only affordance: advance a local anvil fork clock before heartbeats. */
   advanceForkTime?: boolean;
+  /** Optional tx gas limit. Dev fork defaults high to avoid estimate/call mismatch. */
+  gasLimit?: bigint;
 }
 
 /**
@@ -79,6 +81,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
     convexWebhookUrl,
     webhookSharedSecret: env['WEBHOOK_SHARED_SECRET'],
     advanceForkTime: shouldAdvanceForkTime(env, env['RPC_URL_PRIMARY'] || env['RPC_URL_FALLBACK']),
+    gasLimit: resolveHeartbeatGasLimit(env),
   };
 }
 
@@ -101,6 +104,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   private readonly webhookSharedSecret?: string;
   private readonly rpcUrl?: string;
   private readonly advanceForkTime: boolean;
+  private readonly gasLimit?: bigint;
 
   constructor(cfg: RunnerHeartbeatConfig) {
     const pk = normalizePk(cfg.privateKey);
@@ -118,6 +122,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     this.webhookSharedSecret = cfg.webhookSharedSecret;
     this.rpcUrl = cfg.rpcUrl;
     this.advanceForkTime = cfg.advanceForkTime ?? false;
+    this.gasLimit = cfg.gasLimit;
   }
 
   async callHeartbeat(): Promise<{ txHash: string }> {
@@ -129,6 +134,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         abi: CLAN_WORLD_ABI,
         functionName: 'heartbeat',
         args: [],
+        ...(this.gasLimit === undefined ? {} : { gas: this.gasLimit }),
       });
       // Wait for confirmation per the seam contract ("not fire-and-forget").
       const receipt = await this.publicClient.waitForTransactionReceipt({
@@ -152,7 +158,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
         ) {
           throw new HeartbeatRateLimitedError(next);
         }
-        throw new Error(`heartbeat tx ${hash} reverted on-chain`);
+        throw new Error(`heartbeat tx ${hash} reverted on-chain; ${await this.heartbeatDiagnostics(receipt.blockNumber)}`);
       }
       await this.postHeartbeatWebhook({
         txHash: hash,
@@ -194,7 +200,7 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       if (next !== undefined && await this.isNextHeartbeatStillFuture(next)) {
         throw new HeartbeatRateLimitedError(next);
       }
-      throw err;
+      throw await this.withHeartbeatDiagnostics(err);
     }
   }
 
@@ -277,6 +283,25 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     const payload = await response.json() as { result?: unknown; error?: { message?: string } };
     if (payload.error) throw new Error(`${method} failed: ${payload.error.message ?? 'RPC error'}`);
     return payload.result;
+  }
+
+  private async withHeartbeatDiagnostics(err: unknown): Promise<Error> {
+    const diagnostics = await this.heartbeatDiagnostics().catch(diagErr =>
+      `diagnostics failed: ${messageFrom(diagErr)}`);
+    const error = new Error(`${messageFrom(err)}; ${diagnostics}`);
+    (error as Error & { cause?: unknown }).cause = err;
+    return error;
+  }
+
+  private async heartbeatDiagnostics(blockNumber?: bigint | number | null): Promise<string> {
+    const [chainNowMs, nextHeartbeatAtTs] = await Promise.all([
+      this.readBlockTimestampMs(blockNumber).catch(() => undefined),
+      this.readNextHeartbeatAtTs().catch(() => undefined),
+    ]);
+    const chainNowTs = chainNowMs === undefined ? 'unknown' : String(Math.floor(chainNowMs / 1000));
+    const nextTs = nextHeartbeatAtTs === undefined ? 'unknown' : String(nextHeartbeatAtTs);
+    const gasLimit = this.gasLimit === undefined ? 'auto' : this.gasLimit.toString();
+    return `heartbeat diagnostics: chainBlockTs=${chainNowTs} nextHeartbeatAtTs=${nextTs} wallTs=${Math.floor(Date.now() / 1000)} gasLimit=${gasLimit}`;
   }
 
   private async postHeartbeatWebhook(args: {
@@ -405,6 +430,12 @@ function shouldAdvanceForkTime(
   return env['CHAIN_NETWORK'] === 'dev' && isLocalForkRpcUrl(rpcUrl);
 }
 
+function resolveHeartbeatGasLimit(env: NodeJS.ProcessEnv): bigint | undefined {
+  const raw = env['HEARTBEAT_GAS_LIMIT'];
+  if (raw !== undefined && raw !== '') return parsePositiveBigIntEnv('HEARTBEAT_GAS_LIMIT', raw);
+  return env['CHAIN_NETWORK'] === 'dev' ? 25_000_000n : undefined;
+}
+
 function isLocalForkRpcUrl(rpcUrl: string | undefined): boolean {
   if (!rpcUrl) return false;
   let url: URL;
@@ -427,4 +458,15 @@ function toQuantityHex(value: number): `0x${string}` {
     throw new Error(`invalid JSON-RPC quantity: ${value}`);
   }
   return `0x${value.toString(16)}`;
+}
+
+function parsePositiveBigIntEnv(name: string, raw: string): bigint {
+  if (!/^[1-9][0-9]*$/.test(raw)) {
+    throw new Error(`${name} must be a positive integer, got ${raw}`);
+  }
+  return BigInt(raw);
+}
+
+function messageFrom(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
