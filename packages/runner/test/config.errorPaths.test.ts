@@ -126,8 +126,21 @@ describe("loadConfig — parsePositiveInt validation", () => {
     expect(() => loadConfig()).toThrow(new RegExp(`${escapeRe(envVar)} must be a positive integer; got '${escapeRe(val)}'`));
   });
 
-  it("uses fallback when an int env var is unset (empty string treated as unset)", () => {
+  it("uses fallback when an int env var is unset", () => {
     process.env = baseEnv();
+    const cfg = loadConfig();
+    expect(cfg.pollIntervalMs).toBe(5000);
+    expect(cfg.heartbeatIntervalMs).toBe(30000);
+    expect(cfg.maxPasteAttempts).toBe(3);
+  });
+
+  it("treats an empty-string int env var as unset (falls back, does not throw)", () => {
+    process.env = {
+      ...baseEnv(),
+      ELDER_RUNTIME_POLL_MS: "",
+      ELDER_RUNTIME_HEARTBEAT_MS: "",
+      RUNNER_MAX_PASTE_ATTEMPTS: "",
+    };
     const cfg = loadConfig();
     expect(cfg.pollIntervalMs).toBe(5000);
     expect(cfg.heartbeatIntervalMs).toBe(30000);

@@ -119,7 +119,13 @@ describe("elderConfig — throw branches", () => {
 });
 
 describe("heartbeat — error paths", () => {
-  it("does not start the interval when signal is already aborted", () => {
+  it("does not start the interval when signal is already aborted", async () => {
+    vi.useFakeTimers();
+    // Observe the guard directly: an aborted-at-entry signal must short-circuit
+    // BEFORE scheduling any interval. Checking `calls` alone can't catch a
+    // regression (the in-loop abort guard would also suppress the call), so we
+    // assert setInterval was never invoked.
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
     const ac = new AbortController();
     ac.abort();
     const calls: number[] = [];
@@ -134,7 +140,9 @@ describe("heartbeat — error paths", () => {
       consecutiveErrors: 0,
     };
     startHeartbeat(client, state, 100, ac.signal);
-    // No interval scheduled — nothing was called.
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    // Belt-and-suspenders: advancing past the interval period fires nothing.
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(calls).toHaveLength(0);
   });
 

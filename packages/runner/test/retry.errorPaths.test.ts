@@ -22,12 +22,13 @@ afterEach(() => {
 
 describe("sleep()", () => {
   it("returns immediately when ms <= 0 (no timer, no abort listener)", async () => {
-    // No fake timers — if a setTimeout were scheduled this test would hang
-    // until real wall-clock passes. The function short-circuits at ms <= 0.
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     await sleep(0);
     await sleep(-100);
-    // If we get here, no timer was scheduled.
-    expect(true).toBe(true);
+    // The function short-circuits at ms <= 0 before scheduling any timer.
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("rejects with 'aborted' when signal is already aborted at entry", async () => {
@@ -96,7 +97,11 @@ describe("withBackoff() error paths", () => {
 
   it("doubles delay each retry and caps at maxDelayMs", async () => {
     vi.useFakeTimers();
-    const sleepWaits: number[] = [];
+    // Observe the delays withBackoff ACTUALLY schedules by spying on the timer
+    // its sleep() ultimately calls. Asserting on a hand-populated array would be
+    // test theater (it would pass even if withBackoff slept 0ms each retry); the
+    // setTimeout spy captures production's real backoff schedule.
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     let attempts = 0;
     // Spy on console.warn to silence retry log spam
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -110,20 +115,20 @@ describe("withBackoff() error paths", () => {
       maxDelayMs: 300,
     });
 
-    // First failure → sleep 100, second → 200, third → 300 (capped),
-    // fourth → 300 (still capped). Drain each.
-    sleepWaits.push(100);
-    await vi.advanceTimersByTimeAsync(100);
-    sleepWaits.push(200);
-    await vi.advanceTimersByTimeAsync(200);
-    sleepWaits.push(300);
-    await vi.advanceTimersByTimeAsync(300);
-    sleepWaits.push(300);
-    await vi.advanceTimersByTimeAsync(300);
+    // Drain each backoff sleep in turn so the next one gets scheduled. Advancing
+    // generously (not by the exact expected delay) decouples liveness from the
+    // assertion — the exact schedule is checked via the spy below.
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
 
     await expect(promise).resolves.toBe("ok");
     expect(attempts).toBe(5);
-    expect(sleepWaits).toEqual([100, 200, 300, 300]);
+    // First failure → 100, second → 200, third → 300 (capped), fourth → 300.
+    const scheduledDelays = setTimeoutSpy.mock.calls
+      .map((call) => call[1])
+      .filter((ms): ms is number => typeof ms === "number" && ms > 0);
+    expect(scheduledDelays).toEqual([100, 200, 300, 300]);
   });
 
   it("swallows errors thrown by the onRecovered hook and still resolves", async () => {
