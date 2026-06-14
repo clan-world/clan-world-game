@@ -231,9 +231,9 @@ The skill prompt must enforce the relative path constraint explicitly because a 
 | `uniswap-market-overview` | #278 | `elder world snapshot` + Unicorn Town indexer getters (Phase 4 complete) | Yes |
 | `uniswap-sell-immediate` | #279 | `uniswap-market-overview` (#278), `elder clan submit-orders` | Yes (after #278) |
 | `uniswap-sell-scheduled` | #280 | `uniswap-sell-immediate` (#279), market scheduler in Phase 5 | Stub only — Phase 5 not shipped |
-| `uniswap-arb-camping` | #281 | `uniswap-market-overview` (#278), 0G adapter (Phase 7 stub exists), AXL whisper (Phase 8 stub exists) | Stub only — 0G/AXL stubs exist but not production |
+| `uniswap-arb-camping` | #281 | `uniswap-market-overview` (#278) | Stub only — not production |
 
-Note: 0G adapter = Phase 7 (stub exists, not production). AXL whisper = Phase 8 (stub exists, not production). Skills #280 and #281 should be drafted as stubs with clear `> ⚠️ STUB: depends on Phase N` callouts at the top so elders know not to invoke them in production ticks.
+Note: the earlier external memory-adapter and whisper-channel integrations have been retired and are not part of the current stack. Skills #280 and #281 should be drafted as stubs with clear `> ⚠️ STUB: depends on Phase N` callouts at the top so elders know not to invoke them in production ticks.
 
 ---
 

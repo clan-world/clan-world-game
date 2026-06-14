@@ -6,7 +6,7 @@ This historical alignment note has been superseded for V3.
 
 - Base Sepolia is the only active chain target.
 - The frontend renders directly in a regular browser.
-- The demo focus is 0G memory, ERC-7857-style iNFT transfer, AXL whispers, and KeeperHub heartbeat.
+- The stack is the Base Sepolia diamond + self-hosted Convex (indexer + tick clock) + dockerized elder agents. The earlier external-sponsor integrations (memory/iNFT/whisper/keeper) have been retired.
 - Historical mobile-app hackathon planning has been moved out of the active path.
 
 ## Current References

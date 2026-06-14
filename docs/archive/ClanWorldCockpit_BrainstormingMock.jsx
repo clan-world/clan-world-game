@@ -1,3 +1,12 @@
+// ARCHIVED 2026-06-14 — historical brainstorming mock only; DO NOT use as a spec.
+// This cockpit mock was built around a retired sponsor stack (external memory/iNFT
+// storage, external whisper channel, external inference/compute). Those integrations
+// have been dropped. The current stack is the Base Sepolia diamond + self-hosted
+// Convex (indexer + tick clock) + dockerized elder agents. The "cognition layer"
+// panels (MEMORY/COMPUTE/DIPLOMATIC THEATRE) and the cost-in-sponsor-token figures
+// below describe tech that no longer exists. Kept for UI-layout/visual-design
+// reference only. Note: file uses smart quotes and never compiled as-is.
+
 import { useState, useEffect, useMemo, Fragment } from ‘react’;
 import {
 RadarChart, Radar, PolarGrid, PolarAngleAxis, AreaChart, Area,

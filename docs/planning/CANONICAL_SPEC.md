@@ -17,7 +17,7 @@ When two docs conflict, the higher-ranked doc wins.
 | 6 | `clanworld_v1_implementation_profile.md` | `docs/planning/` |
 | 7 | `clanworld_v4_spec.md` | `docs/planning/` |
 | 8 | `clanworld_v4_1_addendum.md` | `docs/planning/` (§A7 patched — see below) |
-| 9 | Sponsor integration specs | `docs/planning/V1/03`, `V1/04`, `V1/05 0G/` |
+| 9 | Sponsor integration specs (retired) | _Removed — external-sponsor integrations dropped; current stack is Base Sepolia diamond + self-hosted Convex + dockerized elders._ |
 | 10 | Landing/lore copy | `apps/landing/` (non-authoritative) |
 
 ---

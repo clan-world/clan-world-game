@@ -50,7 +50,7 @@ Enumerates every demo/fake/stub component in the codebase. Each entry notes: wha
 | `packages/shared/src/types.ts` | Wave 0 placeholder type shapes (`Region`, `Clan`, `WorldSnapshot`). Intentionally minimal; do not match v4.2 contract shapes. | Phase 1 — expand to match `IClanWorld` struct layouts |
 | `packages/shared/src/mocks/clanWorldFixture.ts` | Demo dataset for the 2-minute showcase. Defines `ClanDemoState`, `BanditDemoState`, four hardcoded clans (Aldric, Mira, Brennan, Sora), and a `DEMO_WORLD_SNAPSHOT`. Used by `seedMockState` and frontend fallback rendering. | Phase 1 — remove from `src/index.ts` export; keep only in test tree |
 | `packages/shared/src/index.ts` — `export * from './mocks/clanWorldFixture'` | Exports demo fixture into the public package surface. Demo data leaks into prod bundle. | Phase 1 — remove this export |
-| `packages/shared/src/adapters/IKeeper.ts` | Stub adapter interfaces. Real implementations throw `not implemented`. | Phase 1 (KeeperHub), Phase 2 (AXL) — replace stubs per integration plan |
+| `packages/shared/src/adapters/IKeeper.ts` | Stub adapter interfaces. Real implementations throw `not implemented`. | Retired — external-keeper/whisper integrations dropped; current stack uses self-hosted Convex + dockerized elders |
 | `packages/agents/src/cli.ts` | Wave 0 stub: only `elder world snapshot` is implemented; returns mock JSON. Full command surface deferred. | Phase 1 — implement real chain read |
 
 ---
@@ -60,7 +60,7 @@ Enumerates every demo/fake/stub component in the codebase. Each entry notes: wha
 | File / Location | Description | Remove/replace phase |
 |-----------------|-------------|----------------------|
 | `apps/landing/src/pages/LorePage.tsx` — gameplay constants | Narrative copy contains gameplay numbers (gather durations: 3 ticks, cooldown: ~3 ticks) that contradict v4 spec (cooldown = 60s / 1 tick at 60s cadence). These are lore-facing approximations, not authoritative. See `CANONICAL_SPEC.md` rank 9. | Non-authoritative; update copy when final numbers are locked for Submission 2 |
-| `apps/landing/src/data/sponsors.ts` — `TODO(post-hackathon)` | Placeholder SVG sponsor logos for KeeperHub, Gensyn AXL, 0G. | Post-hackathon — replace with final assets |
+| `apps/landing/src/data/sponsors.ts` — `TODO(post-hackathon)` | Placeholder SVG sponsor logos (legacy integration partners). | Retired — sponsor integrations dropped from the current stack |
 
 ---
 
