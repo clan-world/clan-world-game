@@ -117,10 +117,12 @@ export interface ClansmanRow {
   eta: number | null;
   /**
    * Absolute wall-clock time (unix seconds) when the active mission settles, or
-   * null when idle/dead. Derived from the tick epoch (tickEpochStartedAt +
-   * settlesAtTick * tickDurationSeconds) so the UI can show a human-readable
-   * clock time ("ETA 3:42:10 AM") instead of a raw tick/timestamp number. The
-   * client formats this with the viewer's local timezone.
+   * null when idle/dead. Derived from the tick epoch relative to the current
+   * tick (tickEpochStartedAt + (settlesAtTick - currentTick) *
+   * tickDurationSeconds) — tickEpochStartedAt is when the *current* tick began,
+   * so the settle is projected forward from now. This lets the UI show a
+   * human-readable clock time ("ETA 3:42:10 AM") instead of a raw tick/timestamp
+   * number. The client formats this with the viewer's local timezone.
    */
   etaTs: number | null;
   cooldown: number;
@@ -138,7 +140,16 @@ export interface ClansmanRow {
  * the tick epoch, so the UI can render a real clock time ("ETA 3:42:10 AM")
  * instead of a raw tick/timestamp number.
  *
- * etaTs = tickEpochStartedAt + settlesAtTick * tickDurationSeconds
+ * etaTs = tickEpochStartedAt + (settlesAtTick - currentTick) * tickDurationSeconds
+ *
+ * CRITICAL: `tickEpochStartedAt` is the wall-clock time the *current* tick
+ * began (when `currentTick` started) — NOT tick 0. This matches the WorldMap
+ * fractional-tick formula, which treats it as "when the current tick began"
+ * (subTickProgress = (now - tickEpochStartedAt) / tickDuration). So the
+ * projection must be *relative to currentTick*: how many ticks the settle is
+ * from now, scaled by the tick duration. Projecting from a notional tick-0
+ * epoch (the pre-r2 `+ settlesAtTick * tickDurationSeconds`) renders every ETA
+ * hours off.
  *
  * Returns null when there's no live ETA (`eta === null`, i.e. idle/dead) OR
  * when the tick epoch hasn't been surfaced yet (`tickEpochStartedAt <= 0`) — in
@@ -147,16 +158,18 @@ export interface ClansmanRow {
  * render a misleading 1970-epoch clock.
  *
  * Exported as a pure function so the derivation is unit-testable (and the test
- * fails if the epoch-guard or the projection formula is reverted).
+ * fails if the epoch-guard, the currentTick-relative projection, or the
+ * formula is reverted).
  */
 export function deriveEtaTs(
   eta: number | null,
   settlesAtTick: number,
+  currentTick: number,
   tickEpochStartedAt: number,
   tickDurationSeconds: number,
 ): number | null {
   if (eta === null || tickEpochStartedAt <= 0) return null;
-  return tickEpochStartedAt + settlesAtTick * tickDurationSeconds;
+  return tickEpochStartedAt + (settlesAtTick - currentTick) * tickDurationSeconds;
 }
 
 export const getClanClansmen = query({
@@ -245,6 +258,7 @@ export const getClanClansmen = query({
       const etaTs = deriveEtaTs(
         eta,
         settlesAtTick,
+        currentTick,
         tickEpochStartedAt,
         tickDurationSeconds,
       );

@@ -66,7 +66,11 @@ function buildStubClansmen(): ClansmanRow[] {
  * without any client-side interval.
  */
 function formatEtaClock(etaTs: number): string {
-  return new Date(etaTs * 1000).toLocaleTimeString([], {
+  const d = new Date(etaTs * 1000);
+  // Guard against NaN/invalid etaTs — toLocaleTimeString() would otherwise
+  // render the literal string "Invalid Date" in the ETA column.
+  if (Number.isNaN(d.getTime())) return '??:??:??';
+  return d.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
