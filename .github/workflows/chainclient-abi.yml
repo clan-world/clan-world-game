@@ -27,7 +27,12 @@ jobs:
               - 'packages/contracts/**'
               - '**/*.sol'
               - 'packages/contracts/abi/**'
+              # gen output + generator: editing either must re-validate ABI drift
+              - 'packages/shared/src/adapters/IChainClient.ts'
+              - 'scripts/gen-chainclient-abi.mjs'
               - 'pnpm-lock.yaml'
+              # self-reference: edits to this workflow must re-run ABI validation
+              - '.github/workflows/chainclient-abi.yml'
       - uses: pnpm/action-setup@v4
         if: steps.changes.outputs.abi == 'true'
       - uses: actions/setup-node@v4

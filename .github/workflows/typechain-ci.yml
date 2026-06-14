@@ -32,7 +32,12 @@ jobs:
               - 'packages/sdk/**'
               - 'scripts/gen-constants.mjs'
               - 'scripts/gen-enums.mjs'
+              - 'scripts/abi-targets.mjs'
+              # gen output lives in packages/shared (not covered by the globs above)
+              - 'packages/shared/src/generated/**'
               - 'pnpm-lock.yaml'
+              # self-reference: edits to this workflow must re-run type freshness
+              - '.github/workflows/typechain-ci.yml'
       - uses: pnpm/action-setup@v4
         if: steps.changes.outputs.types == 'true'
       - uses: actions/setup-node@v4
@@ -90,7 +95,11 @@ jobs:
             convex:
               - 'packages/sdk/convex/**'
               - 'apps/server/convex/**'
+              # convex.json (sibling of convex/) sets the codegen functions dir
+              - 'packages/sdk/convex.json'
+              - 'apps/server/convex.json'
               - 'pnpm-lock.yaml'
+              - '.github/workflows/typechain-ci.yml'
       - uses: pnpm/action-setup@v4
         if: steps.changes.outputs.convex == 'true'
       - uses: actions/setup-node@v4

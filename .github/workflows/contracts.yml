@@ -32,6 +32,8 @@ jobs:
               - 'packages/contracts/foundry.toml'
               - 'packages/contracts/foundry.lock'
               - 'pnpm-lock.yaml'
+              # self-reference: edits to this workflow must re-run forge validation
+              - '.github/workflows/contracts.yml'
       - uses: pnpm/action-setup@v4
         if: steps.changes.outputs.contracts == 'true'
       - uses: actions/setup-node@v4
