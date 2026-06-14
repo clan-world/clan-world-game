@@ -42,7 +42,7 @@ RPC_URL_PRIMARY="https://sepolia.base.org"             # or your Alchemy/Infura 
 
 On the **dev `anvil-fork`**, you don't need the real key — the fork runs
 `--auto-impersonate`, so sign as the owner with `--unlocked --from "$OWNER"`
-(`OWNER=$(cast call $DIAMOND "owner()(address)" --rpc-url $RPC)`).
+(`OWNER=$(cast call $DIAMOND "owner()(address)" --rpc-url $RPC_URL_PRIMARY)`).
 
 ---
 
@@ -272,21 +272,24 @@ npx -y convex@1.39.1 run ops:resetCheckpoint \
 # (b) CLEAR the stale tickReceiveLog — THIS unblocks the per-tick elder driver.
 #     Rows from the previous (higher-tick) world make lastReceivedTick sit in the
 #     FUTURE of the rebuilt clock, so the runner skips every delivery
-#     (aux.tick <= lastTickDelivered) until live tick passes it. Loop to
-#     complete:true. minTick=0 wipes all stale receipts so the runner late-joins
-#     cleanly (lastReceivedTick=null).
-while true; do
-  out=$(npx -y convex@1.39.1 run ops:clearStaleTickReceiveLog \
-    "{\"secret\":\"$INDEXER_SECRET\",\"minTick\":0,\"batchSize\":2000}")
-  echo "$out"
-  echo "$out" | grep -q '"complete": true' && break
-done
+#     (aux.tick <= lastTickDelivered) until live tick passes it.
+#
+#     ⚠️  ops:clearStaleTickReceiveLog does NOT exist yet in ops.ts.
+#     Until it is added in a code PR, truncate the table manually:
+#
+#     1. Open the Convex dashboard → Tables → tickReceiveLog
+#     2. Select all rows and delete them (the dashboard's "Clear table" action
+#        or multi-select delete). Also clear tickSendLog the same way.
+#     3. The runner will late-join cleanly (lastReceivedTick=null on next tick).
+#
+#     TODO (code PR): add ops:clearStaleTickReceiveLog to apps/server/convex/ops.ts
+#     with args (secret, minTick, batchSize) so this step can be scripted here.
 ```
 
 > **Why both resets:** `resetCheckpoint` fixes the *event* indexer (which clan
-> state Convex reads). `clearStaleTickReceiveLog` fixes the *runner* delivery
-> gate (whether elders get prompted at all). Resetting only the checkpoint leaves
-> the elders mute even though the dashboard updates.
+> state Convex reads). Clearing `tickReceiveLog`/`tickSendLog` fixes the *runner*
+> delivery gate (whether elders get prompted at all). Resetting only the checkpoint
+> leaves the elders mute even though the dashboard updates.
 
 Verify the pipeline end-to-end per `self-hosted-convex.md` → "Verify The Tick
 Pipeline End-To-End" (`tickClock` advancing, indexer polling the right chain,
@@ -308,7 +311,7 @@ stale/poisoned continuity from a previous world, give it a clean boot:
    # restart one elder fresh (clanworld-elder-N tmux session in its container):
    docker exec clan-world-elder-N tmux kill-session -t elder-N 2>/dev/null || true
    docker exec -e CLAN_WORLD_CLAUDE_CONTINUE=never clan-world-elder-N \
-     tmux new-session -d -s elder-N -c /workspace './run.sh'
+     tmux new-session -d -s elder-N -c /workspace '/opt/clan-world/shared/run.sh'
    ```
 
    (The runner can also override per-restart; the env var is the canonical knob.)
