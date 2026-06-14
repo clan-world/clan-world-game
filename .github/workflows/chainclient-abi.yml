@@ -15,16 +15,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # The job ALWAYS runs and ALWAYS reports the `chainclient-abi` required
+      # check. Only the forge install + ABI-drift verification are gated: ABI
+      # drift can only happen when contract sources or the committed ABI change.
+      - name: Detect contract / ABI changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            abi:
+              - 'packages/contracts/**'
+              - '**/*.sol'
+              - 'packages/contracts/abi/**'
+              - 'pnpm-lock.yaml'
       - uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.abi == 'true'
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.abi == 'true'
         with:
           node-version: 24
           cache: pnpm
       - name: Install Foundry
+        if: steps.changes.outputs.abi == 'true'
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
       - name: Verify Foundry
+        if: steps.changes.outputs.abi == 'true'
         run: |
           command -v forge >/dev/null 2>&1 || {
             echo "::error::forge is not installed after foundry-toolchain action — CI cannot validate contract ABI drift. Check the foundry-toolchain action output above."
@@ -32,4 +49,9 @@ jobs:
           }
           forge --version
       - run: pnpm install --frozen-lockfile
+        if: steps.changes.outputs.abi == 'true'
       - run: pnpm test:chainclient-abi
+        if: steps.changes.outputs.abi == 'true'
+      - name: Skipped — no contract / ABI changes
+        if: steps.changes.outputs.abi != 'true'
+        run: echo "No contract or ABI files changed; skipping ABI drift verification. The 'chainclient-abi' required check passes."

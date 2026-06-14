@@ -15,54 +15,108 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # The job ALWAYS runs and ALWAYS reports the `Contract types are current`
+      # required check. Generated constants/enums/ABI + the contract-types & sdk
+      # packages can only go stale when contracts, the committed ABI, or the
+      # generator/package sources change — gate the heavy steps on those paths.
+      - name: Detect contract-type-relevant changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            types:
+              - 'packages/contracts/**'
+              - '**/*.sol'
+              - 'packages/contracts/abi/**'
+              - 'packages/contract-types/**'
+              - 'packages/sdk/**'
+              - 'scripts/gen-constants.mjs'
+              - 'scripts/gen-enums.mjs'
+              - 'pnpm-lock.yaml'
       - uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.types == 'true'
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.types == 'true'
         with:
           node-version: 24
           cache: pnpm
       - name: Install Foundry
+        if: steps.changes.outputs.types == 'true'
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
       - run: pnpm install --frozen-lockfile
+        if: steps.changes.outputs.types == 'true'
       - name: Check generated constants are current
+        if: steps.changes.outputs.types == 'true'
         run: pnpm gen:constants -- --check
       - name: Check generated enums are current
+        if: steps.changes.outputs.types == 'true'
         run: pnpm gen:enums -- --check
       - name: Verify committed ABI JSON matches forge artifacts
+        if: steps.changes.outputs.types == 'true'
         run: pnpm --filter @clan-world/contracts run check:abi
       # codegen:check reads the ABI JSON and exits non-zero if the committed
       # output in packages/contract-types/src/ is stale — no files are written.
       - name: Check @clan-world/contract-types output is current
+        if: steps.changes.outputs.types == 'true'
         run: pnpm --filter @clan-world/contract-types run codegen:check
       - name: Build smoke — @clan-world/contract-types compiles cleanly
+        if: steps.changes.outputs.types == 'true'
         run: pnpm --filter @clan-world/contract-types run build
       - name: Check SDK generated constants/enums are current
+        if: steps.changes.outputs.types == 'true'
         run: node scripts/gen-constants.mjs --check && node scripts/gen-enums.mjs --check
       - name: Build smoke — @clan-world/sdk compiles cleanly
+        if: steps.changes.outputs.types == 'true'
         run: pnpm --filter @clan-world/sdk run build
+      - name: Skipped — no contract-type-relevant changes
+        if: steps.changes.outputs.types != 'true'
+        run: echo "No contract / ABI / contract-types / sdk sources changed; generated types cannot have drifted. The 'Contract types are current' required check passes."
 
   convex-types-freshness:
     name: Convex generated types are current
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The job ALWAYS runs and ALWAYS reports the `Convex generated types are
+      # current` required check. Convex _generated output can only drift when a
+      # Convex schema/function in packages/sdk or apps/server changes.
+      - name: Detect Convex source changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            convex:
+              - 'packages/sdk/convex/**'
+              - 'apps/server/convex/**'
+              - 'pnpm-lock.yaml'
       - uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.convex == 'true'
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.convex == 'true'
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        if: steps.changes.outputs.convex == 'true'
       - name: Regenerate SDK Convex types
+        if: steps.changes.outputs.convex == 'true'
         working-directory: packages/sdk
         run: pnpm run codegen
       - name: Regenerate Convex types
+        if: steps.changes.outputs.convex == 'true'
         working-directory: apps/server
         run: pnpm run codegen
       - name: Verify no working-tree changes in SDK _generated
+        if: steps.changes.outputs.convex == 'true'
         run: git diff --exit-code packages/sdk/convex/_generated/
       - name: Verify no working-tree changes in _generated
+        if: steps.changes.outputs.convex == 'true'
         run: git diff --exit-code apps/server/convex/_generated/
+      - name: Skipped — no Convex source changes
+        if: steps.changes.outputs.convex != 'true'
+        run: echo "No Convex schema/function sources changed; generated types cannot have drifted. The 'Convex generated types are current' required check passes."
 
   no-as-abi-casts:
     name: No raw as-Abi casts in source
