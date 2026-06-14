@@ -37,7 +37,7 @@ Heartbeat cadence comes from the diamond's owner-configured
 2. Restart the runner or `scripts/start-heartbeat-loop.sh`.
 
 The scheduler reads `heartbeatIntervalSeconds()` once at boot, then schedules
-each fire from `getWorldState().nextHeartbeatAtTs` with a 500 ms jitter buffer.
+each fire from `getWorldState().nextHeartbeatAtTs` with a 1,500 ms safety margin.
 
 ## Alerts and status
 
