@@ -273,10 +273,13 @@ function makeWalletSigner(keypair) {
         transaction,
         options: { showEffects: true, showObjectChanges: true },
       });
+      // Strict positive assertion: throw unless effects explicitly say success
+      // (missing/absent effects = treat as failure, not silent success).
       const status = result.effects?.status?.status;
-      if (status && status !== "success") {
+      if (status !== "success") {
         throw new Error(
-          `owner tx ${result.digest} reverted on-chain: ${result.effects?.status?.error ?? status}`,
+          `owner tx ${result.digest} did not succeed on-chain (status=${status ?? "missing effects"}): ` +
+            `${result.effects?.status?.error ?? "unknown error"}`,
         );
       }
       return { digest: result.digest };
