@@ -31,6 +31,9 @@ jobs:
               - 'packages/shared/src/adapters/IChainClient.ts'
               - 'scripts/gen-chainclient-abi.mjs'
               - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
               # self-reference: edits to this workflow must re-run ABI validation
               - '.github/workflows/chainclient-abi.yml'
       - uses: pnpm/action-setup@v4

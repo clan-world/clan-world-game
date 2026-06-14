@@ -36,6 +36,9 @@ jobs:
               # gen output lives in packages/shared (not covered by the globs above)
               - 'packages/shared/src/generated/**'
               - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
               # self-reference: edits to this workflow must re-run type freshness
               - '.github/workflows/typechain-ci.yml'
       - uses: pnpm/action-setup@v4
@@ -99,6 +102,9 @@ jobs:
               - 'packages/sdk/convex.json'
               - 'apps/server/convex.json'
               - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
               - '.github/workflows/typechain-ci.yml'
       - uses: pnpm/action-setup@v4
         if: steps.changes.outputs.convex == 'true'
