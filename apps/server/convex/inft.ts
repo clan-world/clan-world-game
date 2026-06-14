@@ -1,5 +1,41 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+
+/**
+ * COMPAT SHIM — pending mobile migration.
+ *
+ * The 0G/iNFT strip (#657) removed the `inftTokens` / `inftTransfers` tables and
+ * dropped this query. The Android app (apps/clan-world-mobile) still calls
+ * `inft:getInftDemoState` from InftDetailViewModel / HallViewModel /
+ * StrategyEditorViewModel, so removing the query makes those Convex calls 500.
+ *
+ * This shim restores the query with the SAME response shape the mobile client
+ * deserializes ({ token, transfers, memory, bulletins }). Because the iNFT
+ * tables are gone, `token` is always null and `transfers` is always empty —
+ * which is exactly what the Kotlin model already tolerates (InftDemoState.token
+ * is nullable, transfers defaults to emptyList). The live `memory` + `bulletins`
+ * data is still served from the surviving tables, so the mobile memory/bulletin
+ * panels keep working. Remove this shim once mobile stops calling it.
+ */
+export const getInftDemoState = query({
+  args: { clanId: v.number() },
+  handler: async (ctx, { clanId }) => {
+    const memory = await ctx.db
+      .query("memoryEntries")
+      .withIndex("by_clan", (q) => q.eq("clanId", clanId))
+      .order("desc")
+      .take(20);
+    const bulletins = await ctx.db
+      .query("bulletins")
+      .withIndex("by_clan_slot", (q) => q.eq("clanId", clanId))
+      .order("desc")
+      .take(8);
+
+    // token/transfers came from the now-removed iNFT tables; return the
+    // empty/null defaults the mobile model already expects.
+    return { token: null, transfers: [], memory, bulletins };
+  },
+});
 
 /**
  * Mirror mutations require INDEXER_SECRET to match the Convex env var of the
