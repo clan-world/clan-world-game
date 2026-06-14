@@ -29,6 +29,16 @@
  *
  * Pre-existing source bug intentionally exposed: recordReceive bloat. See
  * the dedicated `it.todo` near that test for the recommended fix.
+ *
+ * ⚠ KNOWN-BUG CHARACTERIZATION TESTS — these intentionally assert CURRENT
+ * (sub-optimal) behavior as a regression net, NOT the desired end state:
+ *   - "duplicate recordReceive ... BLOATS the log" (recordReceive idempotency gap)
+ *   - "duplicate recordTickSend produces multiple rows" (no insert-side guard)
+ *   - UID scan past UID_SCAN_LIMIT=5000 misses the oldest row
+ *   - "same elder completing the SAME resetEventId twice succeeds"
+ * If you FIX one of these source behaviors, the matching test will fail BY
+ * DESIGN — update the assertion to the new correct behavior, don't just delete
+ * the test. Each carries an inline note.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -640,43 +650,19 @@ describe("sendWhisper — concurrent dedupe contract", () => {
     expect(tables.whispers).toHaveLength(1);
   });
 
-  it("FINDING: concurrent (Promise.all) sends with SAME msgId can ALL insert — dedupe is lookup-then-insert, not atomic", async () => {
-    // In production Convex serializes mutations against the same document, so
-    // this race is normally harmless. But the dedupe is NOT structurally
-    // race-free: it's a read-modify-write pair with no unique-key constraint
-    // backing it. If two Convex mutations targeting different rows of the
-    // `whispers` table executed concurrently (Convex can parallelize
-    // mutations that don't conflict on writes-they-haven't-yet-written), the
-    // check-then-insert pair could interleave and both INSERTs would land.
-    //
-    // Documented behavior under Promise.all in-memory: all three lookups see
-    // an empty table, all three inserts land → 3 duplicate rows. This pins
-    // the structural-race shape so a future fix (e.g. unique index on
-    // (fromClanId, tick, msgId) + insert-with-uniqueness-throw) flips the
-    // assertion to 1, and the test diff documents the hardening.
-    //
-    // See feedback_bundle4_over_engineering_filter_pattern (Liam: harmless
-    // races on debug-tier surfaces are often acceptable). Whether to actually
-    // harden this is a product call, not a test call.
-    const { db, tables } = createDb();
-    const args = {
-      secret: "test-secret",
-      tick: 11,
-      fromClanId: 3,
-      toClanIds: [4, 5],
-      body: "rally at the bridge",
-      msgId: "3:11:rally",
-    };
-
-    await Promise.all([
-      call(sendWhisper, db, args),
-      call(sendWhisper, db, args),
-      call(sendWhisper, db, args),
-    ]);
-
-    // PIN current structural behavior: all three slip through the dedupe.
-    expect(tables.whispers).toHaveLength(3);
-  });
+  // KNOWN STRUCTURAL RACE — intentionally NOT pinned with an assertion (codex
+  // swarm R1). sendWhisper dedupe is a lookup-then-insert pair with no
+  // unique-key constraint. Under real Convex, mutations against the same
+  // document serialize, so concurrent same-msgId sends collapse to 1 row. The
+  // earlier `Promise.all → toHaveLength(3)` assertion only proved that the
+  // NON-serializing in-memory mock interleaves the three lookups — a mock
+  // artifact, not production behavior — and it would have failed (resisted) a
+  // legitimate hardening fix. Whether to actually harden (unique index on
+  // (fromClanId, tick, msgId)) is a product call; proving the race either way
+  // requires a real-Convex integration test, so it's tracked as a todo.
+  it.todo(
+    "sendWhisper same-msgId dedupe under true concurrency — needs real-Convex integration test (in-memory mock cannot model serialized mutations)",
+  );
 
   it("concurrent sends WITHOUT msgId DO duplicate — caller must supply msgId for at-most-once delivery", async () => {
     // Negative test for the dedupe contract: callers that omit msgId are
