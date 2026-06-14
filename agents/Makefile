@@ -36,6 +36,18 @@ BUS_ELDER_SECRET_FILE_2 ?= agents/secrets/bus-elder-2.key
 BUS_ELDER_SECRET_FILE_3 ?= agents/secrets/bus-elder-3.key
 BUS_ELDER_SECRET_FILE_4 ?= agents/secrets/bus-elder-4.key
 
+# MemWal (Walrus episodic memory) per-Elder credentials — issue #692. Compose
+# mounts these as docker secrets memwal-creds-N → /run/secrets/memwal-creds-N,
+# which run.sh links to /home/elder/.memwal/credentials.json when MemWal is
+# enabled. Defaults land in agents/secrets/ (gitignored). MEMWAL_CREDS_SRC_DIR
+# is the host provisioning output (scripts/walrus/provision-elders.mjs);
+# bootstrap-memwal-creds copies each elder-N/credentials.json into place.
+MEMWAL_CREDS_FILE_1 ?= agents/secrets/memwal-creds-1.json
+MEMWAL_CREDS_FILE_2 ?= agents/secrets/memwal-creds-2.json
+MEMWAL_CREDS_FILE_3 ?= agents/secrets/memwal-creds-3.json
+MEMWAL_CREDS_FILE_4 ?= agents/secrets/memwal-creds-4.json
+MEMWAL_CREDS_SRC_DIR ?= $(HOME)/.secrets/clanworld-elder-walrus
+
 .PHONY: help \
         check-profile confirm-banner setup \
         up down status logs \
@@ -44,6 +56,7 @@ BUS_ELDER_SECRET_FILE_4 ?= agents/secrets/bus-elder-4.key
         reset-anvil \
         link-mounts \
         bootstrap-convex-admin-key bootstrap-bus-secrets bootstrap-convex-dashboard-auth \
+        bootstrap-memwal-creds bootstrap-memwal-placeholders \
         provision-elder-wallets-anvil \
         oauth-bootstrap \
         smoke-test build FORCE
@@ -87,6 +100,7 @@ help:
 	@echo "  bootstrap-convex-admin-key     generate + persist Convex admin key (chmod 0600)"
 	@echo "  bootstrap-bus-secrets          generate bus/webhook secrets and set Convex BUS_* envs"
 	@echo "  bootstrap-convex-dashboard-auth generate reserved dashboard auth credentials"
+	@echo "  bootstrap-memwal-creds         copy per-Elder MemWal credentials.json into agents/secrets (issue #692)"
 	@echo "  provision-elder-wallets-anvil  fund elder wallets + own clans 1-4 on dev anvil"
 	@echo "  oauth-bootstrap                walk every elder through OAuth flow"
 	@echo "  oauth-bootstrap-elder-1        single-elder OAuth flow"
@@ -126,6 +140,7 @@ setup: check-profile
 	@chmod 0700 $(REPO_ROOT)/agents/secrets
 	$(MAKE) bootstrap-convex-admin-key PROFILE=$(PROFILE) FORCE=$(FORCE)
 	$(MAKE) bootstrap-bus-secrets PROFILE=$(PROFILE) FORCE=$(FORCE)
+	$(MAKE) bootstrap-memwal-placeholders
 	@echo "[setup] done."
 	@echo "[setup] Next:"
 	@echo "  1. make oauth-bootstrap                  # per-elder OAuth credentials"
@@ -290,6 +305,65 @@ bootstrap-bus-secrets:
 	echo "[bootstrap] If a Convex env set failed partway through, rerun this target without FORCE=1."; \
 	echo "[bootstrap] File generation is idempotent, and Convex env sets are independent."; \
 	echo "[bootstrap] Verify all BUS_* and WEBHOOK_SHARED_SECRET values with: npx convex@$(CONVEX_CLI_PINNED_VERSION) env list"
+
+# MemWal (Walrus episodic memory) per-Elder credentials — issue #692.
+# Copies each elder-N/credentials.json from MEMWAL_CREDS_SRC_DIR (the host
+# provisioning output) into the gitignored agents/secrets/memwal-creds-N.json
+# files that compose mounts as docker secrets. These hold Ed25519 DELEGATE
+# private keys — they are copied 0600 and NEVER committed (agents/secrets/ is
+# gitignored). Idempotent; skips existing files unless FORCE=1.
+bootstrap-memwal-creds:
+	@set -euo pipefail; \
+	resolve_path() { case "$$1" in /*) printf '%s\n' "$$1";; *) printf '%s/%s\n' "$(REPO_ROOT)" "$$1";; esac; }; \
+	src_dir="$(MEMWAL_CREDS_SRC_DIR)"; \
+	mkdir -p "$(REPO_ROOT)/agents/secrets"; chmod 0700 "$(REPO_ROOT)/agents/secrets"; \
+	for n in 1 2 3 4; do \
+		case "$$n" in \
+			1) dest="$(MEMWAL_CREDS_FILE_1)" ;; \
+			2) dest="$(MEMWAL_CREDS_FILE_2)" ;; \
+			3) dest="$(MEMWAL_CREDS_FILE_3)" ;; \
+			4) dest="$(MEMWAL_CREDS_FILE_4)" ;; \
+		esac; \
+		dest="$$(resolve_path "$$dest")"; \
+		src="$$src_dir/elder-$$n/credentials.json"; \
+		if [ -s "$$dest" ] && [ "$(FORCE)" != "1" ]; then \
+			echo "[bootstrap] $$dest exists; skipping. Re-run with FORCE=1 to overwrite."; \
+			continue; \
+		fi; \
+		if [ ! -r "$$src" ]; then \
+			echo "ERROR: $$src not found/readable — run scripts/walrus/provision-elders.mjs first (or set MEMWAL_CREDS_SRC_DIR)." >&2; \
+			exit 1; \
+		fi; \
+		install -m 0600 "$$src" "$$dest"; \
+		acct="$$(node -e "process.stdout.write(require('$$dest').accountId||'')" 2>/dev/null || echo '<unparsed>')"; \
+		echo "[bootstrap] memwal-creds-$$n installed at $$dest (accountId=$$acct)"; \
+	done; \
+	echo "[bootstrap] MemWal creds materialized. Flip MEMWAL_MCP_ENABLED=true (or per-Elder MEMWAL_MCP_ENABLED_N) to enable, then re-create the elder container(s)."
+
+# Create EMPTY placeholder MemWal creds files if absent, so `docker compose up`
+# never refuses to start the Elder stack on account of a missing secret `file:`
+# (compose validates secret source paths at up-time, before run.sh's env-guard
+# can no-op). Placeholders are harmless while MEMWAL_MCP_ENABLED=false (the
+# default): run.sh only links + memwal-mcp only loads creds when the flag is on.
+# Run bootstrap-memwal-creds to overwrite with real provisioned credentials
+# before flipping the flag. NEVER writes key material — empty files only.
+bootstrap-memwal-placeholders:
+	@set -eu; \
+	resolve_path() { case "$$1" in /*) printf '%s\n' "$$1";; *) printf '%s/%s\n' "$(REPO_ROOT)" "$$1";; esac; }; \
+	mkdir -p "$(REPO_ROOT)/agents/secrets"; chmod 0700 "$(REPO_ROOT)/agents/secrets"; \
+	for n in 1 2 3 4; do \
+		case "$$n" in \
+			1) f="$(MEMWAL_CREDS_FILE_1)" ;; \
+			2) f="$(MEMWAL_CREDS_FILE_2)" ;; \
+			3) f="$(MEMWAL_CREDS_FILE_3)" ;; \
+			4) f="$(MEMWAL_CREDS_FILE_4)" ;; \
+		esac; \
+		f="$$(resolve_path "$$f")"; \
+		if [ ! -e "$$f" ]; then \
+			: > "$$f"; chmod 0600 "$$f"; \
+			echo "[bootstrap] memwal-creds-$$n placeholder created at $$f (empty — run bootstrap-memwal-creds for real creds)"; \
+		fi; \
+	done
 
 # No current compose/Caddy consumer reads this JSON; it is reserved for future
 # dashboard-local auth wiring. Do not pass password_sha512crypt to Caddy

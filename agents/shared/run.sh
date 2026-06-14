@@ -118,7 +118,71 @@ CWD_ENCODED="${PWD//\//-}"
 SESSIONS_DIR="$CLAUDE_CONFIG_DIR/projects/${CWD_ENCODED}/sessions"
 
 APPEND_PROMPT="/opt/clan-world/shared/APPENDED_SYSTEM_PROMPT.md"
-MCP_CONFIG="/opt/clan-world/shared/elder-mcp.json"
+
+# --- MCP config selection (env-guarded MemWal episodic memory) --------------
+#
+# The shared tree ships two MCP configs:
+#   - elder-mcp.json            → elder + memwal stdio servers (full)
+#   - elder-mcp.elder-only.json → elder server only (safe fallback)
+#
+# MemWal (Walrus episodic memory) is gated behind BOTH:
+#   1. MEMWAL_MCP_ENABLED=true   (compose flag — default off until rollout)
+#   2. /usr/local/bin/memwal-mcp present + executable (Dockerfile-installed)
+#
+# Gating on BOTH means a missing binary OR the flag off => Elders boot with the
+# elder-only config (KV memory still works), NEVER a crash on the live boot
+# path. A registered-but-missing stdio MCP command can make `claude` log a
+# spawn error; selecting the elder-only config sidesteps that entirely rather
+# than relying on claude's per-server error tolerance.
+MEMWAL_BIN="/usr/local/bin/memwal-mcp"
+MCP_CONFIG_FULL="/opt/clan-world/shared/elder-mcp.json"
+MCP_CONFIG_ELDER_ONLY="/opt/clan-world/shared/elder-mcp.elder-only.json"
+
+# Bridge the per-Elder MemWal credentials from the docker secret mount into the
+# location memwal-mcp reads ($HOME/.memwal/credentials.json). Docker secrets land
+# read-only at /run/secrets/<name>; memwal-mcp's auth.js resolves creds via
+# homedir() + "/.memwal/credentials.json", so we symlink. The secret-path
+# derivation and the symlink itself happen ONLY inside the enabled branch
+# below — `ELDER_ID` is already validated as required at the top of this
+# script (fail-closed, exit 2), but keeping the expansion out of the always-run
+# top scope avoids any set -u surprise on the live boot path.
+
+if [ "${MEMWAL_MCP_ENABLED:-false}" = "true" ] && [ -x "$MEMWAL_BIN" ]; then
+  # Link the per-Elder creds secret into the path memwal-mcp reads. Any failure
+  # here (missing secret, non-symlink file already present, R/O home) is
+  # NON-FATAL — we never want the live boot path to die for a creds glitch. On
+  # failure we keep the full config selected anyway: memwal-mcp then serves its
+  # auth-required stub (remember/recall return a login prompt) without crashing
+  # claude, and the elder + KV memory are unaffected.
+  MEMWAL_CREDS_SECRET="/run/secrets/memwal-creds-${ELDER_ID#elder-}"
+  MEMWAL_CREDS_DEST="$HOME/.memwal/credentials.json"
+  if [ -r "$MEMWAL_CREDS_SECRET" ]; then
+    if mkdir -p "$HOME/.memwal" 2>/dev/null && ln -sfn "$MEMWAL_CREDS_SECRET" "$MEMWAL_CREDS_DEST" 2>/dev/null; then
+      echo "[run.sh] MemWal creds linked: $MEMWAL_CREDS_SECRET -> $MEMWAL_CREDS_DEST"
+    else
+      echo "[run.sh] WARNING: failed to link MemWal creds ($MEMWAL_CREDS_SECRET -> $MEMWAL_CREDS_DEST). memwal-mcp will serve auth-required until creds resolve. Boot continues." >&2
+    fi
+  else
+    echo "[run.sh] WARNING: MEMWAL_MCP_ENABLED=true but creds secret $MEMWAL_CREDS_SECRET missing/unreadable — memwal-mcp will serve auth-required (no remember/recall) until creds present" >&2
+  fi
+  echo "[run.sh] MemWal enabled (flag set + binary present) — using elder+memwal MCP config"
+  MCP_CONFIG="$MCP_CONFIG_FULL"
+else
+  if [ "${MEMWAL_MCP_ENABLED:-false}" = "true" ]; then
+    echo "[run.sh] MEMWAL_MCP_ENABLED=true but $MEMWAL_BIN missing/not executable — falling back to elder-only MCP config" >&2
+  else
+    echo "[run.sh] MemWal disabled (MEMWAL_MCP_ENABLED!=true) — using elder-only MCP config"
+  fi
+  # Prefer the dedicated elder-only config; fall back to the full config if the
+  # elder-only file is absent (older shared tree) — the full config's memwal
+  # server simply errors at spawn, which is non-fatal but noisier.
+  if [ -f "$MCP_CONFIG_ELDER_ONLY" ]; then
+    MCP_CONFIG="$MCP_CONFIG_ELDER_ONLY"
+  else
+    echo "[run.sh] WARNING: $MCP_CONFIG_ELDER_ONLY not found — falling back to full config (memwal server may error at spawn but is non-fatal)" >&2
+    MCP_CONFIG="$MCP_CONFIG_FULL"
+  fi
+fi
 
 CLAUDE_ARGS=(--append-system-prompt-file "$APPEND_PROMPT")
 if [ -f "$MCP_CONFIG" ]; then
