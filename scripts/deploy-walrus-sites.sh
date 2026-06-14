@@ -15,6 +15,11 @@
 # Requires: pnpm, site-builder (mainnet config at ~/.config/walrus/sites-config.yaml).
 set -euo pipefail
 
+# Fail fast if required build-time env vars are missing — an empty value would
+# otherwise bake a broken site (mint wallet dead / game can't reach Convex).
+: "${VITE_DYNAMIC_ENVIRONMENT_ID:?set VITE_DYNAMIC_ENVIRONMENT_ID before deploying (apps/mint)}"
+: "${VITE_CONVEX_URL:?set VITE_CONVEX_URL before deploying (apps/web)}"
+
 SITE_OBJECT="${SITE_OBJECT:-0x407f079c2f235a588546008550ce1f479fce8a0ad10525ab17802cc63adce125}"
 EPOCHS="${EPOCHS:-5}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
