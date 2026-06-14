@@ -69,6 +69,14 @@ export function computeHeartbeatDelayMs(
   return Math.max(0, nextHeartbeatAtTs * 1000 + safetyMarginMs - nowMs);
 }
 
+export function computeWallIntervalDelayMs(
+  intervalMs: number,
+  lastBeatWallMs: number,
+  wallNowMs: number,
+): number {
+  return Math.max(0, intervalMs - (wallNowMs - lastBeatWallMs));
+}
+
 export function classifyHeartbeatError(err: unknown): HeartbeatFireResult {
   if (err instanceof HeartbeatRateLimitedError) return 'rate-limited';
   if (err instanceof Error) {
@@ -88,6 +96,7 @@ async function runHeartbeatScheduler(
   const alert = deps.alert ?? sendTelegramAlert;
   let heartbeatIntervalSeconds: number | undefined;
   let consecutiveReadFailures = 0;
+  let lastBeatWallMs: number | undefined;
   const lastAlertAtMs = new Map<string, number>();
 
   try {
@@ -127,8 +136,15 @@ async function runHeartbeatScheduler(
     // whether the on-chain nextHeartbeatAtTs (chain time) and the local wall
     // clock diverge (e.g. on an anvil-fork whose block.timestamp drifts ahead),
     // which would skew computedDelayMs. Cheap (no extra RPC); read from logs.
+    const forkTimeAdvanceEnabled = isForkTimeAdvanceEnabled(deps);
     const schedulerNowMs = await readSchedulerNowMs(deps, nowMs);
-    const delayMs = computeHeartbeatDelayMs(nextHeartbeatAtTs, schedulerNowMs);
+    const delayMs = forkTimeAdvanceEnabled
+      ? computeForkWallDelayMs({
+        heartbeatIntervalSeconds,
+        lastBeatWallMs,
+        wallNowMs: schedulerNowMs,
+      })
+      : computeHeartbeatDelayMs(nextHeartbeatAtTs, schedulerNowMs);
     deps.log.info(
       `heartbeat schedule: nextHeartbeatAtTs=${nextHeartbeatAtTs}s schedulerNowMs=${schedulerNowMs} computedDelayMs=${delayMs}`,
     );
@@ -150,6 +166,7 @@ async function runHeartbeatScheduler(
     });
     if (result.success) {
       lastAlertAtMs.clear();
+      lastBeatWallMs = nowMs();
     }
     if (result.success) {
       const nextAfterSuccess = await deps.heartbeatCaller
@@ -309,9 +326,7 @@ async function prepareHeartbeatWindow(args: {
   let schedulerNowMs = await readChainNowMs(args.deps, args.fallbackNowMs);
   if (args.nextHeartbeatAtTs === undefined) return schedulerNowMs;
 
-  const targetUnixTs = Math.ceil(
-    (args.nextHeartbeatAtTs * 1000 + HEARTBEAT_SAFETY_MARGIN_MS) / 1000,
-  );
+  const targetUnixTs = args.nextHeartbeatAtTs;
   if (schedulerNowMs >= targetUnixTs * 1000) return schedulerNowMs;
 
   const advanced = await args.deps.heartbeatCaller
@@ -324,6 +339,16 @@ async function prepareHeartbeatWindow(args: {
 
   schedulerNowMs = await readChainNowMs(args.deps, args.fallbackNowMs);
   return schedulerNowMs;
+}
+
+function computeForkWallDelayMs(args: {
+  heartbeatIntervalSeconds: number | undefined;
+  lastBeatWallMs: number | undefined;
+  wallNowMs: number;
+}): number {
+  const intervalMs = (args.heartbeatIntervalSeconds ?? 30) * 1000;
+  const lastBeatWallMs = args.lastBeatWallMs ?? args.wallNowMs - intervalMs;
+  return computeWallIntervalDelayMs(intervalMs, lastBeatWallMs, args.wallNowMs);
 }
 
 async function readSchedulerNowMs(

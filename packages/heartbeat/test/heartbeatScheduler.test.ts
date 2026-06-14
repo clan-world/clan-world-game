@@ -185,7 +185,7 @@ describe('heartbeatScheduler', () => {
       return true;
     });
     const callHeartbeat = vi.fn(async () => {
-      if (chainNowMs < 10_000 + HEARTBEAT_SAFETY_MARGIN_MS) {
+      if (chainNowMs < 10_000) {
         throw new HeartbeatRateLimitedError(10);
       }
       abort.abort();
@@ -210,7 +210,7 @@ describe('heartbeatScheduler', () => {
 
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(advanceForkTimeTo).toHaveBeenCalledWith(12);
+    expect(advanceForkTimeTo).toHaveBeenCalledWith(10);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
     expect(postRunnerStatus).toHaveBeenCalledWith(
       expect.objectContaining({ lastFireResult: 'success' }),
@@ -254,10 +254,10 @@ describe('heartbeatScheduler', () => {
     );
   });
 
-  it('paces fork-advance heartbeats by wall time instead of advanced chain time', async () => {
-    vi.setSystemTime(0);
-    let chainNowMs = 0;
-    let nextHeartbeatAtTs = 30;
+  it('paces fork-advance heartbeats by wall interval when chain time is far ahead of wall', async () => {
+    vi.setSystemTime(1_000_000);
+    let chainNowMs = 4_770_000;
+    let nextHeartbeatAtTs = 4_800;
     const abort = new AbortController();
     const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
     const advanceForkTimeTo = vi.fn(async (targetUnixTs: number) => {
@@ -265,11 +265,16 @@ describe('heartbeatScheduler', () => {
       return true;
     });
     const callHeartbeat = vi.fn(async () => {
-      nextHeartbeatAtTs = 62;
+      if (callHeartbeat.mock.calls.length === 1) {
+        nextHeartbeatAtTs = 4_832;
+      } else {
+        abort.abort();
+      }
       return { txHash: '0x1' };
     });
     const caller = makeHeartbeatCaller({
       callHeartbeat,
+      async readHeartbeatIntervalSeconds() { return 30; },
       async readChainNowMs() { return chainNowMs; },
       advanceForkTimeTo,
       isForkTimeAdvanceEnabled: () => true,
@@ -283,17 +288,15 @@ describe('heartbeatScheduler', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(31_499);
-    expect(callHeartbeat).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+    expect(advanceForkTimeTo).toHaveBeenCalledWith(4_800);
+
+    await vi.advanceTimersByTimeAsync(29_998);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(advanceForkTimeTo).toHaveBeenCalledWith(32);
-    expect(callHeartbeat).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(callHeartbeat).toHaveBeenCalledTimes(1);
-
-    abort.abort();
+    expect(callHeartbeat).toHaveBeenCalledTimes(2);
   });
 
   it('exits silently when aborted during retry sleep', async () => {
