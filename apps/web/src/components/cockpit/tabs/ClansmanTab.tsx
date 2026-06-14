@@ -14,6 +14,14 @@ interface ClansmanRow {
   location: string;
   /** Ticks until mission completes — null = idle. */
   eta: number | null;
+  /**
+   * Absolute wall-clock time (unix seconds) the active mission settles, or null
+   * when idle/dead or when the server can't derive it yet. When present we show
+   * a human-readable local clock time ("ETA 3:42:10 AM"); otherwise we fall back
+   * to the relative tick label ("ETA 2t"). Optional for back-compat with stub
+   * data + older query payloads.
+   */
+  etaTs?: number | null;
   /** Ticks of cooldown remaining after mission ends — 0 = ready. */
   cooldown: number;
   /** Hunger fraction 0-1; >0.7 = visual starvation warning. */
@@ -30,12 +38,30 @@ interface ClansmanRow {
 // Stub fallback. Used whenever the live Convex query is still loading
 // (`undefined`) OR returns an empty roster (cold demo / Convex offline).
 // The cockpit must demo cleanly even with the backend unreachable.
+// Settle times are seeded relative to now so the stub demo renders a realistic
+// upcoming clock time ("ETA 3:42:10 AM") rather than a frozen epoch value.
+const NOW_SECONDS = Math.floor(Date.now() / 1000);
 const STUB_CLANSMEN: ClansmanRow[] = [
-  { id: 'C1', mission: 'Raid',   location: 'Forest',     eta: 2, cooldown: 0, hunger: 0.4 },
-  { id: 'C2', mission: 'Mill',   location: 'East Farms', eta: 1, cooldown: 0, hunger: 0.2 },
-  { id: 'C3', mission: 'Idle',   location: 'Home',       eta: null, cooldown: 3, hunger: 0.78 },
-  { id: 'C4', mission: 'Quarry', location: 'Mountains',  eta: 4, cooldown: 0, hunger: 0.55 },
+  { id: 'C1', mission: 'Chop Wood', location: 'Forest',     eta: 2, etaTs: NOW_SECONDS + 60,  cooldown: 0, hunger: 0.4 },
+  { id: 'C2', mission: 'Harvest Wheat', location: 'East Farms', eta: 1, etaTs: NOW_SECONDS + 30,  cooldown: 0, hunger: 0.2 },
+  { id: 'C3', mission: 'Idle',      location: 'Home',       eta: null, etaTs: null,             cooldown: 3, hunger: 0.78 },
+  { id: 'C4', mission: 'Mine Iron', location: 'Mountains',  eta: 4, etaTs: NOW_SECONDS + 120, cooldown: 0, hunger: 0.55 },
 ];
+
+/**
+ * Format an absolute settle timestamp (unix *seconds*) as a local clock time,
+ * e.g. "3:42:10 AM". Liam's note (voice 2026-06-14): a live countdown risks
+ * React timer/cleanup bugs, so we render a stable absolute time instead. The
+ * value re-derives naturally on each Convex query push, so it stays fresh
+ * without any client-side interval.
+ */
+function formatEtaClock(etaTs: number): string {
+  return new Date(etaTs * 1000).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
 
 export function ClansmanTab({ elder, testIdPrefix }: Props) {
   // Stub-fallback pattern (mirrors VaultTab + CommsTab): live query drives the
@@ -100,7 +126,9 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
               data-dead={isDead ? 'true' : 'false'}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '28px 1fr 60px 36px',
+                // ETA column widened from 60px → 88px to fit a clock time like
+                // "ETA 3:42:10 AM" without clipping (was sized for "ETA 2t").
+                gridTemplateColumns: '28px 1fr 88px 36px',
                 gap: tokens.space.sm,
                 alignItems: 'center',
                 padding: '6px 8px',
@@ -146,6 +174,7 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
                   fontSize: '10px',
                   color: tokens.text.onParchmentDim,
                   textAlign: 'right',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {isDead ? (
@@ -154,7 +183,18 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
                   // aligned but doesn't suggest impending action.
                   <span aria-label="dead — no countdown">—</span>
                 ) : c.eta !== null ? (
-                  <span>ETA {c.eta}t</span>
+                  // Prefer a human-readable local clock time ("ETA 3:42:10 AM")
+                  // when the server could derive the absolute settle time;
+                  // fall back to the relative tick count when it couldn't
+                  // (e.g. tick epoch not yet surfaced). The action name itself
+                  // is already shown as the row's primary label above.
+                  c.etaTs != null ? (
+                    <span title={`Settles at ${formatEtaClock(c.etaTs)} (${c.eta}t)`}>
+                      ETA {formatEtaClock(c.etaTs)}
+                    </span>
+                  ) : (
+                    <span>ETA {c.eta}t</span>
+                  )
                 ) : c.cooldown > 0 ? (
                   <span>CD {c.cooldown}t</span>
                 ) : (

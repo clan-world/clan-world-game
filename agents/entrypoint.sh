@@ -72,7 +72,14 @@ fi
 if [[ "${ADMIN_INJECT_ENABLED:-0}" != "1" ]]; then
   echo "[entrypoint] WARNING: ttyd is read-only and ADMIN_INJECT_ENABLED!=1. Operator input has NO channel. Set ADMIN_INJECT_ENABLED=1 once /api/admin/inject-message is deployed to prod." >&2
 fi
-ttyd --port "${TTYD_PORT}" tmux attach-session -t "${SESSION_NAME}" &
+# `-t fontSize=11` is an xterm.js client option (ttyd passes -t/--client-option
+# values straight through to the in-browser terminal). ttyd's default is 15px,
+# which only fits a handful of lines in each of the 4 cockpit elder terminals.
+# Dropping to 11px roughly doubles the visible rows/cols without becoming
+# unreadable. NOTE: this is a ttyd *server* launch flag — it only takes effect
+# after the elder containers are rebuilt/restarted (the running ttyd process
+# does not pick up the new flag).
+ttyd --port "${TTYD_PORT}" -t fontSize=11 tmux attach-session -t "${SESSION_NAME}" &
 TTYD_PID=$!
 echo "[entrypoint] ttyd started on port ${TTYD_PORT} (PID ${TTYD_PID})"
 

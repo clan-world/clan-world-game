@@ -115,6 +115,14 @@ export interface ClansmanRow {
   mission: string;
   location: string;
   eta: number | null;
+  /**
+   * Absolute wall-clock time (unix seconds) when the active mission settles, or
+   * null when idle/dead. Derived from the tick epoch (tickEpochStartedAt +
+   * settlesAtTick * tickDurationSeconds) so the UI can show a human-readable
+   * clock time ("ETA 3:42:10 AM") instead of a raw tick/timestamp number. The
+   * client formats this with the viewer's local timezone.
+   */
+  etaTs: number | null;
   cooldown: number;
   hunger: number;
   /**
@@ -202,6 +210,17 @@ export const getClanClansmen = query({
       const cooldownEndsAtTs = numberLike(fieldAt(clansman, "cooldownEndsAtTs"));
       const tickEpochStartedAt = numberLike(snap?.tickEpochStartedAt);
       const nowSeconds = tickEpochStartedAt + currentTick * tickDurationSeconds;
+
+      // Absolute wall-clock settle time (unix seconds). We project the settle
+      // *tick* onto the tick epoch so the UI can render a real clock time rather
+      // than a raw number. Only meaningful while a mission is active; null
+      // otherwise (idle/dead) so the tab shows no ETA. Requires a known epoch
+      // start — if the snapshot hasn't surfaced tickEpochStartedAt yet we leave
+      // it null and the tab falls back to the relative-ticks label.
+      const etaTs =
+        eta !== null && tickEpochStartedAt > 0
+          ? tickEpochStartedAt + settlesAtTick * tickDurationSeconds
+          : null;
       const cooldown =
         cooldownEndsAtTs > nowSeconds
           ? Math.max(
@@ -225,6 +244,7 @@ export const getClanClansmen = query({
         // both fields are forced to a "no countdown" state so the row reads as
         // permanently fallen rather than "cooldown 3t / ready next tick".
         eta: isDead ? null : eta,
+        etaTs: isDead ? null : etaTs,
         cooldown: isDead ? 0 : cooldown,
         hunger,
         isDead,
