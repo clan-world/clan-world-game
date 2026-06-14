@@ -48,14 +48,22 @@ Expect (dev profile): `clan-world-convex-backend-1`, `clan-world-heartbeat-1`,
 ## 2. Image freshness / stale-image check
 
 The footgun: a container keeps running an **old image** after its source
-changed, so you debug behavior that the code no longer has. Compare each
+changed, so you debug behavior that the code no longer has. This check applies
+ONLY to **locally-built** images (`build:` services) — compare each such
 container's image creation time against the last commit to its source dir; **FAIL
 if the image is older than its source.**
 
+> NOTE: This check does **not** apply to `convex-backend`. The convex-backend
+> container runs a **pulled upstream image** (`ghcr.io/get-convex/convex-backend`),
+> not anything we build from `apps/server` — so "image older than source" is
+> meaningless for it. (Convex *functions* in `apps/server/convex` are deployed
+> into the running backend separately, not baked into the image.) Only the
+> locally-built images — **heartbeat** and the **agents/elder** image — are
+> subject to the stale-image footgun below.
+
 ```bash
 for svc in heartbeat:packages/heartbeat \
-           elder-1:agents \
-           convex-backend:apps/server; do
+           elder-1:agents; do
   name="clan-world-${svc%%:*}-1"; src="${svc##*:}"
   img_created=$(docker inspect "$name" --format '{{.Created}}' 2>/dev/null)
   src_commit=$(git log -1 --format='%h %ci' -- "$src")
@@ -63,8 +71,8 @@ for svc in heartbeat:packages/heartbeat \
 done
 ```
 
-(`packages/heartbeat` and `agents` are `build:` services; `packages/runner` and
-`apps/server` also ship code into containers — extend the loop as needed.) If a
+(`packages/heartbeat` and `agents` are the `build:` services this check covers.
+`convex-backend` is a pulled upstream image — excluded, see note above.) If a
 build service's image predates its last source commit, rebuild + recreate, e.g.
 `docker compose build heartbeat && docker compose --profile dev up -d --force-recreate heartbeat`.
 
@@ -83,7 +91,10 @@ build service's image predates its last source commit, rebuild + recreate, e.g.
 before deep-debugging any revert. (Root cause: `reference-clanworld-652-heartbeat-flapping-rootcause`.)
 
 ```bash
-RUNNER=0xBC34eB46EF3Ad429C3Bcef049dc8ccca6f786cc7   # heartbeat runner wallet
+# Heartbeat runner wallet — DERIVED from RUNNER_PRIVATE_KEY (the key the heartbeat
+# container uses); the address below is the current dev runner for reference only.
+# If RUNNER_PRIVATE_KEY is rotated, re-derive: cast wallet address "$RUNNER_PRIVATE_KEY".
+RUNNER=0xBC34eB46EF3Ad429C3Bcef049dc8ccca6f786cc7   # derived dev runner address (reference)
 
 echo "heartbeat runner:"
 fork balance "$RUNNER" --ether
@@ -100,7 +111,7 @@ Live elder wallet addresses (derived from `agents/secrets/elder-wallet-N.key`):
 
 | Wallet | Address |
 |---|---|
-| heartbeat runner | `0xBC34eB46EF3Ad429C3Bcef049dc8ccca6f786cc7` |
+| heartbeat runner (derived from `RUNNER_PRIVATE_KEY`) | `0xBC34eB46EF3Ad429C3Bcef049dc8ccca6f786cc7` |
 | elder-1 | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` |
 | elder-2 | `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` |
 | elder-3 | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` |

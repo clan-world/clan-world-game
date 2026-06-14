@@ -123,8 +123,8 @@ Humans do not micromanage every move. They **whisper strategy** to their agents 
 
 - **8 regions** — Forest, Mountains, West Farms, East Farms, West Docks, East Docks, Deep Sea, Unicorn Town
 - **8 clans, 4 clansmen each** — every clan led by one autonomous Ælder
-- **60-second tick** — on-chain world heartbeat seeds RNG and advances state
-- **360 ticks per season** — about 6 hours of real time, spanning 3 winter cycles
+- **30-second tick** — on-chain world heartbeat seeds RNG and advances state
+- **360 ticks per season** — about 3 hours of real time, spanning 3 winter cycles
 - **12 agents max per season** — up to 12 owners enter at 1,000 GOLD apiece
 
 ---

@@ -426,6 +426,45 @@ describe('RunnerCastHeartbeat', () => {
     expect(viemMocks.getBlock).toHaveBeenCalledWith({ blockNumber: 7n });
   });
 
+  it('does NOT use wall-clock Date.now() to classify a mined revert when the block timestamp is unreadable', async () => {
+    // MUTATION GUARD (super-swarm #683 HIGH, 2026-06-14): the classifier must
+    // derive "still in window?" from the on-chain block timestamp ONLY. If the
+    // block read fails it must fail CONSERVATIVELY (real failure, NOT a benign
+    // rate-limit). The pre-fix code did `.catch(() => Date.now())`, so with a
+    // wall clock BEHIND nextHeartbeatAtTs it would wrongly upgrade a real mined
+    // revert to HeartbeatRateLimitedError, masking the fault. This test reverts
+    // (fails) if the wall-clock fallback is reintroduced.
+    vi.useFakeTimers();
+    // Wall clock = 100s, nextHeartbeatAtTs = 130s ⇒ Date.now() < next*1000, so the
+    // OLD wall-clock fallback would (wrongly) classify this as rate-limited.
+    vi.setSystemTime(100_000);
+    try {
+      const hash = `0x${'b'.repeat(64)}` as const;
+      viemMocks.writeContract.mockResolvedValue(hash);
+      viemMocks.waitForTransactionReceipt.mockResolvedValue({
+        status: 'reverted',
+        blockNumber: 9n,
+      });
+      viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 130n });
+      // Block timestamp genuinely unreadable — no on-chain basis to classify.
+      viemMocks.getBlock.mockRejectedValue(new Error('rpc getBlock unavailable'));
+
+      const heartbeat = new RunnerCastHeartbeat({
+        privateKey: '1'.repeat(64),
+        contractAddress: '0x0000000000000000000000000000000000000001',
+        rpcUrl: 'https://rpc.example',
+      });
+
+      const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
+      // Conservative fail: surfaced as a real revert, NOT a benign rate-limit.
+      expect(err).not.toBeInstanceOf(HeartbeatRateLimitedError);
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch(/reverted on-chain/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('advances a dev fork to the requested heartbeat timestamp and mines a block', async () => {
     viemMocks.getBlock.mockResolvedValue({ timestamp: 10n });
     const fetch = vi.fn().mockResolvedValue({
@@ -595,6 +634,9 @@ describe('RunnerCastHeartbeat', () => {
     const wrapped = new BaseError('Execution reverted for an unknown reason.', { cause: reverted });
     viemMocks.writeContract.mockRejectedValue(wrapped);
     viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 9_999_999_999n });
+    // Classification derives from on-chain time (latest block), NOT wall clock:
+    // chain now (1_000s) < nextHeartbeatAtTs (9_999_999_999s) ⇒ still in window.
+    viemMocks.getBlock.mockResolvedValue({ timestamp: 1_000n });
 
     const heartbeat = new RunnerCastHeartbeat({
       privateKey: '1'.repeat(64),

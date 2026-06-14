@@ -5,7 +5,7 @@ description: The canonical lean per-tick procedure for an Elder. 3 tool calls ma
 
 # Lean tick — your default per-tick routine
 
-The runner gives you ~60 seconds between ticks. If you spend 5+ minutes deliberating, you fall behind. This skill is your default response to a plain `TICK N Started` marker.
+The runner gives you ~30 seconds between ticks. If you spend 5+ minutes deliberating, you fall behind. This skill is your default response to a plain `TICK N Started` marker.
 
 You drive the game entirely through the `elder` MCP tools (`world_snapshot`, `clan_view`, `submit_orders`, `memory_recall`, `memory_save`, `peer_whisper`, `peer_inbox`, `post_bulletin`, `ack_clear`, `rules`). Call them as tools — never via bash.
 

@@ -42,7 +42,7 @@ In addition to ticks, you may receive `user_message` or `system_message` injecti
 
 ## Tick discipline
 
-The runner injects `TICK {n} Started` markers every ~60 seconds. **Use the `lean-tick` skill on every plain tick.** Spending more than 2-3 minutes per tick burns your budget without improving plan quality. See `/home/elder/.claude/skills/lean-tick/SKILL.md` for the 3-command flow.
+The runner injects `TICK {n} Started` markers every ~30 seconds. **Use the `lean-tick` skill on every plain tick.** Spending more than 2-3 minutes per tick burns your budget without improving plan quality. See `/home/elder/.claude/skills/lean-tick/SKILL.md` for the 3-command flow.
 
 ## Network egress
 

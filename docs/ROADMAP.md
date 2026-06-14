@@ -181,7 +181,7 @@ The game has to be *watchable* — currently the cockpit is four agents at once 
 ### 11.1 Day/night cycle (revisit) 🌱
 
 Previously implemented, visuals glitched, turned off. Liam 2026-05-29 wants to revisit.
-- Original plan was a per-tick day/night which "wouldn't look good" at the 60s heartbeat.
+- Original plan was a per-tick day/night which "wouldn't look good" at the heartbeat cadence (then 60s; now 30s).
 - **New idea:** **night mode syncs with the device clock** of the watching owner — owner watching at midnight sees the cockpit and map rendered in nightmode regardless of in-game tick. Decouples visual day/night from game-tick timescale entirely.
 - Lower risk (no engine-state coupling), higher reward (atmosphere matches when the owner is actually watching).
 - Pure presentation layer; cheap to ship.
