@@ -273,7 +273,7 @@ _Status: ✅ mechanic verified + 🆕 intent (agent-layer — the layer that sur
 
 Because an Elder's context is wiped every **50 ticks** (§2), two stores carry strategy forward:
 - **`ANCIENT_WISDOM.md`** ✅ — a workspace file the agent reads at session start and (today) **writes directly**. 🆕 Liam: make it **read-only**, and route updates **through the elder CLI** (a controlled write path) instead of direct file edits.
-- **Scratchpad (key-value memory)** ✅ — `elder memory save <key> <value>` / `elder memory recall <key>`: arbitrary notes that **persist across context wipes**. ⚠️🆕 It was designed for **0G iNFT storage** (ERC-7857, per-clan, survives ownership transfer) — but **0G is being removed entirely**; the scratchpad stays, backed by a normal store in the new engine.
+- **Scratchpad (key-value memory)** ✅ — `elder memory save <key> <value>` / `elder memory recall <key>`: arbitrary notes that **persist across context wipes**, backed by the Convex store.
 
 ### 12. Revival & admin recovery
 _Status: ✅ verified against `AdminRecoveryFacet` / `LibAdminRecovery`_ — *(an **operator/admin** mechanic, not player-facing physics, but included for completeness as Liam requested)*
@@ -343,7 +343,7 @@ Every item below is a place where the **current implementation diverges from int
 - [ ] 🆕 Idea: **global 3-slot bulletin board** (clans can overwrite rivals') — a visibility/denial dynamic. §10
 - [ ] 🆕 **Runner notification pings** on new whisper / new bulletin (ping only, never the text) — not built. §10/§13
 - [ ] 🆕 Make `ANCIENT_WISDOM.md` **read-only**, update via the elder CLI only. §11
-- [ ] 🆕 **Re-back the key-value scratchpad** — 0G being removed entirely. §11
+- [x] **Re-back the key-value scratchpad** — Convex store. §11
 
 **Misc**
 - [ ] 🆕 **Bonus clansman on base upgrade** — not implemented (hard-capped at 4). §7
@@ -473,6 +473,6 @@ Future design and prose should preserve this property; never treat the Book as o
 | 2026-05-25 | §6/§7 | §6 ✅ consumption (1wheat+0.1fish/clansman from vault, winter 2x, winter wood 0.5/clansman+1/base) + cold cascade (walls degrade @2 dmg then deaths @2 dmg; NO freezing state). NEW §7 Building+winning ✅ (wall/base/monument costs; bonus-clansman 🆕 NOT impl, 4-cap; win = monument lvl→time→loot→wall→clanID). Renumbered bandits→8, trading→9, open-q→10. |
 | 2026-05-26 | §4/§9/§10 | §4 Missions ✅ (3-tuple, action set, lazy deterministic settlement). §9 Trading ✅ (OTC no-escrow/no-promises; real fee-less x·y=k stub AMM; travel-vs-immediate trade + intentional front-run window; gold global/vault; buy=amount-out+maxGoldIn, sell=amount-in w/ NO slippage protection; buy-overflow FAILS, 🆕 burn-excess intent). Added §10 Communications stub; Open-questions → §11. |
 | 2026-05-26 | §8 | Bandits ✅ (huge): base placement (6 regions ✅ but deterministic round-robin ⚠️ not random); spawn 10-tick cooldown ✅ + 10%/+10%/80%-cap ⚠️(not 20/5); seq Spawned(1)+Camped(3 ⚠️)+attack@end-of-tick ✅; levels RANDOM 1-5 ⚠️(intent escalating); DEFEAT needs clansman-def ≥2×power ⚠️(walls/base only absorb); defender 10 / idle-home 5 ✅; cross-clan defend ✅; 1:1 tie LOSES loot ⚠️(intent protect); ring Forest→Mtn→EFarms→EDocks→WDocks→WFarms; target=highest weighted loot; leaves after 6 attempts; win=steal20% ✅; defeat→owner+1bp+1gold, 50%carry-drop to defenders ⚠️(intent 100%), excess/zero-def burned ✅. 5 🆕 intents. |
-| 2026-05-26 | §1/§10/§11 | §1 Overview (synthesis). §10 Communications ✅ (1-to-1 whispers + Unicorn-Town bulletins, lore, agent-layer; 🆕 3/clan limit, global-override idea, runner ping-not-text notifications). NEW §11 Memory & continuity (ANCIENT_WISDOM 🆕read-only/CLI; key-value scratchpad, 🆕 removing 0G). §11 Revival → §12. |
+| 2026-05-26 | §1/§10/§11 | §1 Overview (synthesis). §10 Communications ✅ (1-to-1 whispers + Unicorn-Town bulletins, lore, agent-layer; 🆕 3/clan limit, global-override idea, runner ping-not-text notifications). NEW §11 Memory & continuity (ANCIENT_WISDOM 🆕read-only/CLI; key-value scratchpad, Convex-backed). §11 Revival → §12. |
 | 2026-05-26 | §13/§14 | §13 Tick events & prompt templates ✅ (runner prompt set: game-start, pre-wipe 5+1, post-wipe, pre-winter-10, winter start/end, bandits appeared/attacking/post-attack, 99 revive+inject disclosure). §14 Open-questions/rebuild-checklist compiled from all ⚠️/🆕 flags. Status → Complete v1. |
 | 2026-05-29 | §15 | NEW §15 Tournament-bracket play 🆕 (Liam intent from v2 engine-redesign discussion) — 8 → 4 → 2 → final bracket structure; each round is a standard 360-tick season; top half per game advance; final crowns top 12; cross-round agent identity + memory continuity; per-round prize design TBD. Captured so the Phoenix backend is architected to support it. |

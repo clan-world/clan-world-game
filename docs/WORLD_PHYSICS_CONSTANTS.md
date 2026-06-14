@@ -224,7 +224,7 @@ The **tuning table** for ClanWorld: every adjustable number in the game engine, 
 |---|---|---|
 | `memoryWipeTickInterval` | 50 | Elder context wiped every 50 ticks (same value as §2; agent-layer). |
 | `ANCIENT_WISDOM.md` | agent-writable | Workspace file read at session start. 🆕 intended read-only, updated via elder CLI only. |
-| Key-value scratchpad | persists across wipes | `elder memory save/recall`. ⚠️ designed for 0G iNFT storage — 🆕 0G being removed; backed by normal store in new engine. |
+| Key-value scratchpad | persists across wipes | `elder memory save/recall`; backed by Convex store. |
 
 ## 12. Revival & admin recovery
 

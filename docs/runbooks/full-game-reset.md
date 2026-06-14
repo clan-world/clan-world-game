@@ -9,6 +9,7 @@ This is the "do the whole reset now" checklist. For deeper setup details, see:
 - `docs/runbooks/fresh-vps-bootstrap.md`
 - `docs/runbooks/base-sepolia-deployment.md`
 - `docs/runbooks/diamond-migration.md`
+- `docs/runbooks/operator-levers.md` — consolidated live-game survival levers (revive/inject ordering, **winter wood cold-death**, finalizeSeason, heartbeat interval, re-fork, Convex re-index, elder re-orientation)
 - `docs/guides/stream-ops.md`
 
 ## Reset Inputs

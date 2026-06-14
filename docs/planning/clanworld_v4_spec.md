@@ -352,7 +352,7 @@ The following mission types are removed from scope:
 - deliver resource by physical courier
 - salvage ruins
 
-OTC negotiation happens off-chain / via AXL, and actual asset transfer happens directly at token/account level, not by worker courier simulation.
+OTC negotiation happens off-chain / via the control-plane messaging layer, and actual asset transfer happens directly at token/account level, not by worker courier simulation.
 
 ## 3.14 Per-tick local settlement order
 When a clan is lazily settled across ticks, each tick resolves in this order:
@@ -1019,7 +1019,7 @@ Two steering channels exist.
 
 ### Direct whispers
 - freeform player-to-Elder messages
-- may be sent through AXL, app UI, Telegram, or equivalent control plane
+- may be sent through the app UI, Telegram, or equivalent control plane
 - unrestricted in v1
 
 ### Strategic alignment updates
@@ -1073,7 +1073,7 @@ The following are valid and expected behaviors:
 - false accusations and disinformation
 
 ## 11.3 Messaging scope
-AXL or control-plane messaging may be:
+Control-plane messaging may be:
 - private 1-to-1
 - 1-to-few
 - public or bulletin-style
