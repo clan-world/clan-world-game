@@ -195,6 +195,7 @@ describe('heartbeatScheduler', () => {
       callHeartbeat,
       async readChainNowMs() { return chainNowMs; },
       advanceForkTimeTo,
+      isForkTimeAdvanceEnabled: () => true,
       readNextHeartbeatAtTs: vi.fn()
         .mockResolvedValueOnce(10)
         .mockResolvedValue(40),
@@ -231,6 +232,7 @@ describe('heartbeatScheduler', () => {
       callHeartbeat,
       async readChainNowMs() { return 13_000; },
       advanceForkTimeTo,
+      isForkTimeAdvanceEnabled: () => true,
       readNextHeartbeatAtTs: vi.fn()
         .mockResolvedValueOnce(10)
         .mockResolvedValue(40),
@@ -250,6 +252,48 @@ describe('heartbeatScheduler', () => {
     expect(postRunnerStatus).toHaveBeenCalledWith(
       expect.objectContaining({ lastFireResult: 'success' }),
     );
+  });
+
+  it('paces fork-advance heartbeats by wall time instead of advanced chain time', async () => {
+    vi.setSystemTime(0);
+    let chainNowMs = 0;
+    let nextHeartbeatAtTs = 30;
+    const abort = new AbortController();
+    const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
+    const advanceForkTimeTo = vi.fn(async (targetUnixTs: number) => {
+      chainNowMs = targetUnixTs * 1000;
+      return true;
+    });
+    const callHeartbeat = vi.fn(async () => {
+      nextHeartbeatAtTs = 62;
+      return { txHash: '0x1' };
+    });
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readChainNowMs() { return chainNowMs; },
+      advanceForkTimeTo,
+      isForkTimeAdvanceEnabled: () => true,
+      async readNextHeartbeatAtTs() { return nextHeartbeatAtTs; },
+    });
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      convex: { postRunnerStatus },
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(31_499);
+    expect(callHeartbeat).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(advanceForkTimeTo).toHaveBeenCalledWith(32);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+
+    abort.abort();
   });
 
   it('exits silently when aborted during retry sleep', async () => {

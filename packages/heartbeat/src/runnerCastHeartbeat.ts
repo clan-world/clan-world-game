@@ -241,6 +241,10 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     return true;
   }
 
+  isForkTimeAdvanceEnabled(): boolean {
+    return this.advanceForkTime;
+  }
+
   async readNextHeartbeatAtTs(): Promise<number> {
     const state = await this.publicClient.readContract({
       address: this.contractAddress,

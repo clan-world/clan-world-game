@@ -8,6 +8,7 @@ export type HeartbeatFireResult = RunnerStatusUpdate['lastFireResult'];
 export type ForkTimeAdvancer = {
   readChainNowMs?: () => Promise<number>;
   advanceForkTimeTo?: (targetUnixTs: number) => Promise<boolean>;
+  isForkTimeAdvanceEnabled?: () => boolean;
 };
 
 export interface HeartbeatSchedulerDeps {
@@ -126,16 +127,19 @@ async function runHeartbeatScheduler(
     // whether the on-chain nextHeartbeatAtTs (chain time) and the local wall
     // clock diverge (e.g. on an anvil-fork whose block.timestamp drifts ahead),
     // which would skew computedDelayMs. Cheap (no extra RPC); read from logs.
-    const schedulerNowMs = await prepareHeartbeatWindow({
-      deps,
-      nextHeartbeatAtTs,
-      fallbackNowMs: nowMs,
-    });
+    const schedulerNowMs = await readSchedulerNowMs(deps, nowMs);
     const delayMs = computeHeartbeatDelayMs(nextHeartbeatAtTs, schedulerNowMs);
     deps.log.info(
       `heartbeat schedule: nextHeartbeatAtTs=${nextHeartbeatAtTs}s schedulerNowMs=${schedulerNowMs} computedDelayMs=${delayMs}`,
     );
     await sleepWithSignal(delayMs, deps.signal);
+    if (deps.signal.aborted) break;
+
+    await prepareHeartbeatWindow({
+      deps,
+      nextHeartbeatAtTs,
+      fallbackNowMs: nowMs,
+    });
     if (deps.signal.aborted) break;
 
     const result = await attemptHeartbeatWithBackoff({
@@ -302,7 +306,7 @@ async function prepareHeartbeatWindow(args: {
   nextHeartbeatAtTs: number | undefined;
   fallbackNowMs: () => number;
 }): Promise<number> {
-  let schedulerNowMs = await readSchedulerNowMs(args.deps, args.fallbackNowMs);
+  let schedulerNowMs = await readChainNowMs(args.deps, args.fallbackNowMs);
   if (args.nextHeartbeatAtTs === undefined) return schedulerNowMs;
 
   const targetUnixTs = Math.ceil(
@@ -318,11 +322,21 @@ async function prepareHeartbeatWindow(args: {
     });
   if (!advanced) return schedulerNowMs;
 
-  schedulerNowMs = await readSchedulerNowMs(args.deps, args.fallbackNowMs);
+  schedulerNowMs = await readChainNowMs(args.deps, args.fallbackNowMs);
   return schedulerNowMs;
 }
 
 async function readSchedulerNowMs(
+  deps: HeartbeatSchedulerDeps & {
+    log: NonNullable<HeartbeatSchedulerDeps['log']>;
+  },
+  fallbackNowMs: () => number,
+): Promise<number> {
+  if (isForkTimeAdvanceEnabled(deps)) return fallbackNowMs();
+  return readChainNowMs(deps, fallbackNowMs);
+}
+
+async function readChainNowMs(
   deps: HeartbeatSchedulerDeps & {
     log: NonNullable<HeartbeatSchedulerDeps['log']>;
   },
@@ -336,6 +350,10 @@ async function readSchedulerNowMs(
     deps.log.warn('failed to read chain clock; falling back to local scheduler clock:', err);
     return fallbackNowMs();
   }
+}
+
+function isForkTimeAdvanceEnabled(deps: HeartbeatSchedulerDeps): boolean {
+  return deps.heartbeatCaller.isForkTimeAdvanceEnabled?.() === true;
 }
 
 async function postRunnerStatus(
