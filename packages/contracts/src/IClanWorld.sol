@@ -25,7 +25,7 @@ pragma solidity ^0.8.34;
 
 library ClanWorldConstants {
     // World cadence
-    uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 20;
+    uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 30;
     // First winter opens at tick 110; ticks [100,110) remain pre-winter runway.
     uint64 internal constant WINTER_START_TICK = 110;
     uint64 internal constant WINTER_DURATION_TICKS = 10;
