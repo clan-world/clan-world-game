@@ -30,6 +30,8 @@ export interface RunnerHeartbeatConfig {
   convexWebhookUrl?: string;
   /** Shared webhook auth secret. */
   webhookSharedSecret?: string;
+  /** Dev-only affordance: advance a local anvil fork clock before heartbeats. */
+  advanceForkTime?: boolean;
 }
 
 /**
@@ -76,6 +78,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): RunnerHeart
     contractAddress: contractAddress as `0x${string}`,
     convexWebhookUrl,
     webhookSharedSecret: env['WEBHOOK_SHARED_SECRET'],
+    advanceForkTime: shouldAdvanceForkTime(env, env['RPC_URL_PRIMARY'] || env['RPC_URL_FALLBACK']),
   };
 }
 
@@ -96,6 +99,8 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
   private readonly receiptTimeoutMs: number;
   private readonly convexWebhookUrl?: string;
   private readonly webhookSharedSecret?: string;
+  private readonly rpcUrl?: string;
+  private readonly advanceForkTime: boolean;
 
   constructor(cfg: RunnerHeartbeatConfig) {
     const pk = normalizePk(cfg.privateKey);
@@ -111,6 +116,8 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     this.receiptTimeoutMs = cfg.receiptTimeoutMs ?? 15_000;
     this.convexWebhookUrl = cfg.convexWebhookUrl;
     this.webhookSharedSecret = cfg.webhookSharedSecret;
+    this.rpcUrl = cfg.rpcUrl;
+    this.advanceForkTime = cfg.advanceForkTime ?? false;
   }
 
   async callHeartbeat(): Promise<{ txHash: string }> {
@@ -212,6 +219,22 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
     return this.readBlockTimestampMs();
   }
 
+  async advanceForkTimeTo(targetUnixTs: number): Promise<boolean> {
+    if (!this.advanceForkTime) return false;
+    if (!this.rpcUrl) throw new Error('advanceForkTime requires an explicit RPC URL');
+
+    const latestUnixTs = Math.floor(await this.readChainNowMs() / 1000);
+    if (latestUnixTs >= targetUnixTs) return false;
+
+    try {
+      await this.sendForkRpc('evm_setNextBlockTimestamp', [toQuantityHex(targetUnixTs)]);
+    } catch {
+      await this.sendForkRpc('evm_increaseTime', [toQuantityHex(targetUnixTs - latestUnixTs)]);
+    }
+    await this.sendForkRpc('evm_mine', []);
+    return true;
+  }
+
   async readNextHeartbeatAtTs(): Promise<number> {
     const state = await this.publicClient.readContract({
       address: this.contractAddress,
@@ -236,6 +259,24 @@ export class RunnerCastHeartbeat implements IHeartbeatCaller {
       ? await this.publicClient.getBlock({ blockTag: 'latest' })
       : await this.publicClient.getBlock({ blockNumber: BigInt(blockNumber) });
     return Number(block.timestamp) * 1000;
+  }
+
+  private async sendForkRpc(method: string, params: unknown[]): Promise<unknown> {
+    if (!this.rpcUrl) throw new Error(`${method} requires an explicit RPC URL`);
+    const response = await fetch(this.rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params,
+      }),
+    });
+    if (!response.ok) throw new Error(`${method} failed: HTTP ${response.status}`);
+    const payload = await response.json() as { result?: unknown; error?: { message?: string } };
+    if (payload.error) throw new Error(`${method} failed: ${payload.error.message ?? 'RPC error'}`);
+    return payload.result;
   }
 
   private async postHeartbeatWebhook(args: {
@@ -353,4 +394,37 @@ function deriveConvexWebhookUrl(convexDeployUrl?: string): string | undefined {
   url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
   // Preserve protocol/port; strip trailing slash if URL had no explicit path.
   return url.toString().replace(/\/$/, '');
+}
+
+function shouldAdvanceForkTime(
+  env: NodeJS.ProcessEnv,
+  rpcUrl: string | undefined,
+): boolean {
+  if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '1') return true;
+  if (env['HEARTBEAT_ADVANCE_FORK_TIME'] === '0') return false;
+  return env['CHAIN_NETWORK'] === 'dev' && isLocalForkRpcUrl(rpcUrl);
+}
+
+function isLocalForkRpcUrl(rpcUrl: string | undefined): boolean {
+  if (!rpcUrl) return false;
+  let url: URL;
+  try {
+    url = new URL(rpcUrl);
+  } catch {
+    return false;
+  }
+  const hostname = url.hostname.toLowerCase();
+  return hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname === 'host.docker.internal' ||
+    hostname === 'anvil-fork';
+}
+
+function toQuantityHex(value: number): `0x${string}` {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`invalid JSON-RPC quantity: ${value}`);
+  }
+  return `0x${value.toString(16)}`;
 }

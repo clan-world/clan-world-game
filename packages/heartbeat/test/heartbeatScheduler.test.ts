@@ -7,6 +7,7 @@ import {
   HEARTBEAT_RETRY_BACKOFF_MS,
   HEARTBEAT_SAFETY_MARGIN_MS,
   startHeartbeatScheduler,
+  type ForkTimeAdvancer,
 } from '../src/heartbeatScheduler';
 import { HeartbeatRateLimitedError, type IHeartbeatCaller } from '@clan-world/agents/seams';
 
@@ -23,7 +24,9 @@ function cleanupHeartbeatSuccessFile(): void {
   rmSync(`${heartbeatSuccessFile}.${process.pid}.tmp`, { force: true });
 }
 
-function makeHeartbeatCaller(overrides: Partial<IHeartbeatCaller> = {}): IHeartbeatCaller {
+function makeHeartbeatCaller(
+  overrides: Partial<IHeartbeatCaller & ForkTimeAdvancer> = {},
+): IHeartbeatCaller & ForkTimeAdvancer {
   return {
     async callHeartbeat() { return { txHash: '0xabc' }; },
     async readHeartbeatIntervalSeconds() { return 60; },
@@ -172,6 +175,47 @@ describe('heartbeatScheduler', () => {
     abort.abort();
   });
 
+  it('advances fork time before firing when wall time is past due but chain time is behind', async () => {
+    vi.setSystemTime(20_000);
+    let chainNowMs = 9_000;
+    const abort = new AbortController();
+    const postRunnerStatus = vi.fn().mockResolvedValue(undefined);
+    const advanceForkTimeTo = vi.fn(async (targetUnixTs: number) => {
+      chainNowMs = targetUnixTs * 1000;
+      return true;
+    });
+    const callHeartbeat = vi.fn(async () => {
+      if (chainNowMs < 10_000 + HEARTBEAT_SAFETY_MARGIN_MS) {
+        throw new HeartbeatRateLimitedError(10);
+      }
+      abort.abort();
+      return { txHash: '0x1' };
+    });
+    const caller = makeHeartbeatCaller({
+      callHeartbeat,
+      async readChainNowMs() { return chainNowMs; },
+      advanceForkTimeTo,
+      readNextHeartbeatAtTs: vi.fn()
+        .mockResolvedValueOnce(10)
+        .mockResolvedValue(40),
+    });
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      convex: { postRunnerStatus },
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(advanceForkTimeTo).toHaveBeenCalledWith(12);
+    expect(callHeartbeat).toHaveBeenCalledTimes(1);
+    expect(postRunnerStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ lastFireResult: 'success' }),
+    );
+  });
+
   it('exits silently when aborted during retry sleep', async () => {
     const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
     const alert = vi.fn().mockResolvedValue({ ok: true });
@@ -281,6 +325,38 @@ describe('heartbeatScheduler', () => {
       expect.objectContaining({
         lastFailureMessage: 'Telegram alert failed: telegram down',
       }),
+    );
+
+    abort.abort();
+  });
+
+  it('skips Telegram alert errors when the bot token is intentionally absent', async () => {
+    const callHeartbeat = vi.fn().mockRejectedValue(new Error('rpc down'));
+    const alert = vi.fn().mockResolvedValue({ ok: false, error: 'TELEGRAM_BOT_TOKEN is not set' });
+    const info = vi.fn();
+    const error = vi.fn();
+    const caller = makeHeartbeatCaller({ callHeartbeat });
+    const abort = new AbortController();
+
+    startHeartbeatScheduler({
+      heartbeatCaller: caller,
+      signal: abort.signal,
+      nowMs: () => 0,
+      alert,
+      log: { info, warn: vi.fn(), error },
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      HEARTBEAT_SAFETY_MARGIN_MS + 1 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((sum, ms) => sum + ms, 0),
+    );
+
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(
+      '[heartbeatScheduler] Telegram alert skipped: TELEGRAM_BOT_TOKEN is not set',
+    );
+    expect(error).not.toHaveBeenCalledWith(
+      '[heartbeatScheduler] Telegram alert failed:',
+      'TELEGRAM_BOT_TOKEN is not set',
     );
 
     abort.abort();

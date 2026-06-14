@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const viemMocks = vi.hoisted(() => ({
+  getBlock: vi.fn(),
   readContract: vi.fn(),
   waitForTransactionReceipt: vi.fn(),
   writeContract: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock('viem', async () => {
   return {
     ...actual,
     createPublicClient: vi.fn(() => ({
+      getBlock: viemMocks.getBlock,
       readContract: viemMocks.readContract,
       waitForTransactionReceipt: viemMocks.waitForTransactionReceipt,
     })),
@@ -62,6 +64,7 @@ beforeEach(() => {
   heartbeatSuccessFile = join(heartbeatSuccessDir, 'last-heartbeat-success');
   vi.stubEnv('HEARTBEAT_SUCCESS_FILE_OVERRIDE', heartbeatSuccessFile);
   cleanupHeartbeatSuccessFile();
+  viemMocks.getBlock.mockReset();
   viemMocks.readContract.mockReset();
   viemMocks.waitForTransactionReceipt.mockReset();
   viemMocks.writeContract.mockReset();
@@ -87,6 +90,22 @@ describe('configFromEnv', () => {
     });
 
     expect(cfg.rpcUrl).toBe('https://fallback.example');
+  });
+
+  it('enables fork time advance only for dev local fork RPCs by default', () => {
+    expect(configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CHAIN_NETWORK: 'dev',
+      RPC_URL_PRIMARY: 'http://anvil-fork:8545',
+    }).advanceForkTime).toBe(true);
+
+    expect(configFromEnv({
+      RUNNER_PRIVATE_KEY: '1'.repeat(64),
+      CLAN_WORLD_CONTRACT_ADDRESS: '0x0000000000000000000000000000000000000001',
+      CHAIN_NETWORK: 'prod',
+      RPC_URL_PRIMARY: 'https://base-sepolia.example',
+    }).advanceForkTime).toBe(false);
   });
 
   it('derives CONVEX_WEBHOOK_URL from CONVEX_DEPLOY_URL when explicit URL is unset', () => {
@@ -335,6 +354,61 @@ describe('RunnerCastHeartbeat', () => {
     );
     warn.mockRestore();
   }, 7_000);
+
+  it('detects a mined rate-limit revert using the reverted block timestamp, not wall clock', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(135_000);
+    const hash = `0x${'a'.repeat(64)}` as const;
+    viemMocks.writeContract.mockResolvedValue(hash);
+    viemMocks.waitForTransactionReceipt.mockResolvedValue({
+      status: 'reverted',
+      blockNumber: 7n,
+    });
+    viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: 130n });
+    viemMocks.getBlock.mockResolvedValue({ timestamp: 127n });
+
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'https://rpc.example',
+    });
+
+    const err = await heartbeat.callHeartbeat().then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(HeartbeatRateLimitedError);
+    expect(viemMocks.getBlock).toHaveBeenCalledWith({ blockNumber: 7n });
+  });
+
+  it('advances a dev fork to the requested heartbeat timestamp and mines a block', async () => {
+    viemMocks.getBlock.mockResolvedValue({ timestamp: 10n });
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ result: '0x1' }),
+    } satisfies Partial<Response>);
+    vi.stubGlobal('fetch', fetch);
+    const heartbeat = new RunnerCastHeartbeat({
+      privateKey: '1'.repeat(64),
+      contractAddress: '0x0000000000000000000000000000000000000001',
+      rpcUrl: 'http://anvil-fork:8545',
+      advanceForkTime: true,
+    });
+
+    await expect(heartbeat.advanceForkTimeTo(12)).resolves.toBe(true);
+
+    expect(fetch).toHaveBeenCalledWith(
+      'http://anvil-fork:8545',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"method":"evm_setNextBlockTimestamp"'),
+      }),
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      'http://anvil-fork:8545',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"method":"evm_mine"'),
+      }),
+    );
+  });
 
   it('detects a viem-wrapped rate-limit revert by reason ALONE (no timestamp help)', async () => {
     // viem wraps the on-chain revert in a BaseError (e.g. ContractFunctionExecutionError)

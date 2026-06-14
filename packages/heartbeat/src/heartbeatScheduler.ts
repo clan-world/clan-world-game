@@ -5,8 +5,13 @@ import { sendTelegramAlert } from './telegramAlert';
 
 export type HeartbeatFireResult = RunnerStatusUpdate['lastFireResult'];
 
+export type ForkTimeAdvancer = {
+  readChainNowMs?: () => Promise<number>;
+  advanceForkTimeTo?: (targetUnixTs: number) => Promise<boolean>;
+};
+
 export interface HeartbeatSchedulerDeps {
-  heartbeatCaller: IHeartbeatCaller;
+  heartbeatCaller: IHeartbeatCaller & ForkTimeAdvancer;
   /** AbortSignal for clean shutdown. */
   signal: AbortSignal;
   /** Logger — defaults to console. Tests pass a recorder. */
@@ -27,6 +32,7 @@ export interface HeartbeatSchedulerDeps {
 
 export const HEARTBEAT_SAFETY_MARGIN_MS = 1_500;
 export const HEARTBEAT_JITTER_MS = HEARTBEAT_SAFETY_MARGIN_MS;
+export const HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS = 2_000;
 export const HEARTBEAT_RETRY_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000] as const;
 const HOT_LOOP_GUARD_MS = 1_000;
 const ALERT_DEDUP_WINDOW_MS = 5 * 60 * 1_000;
@@ -120,10 +126,14 @@ async function runHeartbeatScheduler(
     // whether the on-chain nextHeartbeatAtTs (chain time) and the local wall
     // clock diverge (e.g. on an anvil-fork whose block.timestamp drifts ahead),
     // which would skew computedDelayMs. Cheap (no extra RPC); read from logs.
-    const wallNowMs = nowMs();
-    const delayMs = computeHeartbeatDelayMs(nextHeartbeatAtTs, wallNowMs);
+    const schedulerNowMs = await prepareHeartbeatWindow({
+      deps,
+      nextHeartbeatAtTs,
+      fallbackNowMs: nowMs,
+    });
+    const delayMs = computeHeartbeatDelayMs(nextHeartbeatAtTs, schedulerNowMs);
     deps.log.info(
-      `heartbeat schedule: nextHeartbeatAtTs=${nextHeartbeatAtTs}s wallNowMs=${wallNowMs} computedDelayMs=${delayMs}`,
+      `heartbeat schedule: nextHeartbeatAtTs=${nextHeartbeatAtTs}s schedulerNowMs=${schedulerNowMs} computedDelayMs=${delayMs}`,
     );
     await sleepWithSignal(delayMs, deps.signal);
     if (deps.signal.aborted) break;
@@ -141,7 +151,8 @@ async function runHeartbeatScheduler(
       const nextAfterSuccess = await deps.heartbeatCaller
         .readNextHeartbeatAtTs()
         .catch(() => undefined);
-      if (nextAfterSuccess !== undefined && nextAfterSuccess * 1000 <= nowMs()) {
+      const schedulerNowAfterSuccessMs = await readSchedulerNowMs(deps, nowMs);
+      if (nextAfterSuccess !== undefined && nextAfterSuccess * 1000 <= schedulerNowAfterSuccessMs) {
         deps.log.warn(
           `heartbeat succeeded but nextHeartbeatAtTs (${nextAfterSuccess}) is still in the past; sleeping ${HOT_LOOP_GUARD_MS}ms before retry`,
         );
@@ -166,6 +177,8 @@ async function runHeartbeatScheduler(
     const alertResult = await alert(alertMessage);
     if (alertResult.ok) {
       lastAlertAtMs.set(alertClass, currentMs);
+    } else if (alertResult.error === 'TELEGRAM_BOT_TOKEN is not set') {
+      deps.log.info('[heartbeatScheduler] Telegram alert skipped: TELEGRAM_BOT_TOKEN is not set');
     } else {
       deps.log.error('[heartbeatScheduler] Telegram alert failed:', alertResult.error);
     }
@@ -220,9 +233,17 @@ async function attemptHeartbeatWithBackoff(
           heartbeatIntervalSeconds: deps.heartbeatIntervalSeconds,
           nextHeartbeatAtTs,
         });
+        const schedulerNowMs = await prepareHeartbeatWindow({
+          deps,
+          nextHeartbeatAtTs,
+          fallbackNowMs: nowMs,
+        });
         const waitMs = nextHeartbeatAtTs === undefined
-          ? HEARTBEAT_SAFETY_MARGIN_MS
-          : computeHeartbeatDelayMs(nextHeartbeatAtTs, nowMs());
+          ? HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS
+          : Math.max(
+            HEARTBEAT_RATE_LIMIT_RETRY_FLOOR_MS,
+            computeHeartbeatDelayMs(nextHeartbeatAtTs, schedulerNowMs),
+          );
         deps.log.info(
           `heartbeat rate-limited; retrying after ${waitMs}ms (nextHeartbeatAtTs=${nextHeartbeatAtTs ?? 'unknown'})`,
         );
@@ -272,6 +293,49 @@ async function attemptHeartbeatWithBackoff(
     }
   }
   return { success: false, aborted: false, message: 'retry loop exhausted', lastFireResult: 'error' };
+}
+
+async function prepareHeartbeatWindow(args: {
+  deps: HeartbeatSchedulerDeps & {
+    log: NonNullable<HeartbeatSchedulerDeps['log']>;
+  };
+  nextHeartbeatAtTs: number | undefined;
+  fallbackNowMs: () => number;
+}): Promise<number> {
+  let schedulerNowMs = await readSchedulerNowMs(args.deps, args.fallbackNowMs);
+  if (args.nextHeartbeatAtTs === undefined) return schedulerNowMs;
+
+  const targetUnixTs = Math.ceil(
+    (args.nextHeartbeatAtTs * 1000 + HEARTBEAT_SAFETY_MARGIN_MS) / 1000,
+  );
+  if (schedulerNowMs >= targetUnixTs * 1000) return schedulerNowMs;
+
+  const advanced = await args.deps.heartbeatCaller
+    .advanceForkTimeTo?.(targetUnixTs)
+    .catch(err => {
+      args.deps.log.warn('fork time advance failed; falling back to sleep:', err);
+      return false;
+    });
+  if (!advanced) return schedulerNowMs;
+
+  schedulerNowMs = await readSchedulerNowMs(args.deps, args.fallbackNowMs);
+  return schedulerNowMs;
+}
+
+async function readSchedulerNowMs(
+  deps: HeartbeatSchedulerDeps & {
+    log: NonNullable<HeartbeatSchedulerDeps['log']>;
+  },
+  fallbackNowMs: () => number,
+): Promise<number> {
+  const readChainNowMs = deps.heartbeatCaller.readChainNowMs;
+  if (typeof readChainNowMs !== 'function') return fallbackNowMs();
+  try {
+    return await readChainNowMs.call(deps.heartbeatCaller);
+  } catch (err) {
+    deps.log.warn('failed to read chain clock; falling back to local scheduler clock:', err);
+    return fallbackNowMs();
+  }
 }
 
 async function postRunnerStatus(
