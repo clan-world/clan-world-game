@@ -68,6 +68,11 @@ export interface IConvexClient {
     source: 'local' | '0g' | 'demo' | 'walrus';
     dataHash?: string;
     txHash?: string;
+    // Walrus provenance for the cockpit ProofChip. blobId links to Walruscan;
+    // accountId is the writing MemWal account. Both optional — callers pass
+    // what they cheaply have (the Elder MCP passes blobId only).
+    blobId?: string;
+    accountId?: string;
   }): Promise<void>;
 }
 
@@ -113,7 +118,7 @@ class StubConvexClient implements IConvexClient {
   async postOrchEvent(_args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {}
   async postHumanSteering(_args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {}
   async postBulletin(_args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {}
-  async mirrorMemoryEntry(_args: { clanId: number; key: string; value: string; source: 'local' | '0g' | 'demo' | 'walrus'; dataHash?: string; txHash?: string }): Promise<void> {}
+  async mirrorMemoryEntry(_args: { clanId: number; key: string; value: string; source: 'local' | '0g' | 'demo' | 'walrus'; dataHash?: string; txHash?: string; blobId?: string; accountId?: string }): Promise<void> {}
 }
 
 const getSnapshotRef = convexApiRefs.getSnapshot.getSnapshot;
@@ -259,7 +264,7 @@ class RealConvexClient implements IConvexClient {
     }
   }
 
-  async mirrorMemoryEntry(args: { clanId: number; key: string; value: string; source: 'local' | '0g' | 'demo' | 'walrus'; dataHash?: string; txHash?: string }): Promise<void> {
+  async mirrorMemoryEntry(args: { clanId: number; key: string; value: string; source: 'local' | '0g' | 'demo' | 'walrus'; dataHash?: string; txHash?: string; blobId?: string; accountId?: string }): Promise<void> {
     const secret = this.indexerSecret();
     if (!secret) {
       console.warn('[ConvexClient] mirrorMemoryEntry skipped: INDEXER_SECRET not set');

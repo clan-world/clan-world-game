@@ -34,6 +34,10 @@ export const mirrorMemoryEntry = mutation({
       v.literal("walrus"),
     ),
     txHash: v.optional(v.string()),
+    // Walrus provenance for the cockpit ProofChip — see schema.ts. Optional so
+    // non-Walrus mirror callers can omit them; persisted only when provided.
+    blobId: v.optional(v.string()),
+    accountId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);

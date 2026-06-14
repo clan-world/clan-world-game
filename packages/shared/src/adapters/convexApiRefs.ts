@@ -47,6 +47,10 @@ type MirrorMemoryEntryArgs = {
   dataHash?: string;
   source: 'local' | '0g' | 'demo' | 'walrus';
   txHash?: string;
+  // Walrus provenance for the cockpit ProofChip — must stay aligned with the
+  // optional fields on the `inft.mirrorMemoryEntry` Convex mutation args.
+  blobId?: string;
+  accountId?: string;
 };
 
 type UpdateRunnerStatusArgs = {
