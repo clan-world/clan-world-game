@@ -26,7 +26,13 @@ export const mirrorMemoryEntry = mutation({
     value: v.string(),
     dataHash: v.optional(v.string()),
     // "0g" retained for historical rows (deploy-safety); see schema.ts.
-    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
+    // "walrus" = mirrored after a successful Walrus Memory KV save.
+    source: v.union(
+      v.literal("local"),
+      v.literal("0g"),
+      v.literal("demo"),
+      v.literal("walrus"),
+    ),
     txHash: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

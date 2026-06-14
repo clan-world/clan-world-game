@@ -38,6 +38,7 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
     async postOrchEvent() {},
     async postHumanSteering() {},
     async postBulletin() {},
+    async mirrorMemoryEntry() {},
     ...overrides,
   };
 }

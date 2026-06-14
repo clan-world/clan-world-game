@@ -41,7 +41,14 @@ export const seedEntry = internalMutation({
     clanId: v.number(),
     key: v.string(),
     value: v.string(),
-    source: v.optional(v.union(v.literal("local"), v.literal("0g"), v.literal("demo"))),
+    source: v.optional(
+      v.union(
+        v.literal("local"),
+        v.literal("0g"),
+        v.literal("demo"),
+        v.literal("walrus"),
+      ),
+    ),
     dataHash: v.optional(v.string()),
     txHash: v.optional(v.string()),
   },
