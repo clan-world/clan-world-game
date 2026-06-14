@@ -30,7 +30,7 @@ This reframes the whole ladder:
 
 ### Rung 1 — FOOD (the floor)
 
-**Gate:** `wheatBuf = vaultWheat / (cm * upkeepX) < 6` ticks of runway, where `upkeepX = 2` in/near winter else `1`. Also watch fish runway.
+**Gate:** `wheatBuf = vaultWheat / (cm * upkeepX) < 6` ticks of runway, where `upkeepX = 2` **only while `inWinter`** (the current tick is inside a winter window) else `1`. *Near* winter is a pre-reserve pressure signal (bank a deeper floor), not a reason to double the live upkeep rate — don't inflate the runway math during the pre-winter countdown. Also watch fish runway.
 
 **Why 6t:** below ~6 ticks of buffer you're one missed deposit-cycle from a starvation spiral, and the spiral halves the very gathering you need to escape it. Bank deeper (≥12t) before yielding, and bank a **pre-winter wheat floor** (`~2·cm·10`) ahead of each winter window because upkeep doubles.
 
