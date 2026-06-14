@@ -20,8 +20,9 @@ const DEFAULT_PORT = (() => {
 
 export default defineConfig({
   plugins: [react()],
-  // Relative asset paths so the build works when served from a Walrus portal.
-  base: './',
+  // Served as a subpath of the main ClanWorld Walrus Site at /mint/ — absolute
+  // base so SPA deep-links resolve assets correctly at any depth under /mint/.
+  base: '/mint/',
   server: {
     port: DEFAULT_PORT,
     host: '127.0.0.1',
