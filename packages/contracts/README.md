@@ -2,7 +2,7 @@
 
 Solidity contracts for ClanWorld. The canonical interface is `src/IClanWorld.sol` — every other component (frontend, backend, orchestrator, agents) talks to the chain through this seam. See `docs/adr/ADR001-IClanWorld-as-web2-web3-integration-seam.md`.
 
-Contracts deploy to **Base Sepolia** for the active ClanWorld V3 build, with heartbeat driven by the runner/foundry loop in dev and KeeperHub for live demo flows.
+Contracts deploy to **Base Sepolia** (chainId `84532`) for the active ClanWorld V3 build. The deployed **EIP-2535 diamond** is `0x098fa5c2dc8372cde5c99db47365fa84b69f7af1`. Heartbeat is driven by the dockerized `packages/heartbeat` runner (30s, owner-settable via `setHeartbeatIntervalSeconds` on `HeartbeatConfigFacet`) — not an external keeper.
 
 ## Workflow
 

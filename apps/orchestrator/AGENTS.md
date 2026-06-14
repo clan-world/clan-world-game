@@ -29,9 +29,9 @@ Stub `src/main.ts` logs `orchestrator starting (stub)` and exits. Real impl land
 
 ## How it interacts with adapters
 
-- **`IChainClient`** — reads tick, fires heartbeat tx (until S2 hands that off to KeeperHub).
+- **`IChainClient`** — reads tick, fires heartbeat tx (the live driver is now the dockerized `packages/heartbeat` runner).
 - **`IConvexClient`** — reads snapshot per tick, posts logs.
-- **`IKeeper`** — orchestrator may instantiate `FoundryLoopKeeper` directly for S1 (in-process), or just monitor an external KeeperHub for S2.
+- **`IKeeper`** — heartbeat driver seam; the live impl is the dockerized `packages/heartbeat` runner (Convex cron = disaster fallback).
 - **`ILLMClient`** — used by the optional narrator (post-tick storyline summary). Elders don't go through this — they're full Claude Code sessions.
 
 ## Running
@@ -41,4 +41,4 @@ pnpm --filter @clan-world/orchestrator dev   # tsx watch
 pnpm --filter @clan-world/orchestrator start # tsx (one-shot)
 ```
 
-See `docs/guides/stream-agents.md` for the Elder boot sequence and per-Elder config setup.
+See `agents/README.md` and `docs/architecture/current-architecture.md` for the elder boot sequence and runtime model. (The legacy `stream-agents.md` orchestrator guide is archived under `docs/archive/guides/`.)

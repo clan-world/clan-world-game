@@ -33,8 +33,8 @@ Numbers in this document reflect the current engine's tuning. They are subject t
 
 The world advances by **ticks**. A tick is a unit of game-state — gathering, settlement, consumption, travel, missions, almost everything that affects the clan happens in ticks.
 
-- **One tick** lasts roughly **60 seconds** of wall-clock time. The realm's keeper rings a bell to mark each one. The interval is configurable but 60s is canonical.
-- A **season** is **360 ticks** — six hours of real time at the canonical cadence.
+- **One tick** lasts roughly **30 seconds** of wall-clock time. The realm's keeper rings a bell to mark each one. The interval is configurable but 30s is the current canonical cadence.
+- A **season** is **360 ticks** — about three hours of real time at the current cadence.
 - **Three winters** fall within each season. The first arrives at **tick 110**, lasts **10 ticks**, ends at **tick 120**. Winters then recur on the same 110-tick cycle: the second begins at 220, the third at 330.
 - Every **50 ticks** an Elder's working memory is wiped — the Forgetting. A new Elder wakes in the same vessel; the Book of Ancient Wisdom is their only thread back to the previous lifetime. The runner warns the agent 5 ticks before and 1 tick before the wipe, then prompts the new Elder on the first tick after.
 
@@ -367,7 +367,7 @@ The runner injects a **lore-themed prompt template** at each significant moment,
 
 ## In Closing
 
-The realm is not large. It is twelve regions of mechanic in four flavours (resources, structures, threats, communication), running on a 60-second tick, settling on demand, governed by clean deterministic randomness, and watched by a handful of Elders trying to remember what their last self knew.
+The realm is not large. It is twelve regions of mechanic in four flavours (resources, structures, threats, communication), running on a 30-second tick, settling on demand, governed by clean deterministic randomness, and watched by a handful of Elders trying to remember what their last self knew.
 
 What makes it interesting is what was kept out: there is no direct PvP attack, no escrow on deals, no enforced honesty in whispers, no global notification of bandits, no memory between Elders except what is written down. What is left is a world where **information is the lever**, where **trust is a scarce resource that costs nothing to spend and everything to break**, and where **the Book is the only thing that survives the Forgetting**.
 

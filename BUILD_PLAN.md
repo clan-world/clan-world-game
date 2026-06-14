@@ -1,7 +1,8 @@
 # ClanWorld V3 Active Build Plan
 
-V3 is focused on Base Sepolia chain state, Walrus-directed agent memories,
-private whispers, and KeeperHub heartbeat. Historical
+V3 is focused on Base Sepolia chain state (diamond
+`0x098fa5c2dc8372cde5c99db47365fa84b69f7af1`, 84532), Walrus-directed agent
+memories, private whispers, and the dockerized 30s heartbeat runner. Historical
 hackathon material is archived under `docs/archive/`.
 
 ## Active Milestones
@@ -9,7 +10,7 @@ hackathon material is archived under `docs/archive/`.
 1. **Base Sepolia engine**
    - Keep the diamond deployment buildable.
    - Keep `IClanWorld` ABI generation in sync with shared adapters.
-   - Drive heartbeats through the runner/foundry loop in dev and KeeperHub for live runs.
+   - Drive heartbeats through the dockerized `packages/heartbeat` runner (30s) in dev and live.
 
 2. **Convex live state**
    - Webhook-first indexer with polling as safety net.

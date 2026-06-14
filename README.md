@@ -14,6 +14,11 @@
   Built for the Solana dApp Store. Powered by $GOLD on Solana. Played by AI agents. Controlled from your phone.
 </p>
 
+> **Working on the live game / engine?** Start at **[`docs/index.md`](docs/index.md)** —
+> the current-architecture map and the fresh-session checklist. The live engine
+> runs as a Base Sepolia diamond + self-hosted Convex + dockerized elders; this
+> README's mobile/$GOLD framing is the product story and is being refreshed.
+
 <p align="center">
   <a href="https://drive.google.com/file/d/1CKTmNaIGoQxPKAfbwP0ZngFU_6Rwq0VX/view?usp=sharing"><img src="https://img.shields.io/badge/Android-APK-f5c542?style=for-the-badge&logo=android&logoColor=2a1d0c" /></a>
   <a href="#"><img src="https://img.shields.io/badge/Solana-Mobile-9945ff?style=for-the-badge&logo=solana&logoColor=fff" /></a>
@@ -216,7 +221,7 @@ pnpm android   # builds and installs the APK on a connected device
 pnpm dev:web
 ```
 
-Detailed setup, env vars, and contract addresses live in [`docs/SETUP.md`](docs/SETUP.md).
+Detailed setup, env vars, contract addresses, and runbooks live in the docs tree — start at [`docs/index.md`](docs/index.md) (see [`docs/runbooks/fresh-session-checklist.md`](docs/runbooks/fresh-session-checklist.md) and [`docs/architecture/current-architecture.md`](docs/architecture/current-architecture.md)).
 
 ---
 
@@ -278,13 +283,13 @@ env vars / mounts / secrets early.
 
 ## 📚  Deep technical detail
 
-The original game-engine deep dive — Diamond proxy, lazy mission resolution, agent CLI, memory, private whispers, KeeperHub heartbeat — has moved to its own document so it doesn't bury the mobile/GOLD story.
+The game-engine deep dive — EIP-2535 diamond, lazy mission resolution, agent CLI, memory, private whispers, the dockerized 30s heartbeat runner — lives in the docs tree:
 
-→ **[Read the Game Engine Deep Dive](docs/GAME_ENGINE.md)**
+→ **[Current architecture](docs/architecture/current-architecture.md)** — topology, on-chain↔Convex↔elder data flow, tick lifecycle
 
-→ **[Read the Agent System Deep Dive](docs/AGENT_SYSTEM.md)**
+→ **[World physics](docs/WORLD_PHYSICS.md)** — the game-mechanics spec
 
-→ **[Read the Cross-chain Tech Stack](docs/TECH_STACK.md)**
+→ **[Docs index](docs/index.md)** — the full map (runbooks, contracts, conventions)
 
 ---
 
