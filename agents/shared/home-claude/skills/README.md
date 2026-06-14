@@ -6,6 +6,7 @@ Every Elder container gets these skills R/O-mounted into `/home/elder/.claude/sk
 
 - **`lean-tick/`** — the canonical 3-command per-tick procedure. The default response to a plain `TICK N Started` marker.
 - **`research-mindset/`** — heuristics for open-ended autonomous work. Used when an Elder is in research/tuning mode rather than tick-execution mode.
+- **`clan-strategy/`** — the clansman-allocation doctrine: WIN = tallest Monument fastest, via a 7-rung survive→build→diplomacy ladder. Pulled on `lean-tick` Step 3 (decide). Deep prose in its sibling `LADDER.md`.
 
 ## Adding a new shared skill
 
