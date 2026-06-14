@@ -2,6 +2,8 @@
 
 Deployed 2026-06-13 (hackathon). Free public mint; image served from Walrus.
 
+> Note: the live mainnet package `0xe776…54c1` was published with the earlier ASCII NFT name "Clan World: AElder Whispers". The source has since been corrected to use the proper "Ælder" ligature — this fix applies only on a future republish, not to the already-live package above.
+
 ## On-chain IDs (Sui mainnet)
 | Thing | ID |
 |-------|----|

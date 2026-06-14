@@ -54,7 +54,7 @@ fun init(otw: CLAN_LOGO_NFT, ctx: &mut TxContext) {
 public fun mint(ctx: &mut TxContext) {
     let nft = ClanLogoNFT {
         id: object::new(ctx),
-        name: string::utf8(b"Clan World: AElder Whispers"),
+        name: string::utf8(b"Clan World: \xc3\x86lder Whispers"),
         description: string::utf8(
             b"The official Clan World crest. Art on Walrus, identity on Sui.",
         ),
