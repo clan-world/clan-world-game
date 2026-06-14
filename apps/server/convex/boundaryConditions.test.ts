@@ -503,12 +503,15 @@ describe("runner.getRunnerStartupState — empty table fallback edges", () => {
     expect(result.sentForCurrentTick).toBe(false);
   });
 
-  it("elder has 1 whisper (tickNumber=undefined) but ZERO tick rows: returns null — whisper rows must not displace", async () => {
-    // by_elder_tick index sort-edge: Convex sorts undefined FIRST in asc,
-    // so a desc query returns the highest defined tickNumber first.
-    // Whisper rows (tickNumber=undefined) must sort to the tail.
-    // If a later refactor broke this ordering, the elder would see
-    // lastReceivedTick=null while a whisper row was present.
+  it("elder has only a whisper row (tickNumber=undefined), no tick rows: lastReceivedTick coalesces to null, not 0/undefined", async () => {
+    // Verifies the handler's `typeof tickNumber === "number" ? tickNumber : null`
+    // guard: a whisper row carries tickNumber=undefined, which must surface as
+    // null (distinct from "received tick 0"), NOT undefined/NaN.
+    //
+    // NOTE: this does NOT test the by_elder_tick ordering claim ("whispers sort
+    // to the tail behind real tick rows"). That is a Convex index property; the
+    // in-test mock orders by _creationTime, not tickNumber, so it cannot model
+    // it. The displacement scenario needs a real-Convex integration test.
     const tickReceiveLog = [
       {
         _id: "tickReceiveLog:1",
