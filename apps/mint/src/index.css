@@ -1,0 +1,107 @@
+:root {
+  --bg: #0a0a0b;
+  --card: #141416;
+  --text: #fafaf7;
+  --muted: #9a9a96;
+  --coral: #d97757;
+  --coral-hover: #e08a6e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.app {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.crest {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.mint {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mint-btn {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #160d09;
+  background: var(--coral);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mint-btn:hover:not(:disabled) {
+  background: var(--coral-hover);
+}
+
+.mint-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mint-result {
+  font-size: 0.85rem;
+  margin: 0;
+  word-break: break-word;
+}
+
+.mint-result.success a {
+  color: var(--coral);
+}
+
+.mint-result.error {
+  color: #e5736b;
+}
