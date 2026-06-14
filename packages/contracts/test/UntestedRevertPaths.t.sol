@@ -22,7 +22,6 @@ import {ClanWorld} from "../src/ClanWorld.sol";
 import {MinimalERC20} from "../src/MinimalERC20.sol";
 import {StubPool} from "../src/StubPool.sol";
 import {
-    ClanWorldConstants,
     ClanState,
     ClansmanState,
     ResourceType,
