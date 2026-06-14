@@ -12,7 +12,18 @@ here so they can land there without me touching those hot files.
 - `agents/shared/APPENDED_SYSTEM_PROMPT.md` — Elders are told about `memwal_remember`/`memwal_recall` + the
   KV-vs-reflection split + the post-wipe "recall both, verify vs world_snapshot" behavior.
 
-## What the docker-build session needs to add (2 changes)
+## What the docker-build session needs to add (3 changes — do #0 FIRST)
+
+### 0. 🚨 Egress allow-list — the #1 demo-day risk (de-risk this BEFORE anything else)
+Elders run **network-sandboxed** (per `APPENDED_SYSTEM_PROMPT.md`: `api.anthropic.com`, `claude.ai`, DNS, internal
+docker net only). The MemWal MCP must reach the **public** relayer **`relayer.memory.walrus.xyz`** over HTTPS.
+If it's not in the egress allow-list, `remember`/`recall` **fail silently inside the container** even though they
+work perfectly on the host (where provisioning was proven). Add `relayer.memory.walrus.xyz` (+ its DNS/TLS path) to
+the Elder egress allow-list. **Verify with the dumbest possible check from inside an Elder container first:**
+```bash
+docker compose exec elder-1 curl -s -o /dev/null -w '%{http_code}\n' --max-time 8 https://relayer.memory.walrus.xyz/health
+# non-000 = reachable. 000 = egress blocked → fix the allow-list before proceeding.
+```
 
 ### 1. Install the `memwal-mcp` binary in the Elder image
 The `elder-mcp.json` entry points at `/usr/local/bin/memwal-mcp`. The Elder Dockerfile must provide it, e.g.:
@@ -38,9 +49,23 @@ Wire as a per-Elder docker secret / bind mount, mirroring the existing `ELDER_WA
 **Do NOT** copy `owner.key` into containers (provisioning/rotation only; keep it host-side).
 
 ## Verify (per Elder container)
-1. `memwal-mcp` resolves on PATH; `/home/elder/.memwal/credentials.json` present + matches that Elder's `accountId`.
-2. In the Elder Claude session, `mcp__memwal__*` tools appear.
-3. `memwal_remember("smoke test")` → `memwal_recall("smoke")` returns it.
+Run the bundled smoke script inside each Elder container — it checks binary-on-PATH, per-Elder creds + accountId,
+and (critically) egress to the relayer:
+```bash
+docker compose exec elder-1 /opt/clan-world/shared/scripts/walrus/smoke-elder-memwal.sh
+```
+Then the manual check: in the Elder Claude session, `mcp__memwal__*` tools appear and
+`memwal_remember("smoke")` → `memwal_recall("smoke")` round-trips.
+
+⚠️ **Confirm `accountId` is DISTINCT per container.** Identical creds across the 4 Elders collapses them into one
+MemWal identity (the 2nd-biggest risk after egress). The smoke script prints each container's accountId — eyeball
+that elder-1..4 differ.
+
+## Observability for demo day (recommended)
+Before recording, stand up a tiny visible proof trail per Elder — `accountId`, last remembered tag, last recall
+result + timestamp — so a failed recall at 5:40am is debuggable at a glance rather than guesswork. The cockpit
+Agent panel (PR3) is the natural home; until it lands, the smoke script + `~/.secrets/clanworld-elder-walrus/`
+addresses suffice.
 
 ## Notes
 - The `@mysten/sui` version compat wrapper (`SuiJsonRpcClient` vs old `waitForTransaction`) only affects the
