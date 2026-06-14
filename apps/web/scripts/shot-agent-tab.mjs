@@ -10,10 +10,13 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1100 }, deviceScaleFactor: 2 });
 page.on('console', (m) => { if (m.type() === 'error') console.log('[console.error]', m.text()); });
 
-await page.goto(BASE, { waitUntil: 'networkidle' });
+// `networkidle` hangs against Vite's HMR websocket (never idles). Wait for the
+// DOM instead, then explicitly wait for the Agent-tab control to be visible.
+await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 
 // Open the Agent (0g) tab on every mini-cockpit so all four panels show it.
 const tabs = page.locator('[data-testid$="-tab-0g"]');
+await tabs.first().waitFor({ state: 'visible', timeout: 15_000 });
 const n = await tabs.count();
 console.log('agent tabs found:', n);
 for (let i = 0; i < n; i++) await tabs.nth(i).click();

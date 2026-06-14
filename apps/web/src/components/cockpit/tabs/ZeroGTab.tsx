@@ -131,9 +131,12 @@ const WALRUSCAN_ROOT = 'https://walruscan.com/mainnet';
  * field lands.
  */
 function proofUrl(kind: 'blob' | 'object', id: string): string {
+  // Walrus blob ids / Sui object ids are opaque and may contain characters that
+  // aren't path-safe — encode before interpolating into the explorer URL path.
+  const safeId = encodeURIComponent(id);
   return kind === 'blob'
-    ? `${WALRUSCAN_ROOT}/blob/${id}`
-    : `${SUISCAN_ROOT}/object/${id}`;
+    ? `${WALRUSCAN_ROOT}/blob/${safeId}`
+    : `${SUISCAN_ROOT}/object/${safeId}`;
 }
 
 /** Shorten a long hex/base64 id to `head…tail` for chip display. */
@@ -270,7 +273,9 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
             }}
           >
             {kvRows.map((kv) => {
-              const onWalrus = isWalrus(kv.source);
+              // The on-chain-proof chip renders whenever a real id is present,
+              // independent of `source` — a blobId/accountId IS the proof. The
+              // coral "● Walrus" source badge stays keyed off source below.
               const hasProof = Boolean(kv.blobId ?? kv.accountId);
               return (
                 <div
@@ -307,7 +312,7 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
                     </span>
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    {onWalrus && hasProof && (
+                    {hasProof && (
                       <ProofChip
                         blobId={kv.blobId}
                         accountId={kv.accountId}
@@ -409,6 +414,9 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
             }}
           >
             {reflectionRows.map((r, i) => {
+              // `onWalrus` drives the coral row accent + source badge (correct —
+              // that's the source signal). The proof chip below keys off id
+              // presence instead: a blobId/accountId IS the on-chain proof.
               const onWalrus = isWalrus(r.source);
               const hasProof = Boolean(r.blobId ?? r.accountId);
               return (
@@ -447,7 +455,7 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
                         T{r.tick}
                       </span>
                     )}
-                    {onWalrus && hasProof && (
+                    {hasProof && (
                       <ProofChip
                         blobId={r.blobId}
                         accountId={r.accountId}
