@@ -57,6 +57,18 @@ export interface IConvexClient {
     dataHash?: string;
     txHash?: string;
   }): Promise<void>;
+  // Cockpit memory mirror — best-effort. Called after a successful Walrus
+  // Memory KV save so the cockpit's memoryEntries surfaces `source: "walrus"`.
+  // Optional so callers (Elder MCP) can guard with `?.` and stay compatible
+  // with any historical IConvexClient implementation that predates it.
+  mirrorMemoryEntry?(args: {
+    clanId: number;
+    key: string;
+    value: string;
+    source: 'local' | '0g' | 'demo' | 'walrus';
+    dataHash?: string;
+    txHash?: string;
+  }): Promise<void>;
 }
 
 export type RunnerStatusUpdate = {
@@ -101,6 +113,7 @@ class StubConvexClient implements IConvexClient {
   async postOrchEvent(_args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {}
   async postHumanSteering(_args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {}
   async postBulletin(_args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {}
+  async mirrorMemoryEntry(_args: { clanId: number; key: string; value: string; source: 'local' | '0g' | 'demo' | 'walrus'; dataHash?: string; txHash?: string }): Promise<void> {}
 }
 
 const getSnapshotRef = convexApiRefs.getSnapshot.getSnapshot;
@@ -108,6 +121,7 @@ const sendWhisperRef = convexApiRefs.comms.sendWhisper;
 const seedOrchEventRef = convexApiRefs.comms.seedOrchEvent;
 const seedHumanSteeringRef = convexApiRefs.comms.seedHumanSteering;
 const seedBulletinRef = convexApiRefs.bulletins.seedBulletin;
+const mirrorMemoryEntryRef = convexApiRefs.inft.mirrorMemoryEntry;
 const updateRunnerStatusRef = convexApiRefs.runnerStatus.updateRunnerStatus;
 
 class RealConvexClient implements IConvexClient {
@@ -242,6 +256,19 @@ class RealConvexClient implements IConvexClient {
       await this.http.mutation(seedBulletinRef, { secret, ...args });
     } catch (err) {
       console.warn('[ConvexClient] postBulletin failed (non-fatal):', err);
+    }
+  }
+
+  async mirrorMemoryEntry(args: { clanId: number; key: string; value: string; source: 'local' | '0g' | 'demo' | 'walrus'; dataHash?: string; txHash?: string }): Promise<void> {
+    const secret = this.indexerSecret();
+    if (!secret) {
+      console.warn('[ConvexClient] mirrorMemoryEntry skipped: INDEXER_SECRET not set');
+      return;
+    }
+    try {
+      await this.http.mutation(mirrorMemoryEntryRef, { secret, ...args });
+    } catch (err) {
+      console.warn('[ConvexClient] mirrorMemoryEntry failed (non-fatal):', err);
     }
   }
 }

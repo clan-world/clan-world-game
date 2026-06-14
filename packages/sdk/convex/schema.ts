@@ -347,8 +347,14 @@ export default defineSchema({
     value: v.string(),
     dataHash: v.optional(v.string()),
     // "0g" retained for historical rows so `convex deploy` validates existing
-    // data; new writes use local/demo (Walrus source lands with that work).
-    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
+    // data; new writes use local/demo. "walrus" = rows mirrored after a
+    // successful Walrus Memory (MemWal) KV save from the Elder MCP.
+    source: v.union(
+      v.literal("local"),
+      v.literal("0g"),
+      v.literal("demo"),
+      v.literal("walrus"),
+    ),
     updatedAt: v.number(),
     txHash: v.optional(v.string()),
   })

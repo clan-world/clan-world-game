@@ -9,6 +9,7 @@ import {
   validateSubmitOrderPayload,
 } from '@clan-world/shared/adapters';
 import { getElderN, memoryFile, inboxFile, ackFile, UsageError, runCommand } from './cli.js';
+import { createWalrusKvStore, type WalrusKvStore } from './walrusKvStore.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -27,7 +28,29 @@ export type ElderToolDeps = {
   chain: IChainClient;
   env?: Record<string, string | undefined>;
   homeBase?: string;
+  /**
+   * Walrus KV store (MemWal). Optional + lazily created per Elder. When absent
+   * (or when its credentials/relayer are unavailable) the MCP transparently
+   * falls back to the local file store — a tick is never blocked by Walrus.
+   */
+  walrusKv?: WalrusKvStore;
 };
+
+/**
+ * Resolve (and memoise on `deps`) the Walrus KV store for this Elder. Returns
+ * `undefined` if `ELDER_N` is not resolvable — callers then use the file path.
+ */
+function resolveWalrusKv(deps: ElderToolDeps, env: Record<string, string | undefined>): WalrusKvStore | undefined {
+  if (deps.walrusKv) return deps.walrusKv;
+  let elder: number;
+  try {
+    elder = getElderN(env);
+  } catch {
+    return undefined;
+  }
+  deps.walrusKv = createWalrusKvStore(elder);
+  return deps.walrusKv;
+}
 
 const text = (value: string): ToolResult => ({ content: [{ type: 'text', text: value }] });
 const jsonText = (value: unknown): ToolResult => text(JSON.stringify(value, null, 2));
@@ -134,6 +157,12 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
 
   if (name === 'memory_recall') {
     const key = requireBody(parsed, 'key');
+    // Read prefers Walrus (durable, cross-host), falls back to the local file.
+    const walrusKv = resolveWalrusKv(deps, env);
+    if (walrusKv) {
+      const fromWalrus = await walrusKv.recall(key).catch(() => undefined);
+      if (fromWalrus !== undefined) return text(fromWalrus);
+    }
     const mem = await readMemoryAsync(getElderN(env), deps.homeBase);
     return text(mem[key] ?? `no memory for ${key}`);
   }
@@ -142,9 +171,27 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
     const key = requireBody(parsed, 'key');
     const value = requireBody(parsed, 'value');
     const elder = getElderN(env);
+    // File first (fast, always-available cache/fallback)…
     const mem = await readMemoryAsync(elder, deps.homeBase);
     mem[key] = value;
     await writeMemoryAsync(elder, mem, deps.homeBase);
+    // …then Walrus (best-effort, durable). Never let a Walrus/relayer outage
+    // fail the tool call — the file write above already succeeded.
+    const walrusKv = resolveWalrusKv(deps, env);
+    if (walrusKv) {
+      const saved = await walrusKv.save(key, value).catch(() => ({ ok: false as const }));
+      if (saved.ok) {
+        // Mirror to Convex so the cockpit's memoryEntries shows source:"walrus".
+        // Best-effort: IConvexClient swallows + warns when INDEXER_SECRET is
+        // unset (no indexer secret reaches the MCP today — see PR notes).
+        // Optional-chain guards older IConvexClient impls without this method.
+        try {
+          await deps.convex.mirrorMemoryEntry?.({ clanId: elder, key, value, source: 'walrus' });
+        } catch {
+          // non-fatal: cockpit mirror is decoupled from the durable Walrus save
+        }
+      }
+    }
     return text(`saved ${key}`);
   }
 

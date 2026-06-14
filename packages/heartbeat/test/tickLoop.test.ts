@@ -34,6 +34,7 @@ function fakeConvex(tick: number): IConvexClient {
     async postOrchEvent() {},
     async postHumanSteering() {},
     async postBulletin() {},
+    async mirrorMemoryEntry() {},
   };
 }
 
