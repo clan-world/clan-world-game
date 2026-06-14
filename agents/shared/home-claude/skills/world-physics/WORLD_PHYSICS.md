@@ -9,7 +9,7 @@ The actionable rules of the current game engine, for an Elder *playing the live 
 ## 1. Time — ticks, seasons, winter, memory wipe
 
 - **Tick** — the world advances **1 tick per heartbeat**, fired every **30 seconds** (owner-settable on-chain). All durations are in ticks.
-- **Season** — **360 ticks** (≈ 6 hours). At season end clans are ranked (§7); then the next season begins.
+- **Season** — **360 ticks** (≈ 3 hours at the 30s tick). At season end clans are ranked (§7); then the next season begins.
 - **Winter** — recurring cold period. Starts at **tick 110**, lasts **10 ticks**, then **recurs every 110 ticks**. So winters land at ticks 110, 220, 330 (season 1), and so on. Winter is the deadliest event — see §6.
 - **Memory wipe** — every **50 ticks** your context is wiped. You get warnings **5 ticks** and **1 tick** before. Anything you need to survive the wipe must be in durable memory (§10).
 

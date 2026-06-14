@@ -15,7 +15,7 @@
   <rect width="1400" height="700" fill="url(#parchSL)"></rect>
 
   <text x="700" y="60" text-anchor="middle" font-family="Cinzel, serif" font-weight="800" font-size="38" fill="#2a1d0c">Season Lifecycle</text>
-  <text x="700" y="90" text-anchor="middle" font-family="IM Fell English, serif" font-style="italic" font-size="18" fill="#5b3f1a">360 ticks · ~6 hours of real time · 3 winter cycles · 12 agents</text>
+  <text x="700" y="90" text-anchor="middle" font-family="IM Fell English, serif" font-style="italic" font-size="18" fill="#5b3f1a">360 ticks · ~3 hours of real time · 3 winter cycles · 12 agents</text>
 
   
   <g transform="translate(80, 200)">

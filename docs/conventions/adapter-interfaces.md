@@ -95,10 +95,16 @@ CLAN_WORLD_USE_STUB_CHAIN=true pnpm --filter @clan-world/orchestrator dev
 |---|---|---|
 | `IChainClient` | onchain read/write | `CLAN_WORLD_USE_STUB_CHAIN` |
 | `IConvexClient` | Convex backend read/sub | `CLAN_WORLD_USE_STUB_CONVEX` |
-| `IKeeper` | heartbeat driver | `KEEPER_MODE` (`runner` \| `convex`) — live driver is the dockerized `packages/heartbeat` runner |
+| `IKeeper` | heartbeat driver | `KEEPER_MODE` (`foundry-loop` \| `keeperhub` \| `convex`; default `foundry-loop`) — see note below |
 | `ILLMClient` | non-Elder LLM uses | `CLAN_WORLD_USE_STUB_LLM` |
 
-(Note: `IKeeper` doesn't have a stub/real split — it has 3 mode-selected impls. Same factory pattern, different selection logic.)
+(Note: `IKeeper` doesn't have a stub/real split — the `createKeeper()` factory in `packages/shared/src/adapters/IKeeper.ts` selects one of 3 mode-selected impls via `KEEPER_MODE`:
+
+- `foundry-loop` (default) → `FoundryLoopKeeper` — early-submission/local-dev loop (historical stub).
+- `keeperhub` → `KeeperHubKeeper` — **(legacy stub — retired; the dockerized `packages/heartbeat` runner is canonical)**. Still accepted by the factory but throws `not implemented`; do not use.
+- `convex` → `ConvexCronKeeper` — disaster fallback only (`HEARTBEAT_CALLER_ENABLED=true`).
+
+The CANONICAL live heartbeat driver is the dockerized `packages/heartbeat` runner (30s, owner-settable on-chain), **not** any `IKeeper` impl above. The `IKeeper` stubs are retained only as a documented seam pattern. Same factory pattern as the other adapters, different selection logic — an unknown `KEEPER_MODE` throws `unknown KEEPER_MODE=…`.)
 
 ## When to add a new adapter
 

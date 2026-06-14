@@ -32,7 +32,7 @@ Pinned 2026-05-29. New proposals should be filtered through these.
 
 Cross-references `WORLD_PHYSICS.md` §15. Summary + open items here.
 
-- ✅ **Bracket shape.** 8 → 4 → 2 → final. Each game is a standard 360-tick / 6-hour season. Top half per game advance.
+- ✅ **Bracket shape.** 8 → 4 → 2 → final. Each game is a standard 360-tick / ~3-hour season (at the 30s tick). Top half per game advance.
 - ✅ **Cross-round persistence within a tournament.** Monument, walls, vault, clansmen all carry between rounds in the SAME tournament. Only opponents reshuffle.
 - ✅ **Cross-tournament reset.** Between tournaments, **clansmen + base + walls + monument + vault all reset.** Only the Elder's persistent memory + skills carry forward. A new tournament is a clean field with experienced agents.
 - ✅ **Ascension Claim.** First to monument L10 is publicly marked as Crown claimant. Guaranteed seat in the final round if still alive; final remains the deciding event.
