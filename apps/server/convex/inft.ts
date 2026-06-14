@@ -25,7 +25,8 @@ export const mirrorMemoryEntry = mutation({
     key: v.string(),
     value: v.string(),
     dataHash: v.optional(v.string()),
-    source: v.union(v.literal("local"), v.literal("demo")),
+    // "0g" retained for historical rows (deploy-safety); see schema.ts.
+    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
     txHash: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

@@ -346,7 +346,9 @@ export default defineSchema({
     key: v.string(),
     value: v.string(),
     dataHash: v.optional(v.string()),
-    source: v.union(v.literal("local"), v.literal("demo")),
+    // "0g" retained for historical rows so `convex deploy` validates existing
+    // data; new writes use local/demo (Walrus source lands with that work).
+    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
     updatedAt: v.number(),
     txHash: v.optional(v.string()),
   })

@@ -28,7 +28,7 @@ Five strategic decisions still shape the script.
 flowchart TB
     A["0:00 - 0:21<br/>Hook"] --> B["0:21 - 0:55<br/>Sponsor Setup"]
     B --> C["0:55 - 1:42<br/>Game Loop"]
-    E --> F["3:03 - 3:28<br/>KeeperHub"]
+    C --> F["3:03 - 3:28<br/>KeeperHub"]
     F --> G["3:28 - 3:53<br/>Generalization"]
     G --> H["3:53 - 4:00<br/>Close"]
 ```
