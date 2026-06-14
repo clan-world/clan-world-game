@@ -186,6 +186,12 @@ docs/planning/V1/
 **/agent-directive.secret.md
 **/state/
 **/.credentials.json
+# MemWal (Walrus episodic memory) per-Elder credentials.json hold Ed25519
+# DELEGATE private keys (issue #692). NEVER commit. Belt-and-suspenders on top
+# of agents/secrets/ (also ignored) — covers any stray credentials.json copies.
+**/credentials.json
+**/.memwal/
+memwal-creds-*.json
 
 # Per-worktree local metadata
 .git-local/
