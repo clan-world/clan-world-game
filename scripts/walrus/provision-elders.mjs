@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, fileURLToPath, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 function moduleFile(...parts) {
@@ -40,12 +40,20 @@ const REGISTRY_ID =
   "0x0da982cefa26864ae834a8a0504b904233d49e20fcc17c373c8bed99c75a7edd";
 const RELAYER = "https://relayer.memory.walrus.xyz";
 const SECRETS_ROOT = join(homedir(), ".secrets", "clanworld-elder-walrus");
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const FINDINGS_PATH =
-  "/home/claude/claudes-world/tmp/codex-walmem-ownerkey/FINDINGS-provisioning.md";
+  process.env.WALRUS_PROVISION_FINDINGS ??
+  join(SCRIPT_DIR, "tmp", "FINDINGS-provisioning.md");
 const MIN_BALANCE_MIST = 50_000_000n;
 const FUND_AMOUNT_MIST = 100_000_000n;
+// Hard cap: at most 4 Elders × FUND_AMOUNT_MIST per run.  Any rerun that would
+// exceed this aborts early rather than silently double-spending.
+const MAX_TOTAL_FUND_MIST = FUND_AMOUNT_MIST * 4n;
 const PROBE_TEXT = "elder_1_isolation_probe | secret-ridge-cache";
 const PROBE_QUERY = "elder_1_isolation_probe secret-ridge-cache";
+// Throwaway namespace for the isolation probe — prevents the probe memory from
+// being recalled by a live Elder 1 session running against the real "elder-1" namespace.
+const PROBE_NAMESPACE = "__isolation_probe__";
 
 class MemWalSuiClientCompat {
   constructor(inner) {
@@ -57,10 +65,10 @@ class MemWalSuiClientCompat {
   }
 
   async waitForTransaction(input) {
-    const include = {};
-    if (input.options?.showEffects) include.effects = true;
-    if (input.options?.showObjectChanges) include.objectChanges = true;
-    return this.inner.waitForTransaction({ digest: input.digest, include });
+    // SuiJsonRpcClient.waitForTransaction spreads ...input into getTransactionBlock,
+    // which passes input.options directly to the RPC — pass options through as-is.
+    // (The prior include:{} mapping silently dropped showEffects/showObjectChanges.)
+    return this.inner.waitForTransaction({ digest: input.digest, options: input.options });
   }
 }
 
@@ -153,7 +161,7 @@ function getTransferGasCoinId() {
   return coin.id;
 }
 
-async function fundIfNeeded(elderNumber, ownerAddress) {
+async function fundIfNeeded(elderNumber, ownerAddress, runFundingTotal) {
   const before = await getSuiBalance(ownerAddress);
   const result = {
     beforeMist: before.toString(),
@@ -191,6 +199,13 @@ async function fundIfNeeded(elderNumber, ownerAddress) {
     throw new Error(`Sui CLI active env is ${activeEnv}, expected mainnet`);
   }
 
+  if (runFundingTotal.value + FUND_AMOUNT_MIST > MAX_TOTAL_FUND_MIST) {
+    throw new Error(
+      `Per-run funding cap would be exceeded (already sent ${sui(runFundingTotal.value)} SUI this run). ` +
+        `Aborting to prevent double-spend on Elder ${elderNumber}. Investigate before rerunning.`,
+    );
+  }
+
   const gasCoinId = getTransferGasCoinId();
   logPublic({
     elder: elderNumber,
@@ -219,7 +234,20 @@ async function fundIfNeeded(elderNumber, ownerAddress) {
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
   const parsed = JSON.parse(raw);
+  const txStatus = parsed.effects?.status?.status ?? parsed.status?.status;
+  if (txStatus && txStatus !== "success") {
+    throw new Error(
+      `transfer-sui failed for Elder ${elderNumber}: status=${txStatus}, error=${parsed.effects?.status?.error ?? "unknown"}`,
+    );
+  }
   const after = await getSuiBalance(ownerAddress);
+  if (after <= before) {
+    throw new Error(
+      `transfer-sui reported success for Elder ${elderNumber} but balance did not increase (before=${before}, after=${after})`,
+    );
+  }
+
+  runFundingTotal.value += FUND_AMOUNT_MIST;
 
   return {
     beforeMist: before.toString(),
@@ -338,15 +366,9 @@ async function prepareDelegate(elderNumber, ownerKey, ownerAddress, account, cre
 
   const delegate = await generateDelegateKey();
   const delegatePublicKeyHex = bytesToHex(delegate.publicKey);
-  const addDelegate = await addDelegateKey({
-    packageId: PACKAGE_ID,
-    accountId: account.accountId,
-    publicKey: delegate.publicKey,
-    label: `elder-${elderNumber}`,
-    suiPrivateKey: ownerKey,
-    suiClient,
-    suiNetwork: "mainnet",
-  });
+  // Write credentials BEFORE the on-chain addDelegateKey so that if addDelegateKey
+  // succeeds but a subsequent step throws, the credentials are already persisted.
+  // A rerun will detect the existing valid on-chain delegate and skip re-registration.
   const credentials = {
     delegatePrivateKey: delegate.privateKey,
     delegatePublicKeyHex,
@@ -360,6 +382,15 @@ async function prepareDelegate(elderNumber, ownerKey, ownerAddress, account, cre
     version: 1,
   };
   writeSecretFile(credentialsPath, `${JSON.stringify(credentials, null, 2)}\n`, 0o600);
+  const addDelegate = await addDelegateKey({
+    packageId: PACKAGE_ID,
+    accountId: account.accountId,
+    publicKey: delegate.publicKey,
+    label: `elder-${elderNumber}`,
+    suiPrivateKey: ownerKey,
+    suiClient,
+    suiNetwork: "mainnet",
+  });
   return {
     credentials,
     addDelegate,
@@ -373,7 +404,7 @@ async function healCredentialsPublicKey(credentials) {
   return { ...credentials, delegatePublicKeyHex: bytesToHex(publicKey) };
 }
 
-async function provisionElder(elderNumber) {
+async function provisionElder(elderNumber, runFundingTotal) {
   const owner = loadOrCreateOwner(elderNumber);
   logPublic({
     elder: elderNumber,
@@ -383,7 +414,52 @@ async function provisionElder(elderNumber) {
     ownerKeyPath: owner.keyPath,
   });
 
-  const funding = await fundIfNeeded(elderNumber, owner.ownerAddress);
+  // Done-marker: if credentials.json exists with a valid accountId, delegate, and
+  // the delegate is confirmed on-chain, skip this Elder entirely (including funding).
+  // This makes reruns safe against double-spend without re-checking everything.
+  const existingCreds = readJson(owner.credentialsPath);
+  if (existingCreds?.accountId && existingCreds?.delegatePublicKeyHex) {
+    const alreadyValid = await isDelegateValid(
+      existingCreds.accountId,
+      existingCreds.delegatePublicKeyHex,
+    );
+    if (alreadyValid) {
+      logPublic({
+        elder: elderNumber,
+        step: "provision",
+        status: "skip-already-done",
+        ownerAddress: owner.ownerAddress,
+        accountId: existingCreds.accountId,
+        delegateAddress: existingCreds.delegateAddress,
+        credentialsPath: owner.credentialsPath,
+      });
+      const balance = await getSuiBalance(owner.ownerAddress);
+      return {
+        elderNumber,
+        ownerAddress: owner.ownerAddress,
+        accountId: existingCreds.accountId,
+        delegateAddress: existingCreds.delegateAddress,
+        delegatePublicKeyHex: existingCreds.delegatePublicKeyHex,
+        credentialsPath: owner.credentialsPath,
+        ownerKeyPath: owner.keyPath,
+        funding: {
+          beforeMist: balance.toString(),
+          afterMist: balance.toString(),
+          beforeSui: sui(balance),
+          afterSui: sui(balance),
+          funded: false,
+          fundAmountSui: "0.000000",
+          digest: null,
+        },
+        accountDigest: null,
+        delegateAddDigest: null,
+        delegateReused: true,
+        credentials: existingCreds,
+      };
+    }
+  }
+
+  const funding = await fundIfNeeded(elderNumber, owner.ownerAddress, runFundingTotal);
   const account = await createOrRecoverAccount(owner.ownerAddress, owner.ownerKey);
   logPublic({
     elder: elderNumber,
@@ -445,8 +521,10 @@ function recallContainsProbe(recall) {
 }
 
 async function proveIsolation(elder1, elder2) {
-  const client1 = makeClient(elder1, "elder-1");
-  const client2 = makeClient(elder2, "elder-2");
+  // Use PROBE_NAMESPACE (not the real "elder-1" namespace) so the probe memory
+  // never surfaces in live Elder 1 recall sessions.
+  const client1 = makeClient(elder1, PROBE_NAMESPACE);
+  const client2 = makeClient(elder2, PROBE_NAMESPACE);
   const remembered = await client1.rememberAndWait(PROBE_TEXT, undefined, {
     timeoutMs: 120_000,
     pollIntervalMs: 2_000,
@@ -512,7 +590,7 @@ function writeFindings(provisioned, isolation) {
     "",
     "## Isolation assertions",
     "",
-    `- Elder 1 remembered \`${PROBE_TEXT}\` in namespace \`elder-1\`.`,
+    `- Elder 1 remembered \`${PROBE_TEXT}\` in namespace \`${PROBE_NAMESPACE}\`.`,
     `- Elder 2 recall for \`${PROBE_QUERY}\` returned Elder 1 probe: **${isolation.elder2DoesNotSee ? "NO" : "YES"}**.`,
     `- Elder 1 recall for \`${PROBE_QUERY}\` returned Elder 1 probe: **${isolation.elder1Sees ? "YES" : "NO"}**.`,
     `- Elder 1 blob ID: \`${isolation.remembered.blob_id}\`.`,
@@ -535,12 +613,15 @@ function writeFindings(provisioned, isolation) {
   writeFileSync(FINDINGS_PATH, `${lines.join("\n")}\n`, { mode: 0o600 });
 }
 
+// Shared mutable counter — all provisionElder calls update it; fundIfNeeded enforces the cap.
+const runFundingTotal = { value: 0n };
+
 const provisioned = [];
-provisioned.push(await provisionElder(1));
-provisioned.push(await provisionElder(2));
+provisioned.push(await provisionElder(1, runFundingTotal));
+provisioned.push(await provisionElder(2, runFundingTotal));
 const isolation = await proveIsolation(provisioned[0], provisioned[1]);
-provisioned.push(await provisionElder(3));
-provisioned.push(await provisionElder(4));
+provisioned.push(await provisionElder(3, runFundingTotal));
+provisioned.push(await provisionElder(4, runFundingTotal));
 writeFindings(provisioned, isolation);
 logPublic({
   step: "complete",
