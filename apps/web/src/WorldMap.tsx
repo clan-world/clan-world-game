@@ -2242,6 +2242,11 @@ export function WorldMap() {
     return () => {
       mounted = false;
       isMountedRef.current = false;
+      // Drop the capture camera handle so a stale viewport reference can't keep
+      // renderer objects alive (or expose a dead camera) after teardown.
+      if (CAPTURE_MODE && typeof window !== 'undefined') {
+        delete (window as unknown as { __cwCapture?: unknown }).__cwCapture;
+      }
       const a = appRef.current;
       if (a && tickerCbRef.current) a.ticker.remove(tickerCbRef.current);
       if (a && travelTickerCbRef.current) a.ticker.remove(travelTickerCbRef.current);

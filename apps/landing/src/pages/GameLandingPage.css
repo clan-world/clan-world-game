@@ -82,10 +82,6 @@
   color: var(--ink-faded) !important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .hero-video { aspect-ratio: 16 / 9; }
-}
-
 /* ============ Shared section heads ============ */
 
 .game-section-head {

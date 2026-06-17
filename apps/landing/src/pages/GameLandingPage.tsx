@@ -6,7 +6,7 @@ import { APP_URL, GITHUB_URL } from '../constants'
 import { useReveal } from '../hooks/useReveal'
 import './GameLandingPage.css'
 
-const MAP_URL = 'https://app.clan-world.com/map'
+const MAP_URL = `${APP_URL}/map`
 
 // Computed once at module load — render autoPlay only when motion is allowed.
 const PREFERS_REDUCED_MOTION =
@@ -133,6 +133,7 @@ export default function GameLandingPage() {
               loading="lazy"
               allow="fullscreen"
               allowFullScreen
+              sandbox="allow-scripts allow-same-origin allow-popups"
             />
           </div>
           <div className="game-map-caption pixel">
