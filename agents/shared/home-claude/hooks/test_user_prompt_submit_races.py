@@ -42,6 +42,34 @@ import pytest
 HOOK_DIR = Path(__file__).parent
 HOOK_PATH = HOOK_DIR / "user_prompt_submit.py"
 
+# A COMPLETE env that drives record_receipt past the ELDER_ID / CONVEX_DEPLOY_URL
+# guards so the subprocess actually reaches the secret-file read AND the
+# (stubbed/unreachable) Convex mutation path. With only BUS_ELDER_SECRET_FILE
+# set, record_receipt short-circuits at `if not elder_id` and the secret-read /
+# mutation path is never genuinely exercised — a refactor that reordered the
+# secret read after that guard would still pass green (test theater). The convex
+# SDK is not installed in the test env, so `from convex import ConvexClient`
+# raises, is caught by record_receipt, and the hook exits 0 with NO network IO.
+FULL_ENV = {
+    "ELDER_ID": "elder-1",
+    "CONVEX_DEPLOY_URL": "https://fake.convex.cloud",
+}
+
+
+def assert_reached_secret_path(stderr: str) -> None:
+    """Assert the subprocess got PAST the env guards into the secret-read +
+    convex path (i.e. did not early-return on a missing ELDER_ID/CONVEX_URL).
+
+    Reaching the path means one of:
+      - it tried to import the (absent) convex SDK → "failed to import convex SDK"
+      - the secret was empty/partial → "BUS_ELDER_SECRET_FILE ... is not set"
+    Either proves the secret read executed. What we must NEVER see is the
+    ELDER_ID / CONVEX_DEPLOY_URL early-return — that would mean the test never
+    exercised the secret path it claims to stress.
+    """
+    assert "ELDER_ID is not set" not in stderr, stderr
+    assert "CONVEX_DEPLOY_URL is not set" not in stderr, stderr
+
 
 # Ensure hook module is importable for in-process tests.
 sys.path.insert(0, str(HOOK_DIR))
@@ -83,13 +111,18 @@ def run_hook_subprocess(
 
 
 def _fire_hook(prompt: str, secret_file: str) -> tuple[int, str]:
-    """Module-level fn so multiprocessing.Pool can pickle it."""
+    """Module-level fn so multiprocessing.Pool can pickle it.
+
+    Passes a COMPLETE env (ELDER_ID + CONVEX_DEPLOY_URL + BUS_ELDER_SECRET_FILE)
+    so the subprocess drives record_receipt all the way to the secret read and
+    the convex mutation attempt. convex is not installed in the test env, so the
+    import is caught and the hook exits 0 with no network IO — but the
+    secret-file read path IS genuinely exercised under concurrency.
+    """
     cp = run_hook_subprocess(
         prompt,
         env_overrides={
-            # No ELDER_ID / no CONVEX_DEPLOY_URL → hook short-circuits BEFORE
-            # the network call. This isolates concurrency to stdin-read +
-            # secret-read + parse, which is what we want to stress.
+            **FULL_ENV,
             "BUS_ELDER_SECRET_FILE": secret_file,
         },
     )
@@ -132,6 +165,10 @@ def test_concurrent_hook_invocations_all_exit_zero(tmp_path: Path) -> None:
 
     for prompt, (rc, stderr) in zip(prompts, results):
         assert rc == 0, f"prompt={prompt!r} stderr={stderr}"
+        # Prefixed prompts must have reached the secret-read/convex path; the
+        # un-prefixed one is dropped by parse_receipt before record_receipt.
+        if prompt.startswith(("tick:", "whisper:", "special-msg:")):
+            assert_reached_secret_path(stderr)
 
 
 def test_concurrent_invocations_with_different_secret_paths(
@@ -153,6 +190,7 @@ def test_concurrent_invocations_with_different_secret_paths(
         )
     for rc, stderr in results:
         assert rc == 0, stderr
+        assert_reached_secret_path(stderr)
 
 
 # --------------------------------------------------------------------------
@@ -160,16 +198,18 @@ def test_concurrent_invocations_with_different_secret_paths(
 # --------------------------------------------------------------------------
 
 
-def test_sigterm_during_mutation_does_not_crash(monkeypatch, tmp_path):
-    """If the container kills our hook mid-mutation, main()'s catch-all
-    Exception handler must absorb KeyboardInterrupt / SystemExit-ish wakeups
-    so the hook returns 0 (CC treats non-zero as HOOK_FAILURE and gates
+def test_mutation_connection_reset_is_absorbed(monkeypatch, tmp_path):
+    """A mutation that raises mid-flight (network failure / connection reset /
+    timeout) must NOT propagate — main()'s catch-all Exception handler absorbs
+    it so the hook returns 0 (CC treats non-zero as HOOK_FAILURE and gates
     further prompts).
 
-    NOTE: catch is `except Exception` which does NOT swallow KeyboardInterrupt
-    / SystemExit. SIGTERM by default just kills the process (no Python-level
-    exception). We test the more interesting case: a mutation that raises
-    a generic Exception (network failure, timeout, etc.) must not propagate."""
+    NOTE: this is NOT a real SIGTERM test (renamed from the old
+    test_sigterm_during_mutation_*). The catch is `except Exception`, which does
+    NOT swallow KeyboardInterrupt / SystemExit, and a default SIGTERM just kills
+    the process with no Python-level exception. What we actually exercise here is
+    the mutation-exception path: ConnectionResetError is a normal Exception
+    subclass and must be caught."""
 
     # Monkeypatch the mutation to raise something that simulates an interrupted
     # network call: ConnectionResetError is a sub-Exception, must be caught.
@@ -286,6 +326,7 @@ def test_secret_file_rotation_during_concurrent_reads(tmp_path):
             cp = run_hook_subprocess(
                 f"tick:{i}",
                 env_overrides={
+                    **FULL_ENV,
                     "BUS_ELDER_SECRET_FILE": str(secret),
                     # Provide a fallback so the hook actually exercises the
                     # "secret was empty / partial" branch by re-reading env.
@@ -293,6 +334,11 @@ def test_secret_file_rotation_during_concurrent_reads(tmp_path):
                 },
             )
             assert cp.returncode == 0, f"iteration {i}: stderr={cp.stderr}"
+            # Full env + a non-empty secret (file or env fallback) means the
+            # subprocess drove all the way through the secret read to the
+            # convex import attempt — proving the rotation race is exercised
+            # on the real read path, not short-circuited at the env guard.
+            assert_reached_secret_path(cp.stderr)
     finally:
         stop.set()
         t.join(timeout=2)
@@ -454,5 +500,15 @@ def test_hook_completes_quickly_when_no_convex_call(tmp_path):
     )
     elapsed = time.perf_counter() - start
     assert cp.returncode == 0
-    # Python startup alone is ~50-150ms; allow generous budget.
-    assert elapsed < 2.0, f"hook took {elapsed:.2f}s — too slow for CC"
+    # Primary guard is BEHAVIORAL: with no ELDER_ID/CONVEX_DEPLOY_URL the hook
+    # must short-circuit before any blocking/network IO (the regression we care
+    # about is e.g. importing convex at module top-level). The early-return
+    # marker proves no convex work happened.
+    assert "ELDER_ID is not set" in cp.stderr, cp.stderr
+    # Soft latency budget as a secondary signal. Generous so it does not flake
+    # under CI load (this suite already runs ~45s); failure here is advisory,
+    # the behavioral assertion above is the real guard.
+    assert elapsed < 10.0, (
+        f"hook took {elapsed:.2f}s — far over even a loaded-CI budget; "
+        "check for accidental blocking IO at import/startup"
+    )
