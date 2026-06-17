@@ -160,6 +160,7 @@ describe('formatChainEvent — numeric extremes', () => {
     // ⚠ KNOWN BUG (wei-scale .0 double-escape in eventTickerFormat): asserts
     // CURRENT buggy output. When the source regex is fixed, flip this to
     // 'Clan 1 gathered 5 wood'. Do NOT just delete.
+    // Tracking: https://github.com/clan-world/clan-world-game/issues/700
     expect(entry?.text).toBe('Clan 1 gathered 5.0 wood');
     // The important invariants still hold even with the regex bug — no
     // scientific notation or raw wei leak through:

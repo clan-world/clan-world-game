@@ -624,7 +624,7 @@ describe("consumePendingMessages — partial-failure rollback contract", () => {
   });
 });
 
-describe("sendWhisper — concurrent dedupe contract", () => {
+describe("sendWhisper — sequential dedupe contract (true concurrency modeled via it.todo)", () => {
   beforeEach(() => {
     vi.stubEnv("INDEXER_SECRET", "test-secret");
   });

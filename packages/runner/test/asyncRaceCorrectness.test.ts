@@ -202,7 +202,7 @@ describe("watchAuxiliary async iterator (race correctness)", () => {
 // -----------------------------------------------------------------------------
 
 describe("deliverMessage signal / consume-gap correctness", () => {
-  it("throws aborted before any paste when signal already fired (no recordTickSend reissue)", async () => {
+  it("pins_current_recordTickSend_before_abort_check: throws aborted before any paste when signal already fired", async () => {
     // Pre-abort: the first throwIfAborted at attempt=1 must fire BEFORE we
     // touch tmux. This protects against double-pastes when SIGTERM races
     // with a freshly-scheduled tick handler.
@@ -219,8 +219,9 @@ describe("deliverMessage signal / consume-gap correctness", () => {
       pendingMessages: [],
       signal: ac.signal,
     })).rejects.toThrow();
-    // recordTickSend runs UNCONDITIONALLY before the throwIfAborted check —
-    // mirrors current code. The protection kicks in at the attempt loop.
+    // ⚠ KNOWN-BUG (abort gap): recordTickSend fires before throwIfAborted; pins
+    // CURRENT behavior. When a pre-recordTickSend abort check is added, UPDATE
+    // this assertion — do NOT revert the fix.
     expect(convex.calls).toContain("recordTickSend");
     expect(tmux.pasteCount).toBe(0);
   });
@@ -432,8 +433,8 @@ describe("flockGuard contention", () => {
 // * STUCK_INPUT_RETRY_DELAY_MS) ≈ 11.5s. This test pins current behavior so
 // any future fix that propagates a signal will deliberately update it.
 
-describe("postPasteSubmitted abort gap (current behavior)", () => {
-  it("continues retrying after external abort because no signal is plumbed (current behavior)", async () => {
+describe("postPasteSubmitted abort gap (KNOWN-BUG pin, current behavior)", () => {
+  it("pins_current_postPasteSubmitted_ignores_abort: keeps retrying after external abort because no signal is plumbed", async () => {
     vi.useFakeTimers();
     const sendKeys = vi.fn(async () => {});
     const capturePane = vi.fn(async () => "│ > tick: 12"); // never empties
@@ -447,7 +448,10 @@ describe("postPasteSubmitted abort gap (current behavior)", () => {
       POST_PASTE_INITIAL_SETTLE_MS + STUCK_INPUT_RETRY_DELAY_MS * STUCK_INPUT_MAX_RETRIES,
     );
     await expect(promise).resolves.toBe(false);
-    // Confirms the abort had zero effect — it ran the full retry budget.
+    // ⚠ KNOWN-BUG (abort gap): postPasteSubmitted accepts no AbortSignal, so the
+    // abort has zero effect — it runs the full retry budget (~11.5s shutdown
+    // delay). Pins CURRENT behavior. When a signal is plumbed through, UPDATE
+    // this assertion — do NOT revert the fix.
     expect(sendKeys).toHaveBeenCalledTimes(STUCK_INPUT_MAX_RETRIES);
     vi.useRealTimers();
   });

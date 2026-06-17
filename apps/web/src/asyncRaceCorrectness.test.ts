@@ -37,7 +37,7 @@
  * any host.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { isValidSnapshotShape } from './hooks/useCachedSnapshot';
 import { formatChainEvent, type ChainEventForTicker } from './eventTickerFormat';
 import { shouldRefreshTickCountdownAnchor } from './TopHud';
@@ -306,28 +306,5 @@ describe('getElderResetId — stable identity under concurrent reset polls', () 
     const ids = [0, 1, 2, 3, 4, 5];
     const keys = new Set(ids.map(getElderResetId));
     expect(keys.size).toBe(ids.length);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Section 6: vi.useFakeTimers smoke-test — proves the race tests above could
-// reach into timer-based code paths if a future hook test is added.
-// Determinism guard: we reset timers after each test so a leaked timer from
-// one test never poisons another.
-// ---------------------------------------------------------------------------
-
-describe('test-suite hygiene — fake timer reset proves determinism', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('fake timers advance deterministically without wall-clock dependency', () => {
-    vi.useFakeTimers();
-    const start = Date.now();
-    vi.advanceTimersByTime(60_000);
-    // Date.now() under fake timers is mocked to system-time-at-install +
-    // advanced ms. We don't assert the absolute value (would vary by host
-    // clock); we assert the delta is exactly what we advanced.
-    expect(Date.now() - start).toBe(60_000);
   });
 });
