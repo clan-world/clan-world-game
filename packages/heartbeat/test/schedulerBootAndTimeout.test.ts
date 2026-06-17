@@ -198,30 +198,44 @@ describe('RunnerCastHeartbeat — error paths', () => {
     expect(viemMocks.readContract).not.toHaveBeenCalled();
   });
 
-  it('wraps (not upgrades) an undecoded simulation revert when the on-chain window has elapsed', async () => {
+  it('classifies an undecoded simulation revert by the on-chain BLOCK timestamp, NOT wall clock', async () => {
     // An UNDECODED ContractFunctionRevertedError (empty ABI -> no decoded
     // reason) falls through to the timestamp heuristic. v2.17.x classifies
-    // against the on-chain BLOCK timestamp (getBlock), not Date.now(): when the
-    // block timestamp is already PAST nextHeartbeatAtTs the revert is NOT a
-    // rate-limit, so it must surface as a real failure — wrapped by
-    // withHeartbeatDiagnostics with the original revert preserved on `.cause`.
-    const next = 1_000; // unix seconds
-    const revert = new ContractFunctionRevertedError({ abi: [], functionName: 'heartbeat' });
-    viemMocks.writeContract.mockRejectedValue(revert);
-    // readNextHeartbeatAtTs -> getWorldState read returns the (past) next.
-    viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: BigInt(next) });
-    // Block timestamp sits AFTER next -> window elapsed -> not still-future.
-    viemMocks.getBlock.mockResolvedValue({ timestamp: BigInt(next + 600) });
+    // against the on-chain BLOCK timestamp (getBlock), NOT Date.now(). To prove
+    // getBlock is the decision point (and guard against a regression back to
+    // wall-clock), each case sets the wall clock to DISAGREE with the block:
+    // the assertion only holds if the code consulted getBlock.
+    vi.useFakeTimers();
+    try {
+      const next = 2_000; // unix seconds
+      const revert = new ContractFunctionRevertedError({ abi: [], functionName: 'heartbeat' });
+      viemMocks.writeContract.mockRejectedValue(revert);
+      viemMocks.readContract.mockResolvedValue({ nextHeartbeatAtTs: BigInt(next) });
+      const heartbeat = new RunnerCastHeartbeat({
+        privateKey: VALID_PK,
+        contractAddress: CONTRACT,
+        rpcUrl: 'https://rpc.example',
+      });
 
-    const heartbeat = new RunnerCastHeartbeat({
-      privateKey: VALID_PK,
-      contractAddress: CONTRACT,
-      rpcUrl: 'https://rpc.example',
-    });
+      // Case A — BLOCK says window ELAPSED (next+600) while WALL CLOCK says
+      // still-future (next-600). A Date.now() fallback would WRONGLY classify
+      // this as rate-limited; getBlock-driven classification surfaces a real
+      // failure, wrapped by withHeartbeatDiagnostics (.cause = original revert).
+      vi.setSystemTime((next - 600) * 1000);
+      viemMocks.getBlock.mockResolvedValue({ timestamp: BigInt(next + 600) });
+      const errElapsed = await heartbeat.callHeartbeat().catch((e) => e);
+      expect(errElapsed).not.toBeInstanceOf(HeartbeatRateLimitedError);
+      expect(errElapsed).toMatchObject({ cause: revert });
 
-    await expect(heartbeat.callHeartbeat()).rejects.not.toBeInstanceOf(HeartbeatRateLimitedError);
-    // The thrown error wraps the original revert as `.cause` (diagnostics path).
-    await expect(heartbeat.callHeartbeat()).rejects.toMatchObject({ cause: revert });
+      // Case B (complement) — BLOCK says still-FUTURE (next-600) while WALL
+      // CLOCK says elapsed (next+600). getBlock-driven classification yields a
+      // rate-limit; a Date.now() fallback would NOT. Proves the direction too.
+      vi.setSystemTime((next + 600) * 1000);
+      viemMocks.getBlock.mockResolvedValue({ timestamp: BigInt(next - 600) });
+      await expect(heartbeat.callHeartbeat()).rejects.toBeInstanceOf(HeartbeatRateLimitedError);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
