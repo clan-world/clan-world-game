@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Bash error-path tests for agents/entrypoint.sh.
 #
-# Strategy: source the script in a sandboxed PATH where every external tool
-# (sudo, tmux, ttyd, tsx, claude) is stubbed to a controllable function. We
-# verify the FAIL-CLOSED branches that production never sees but operators
-# trigger when debugging:
+# Strategy: COPY entrypoint.sh into a sandbox and `sed` its hardcoded production
+# `/opt/...` paths to sandbox equivalents, then run the COPY in a sandboxed PATH
+# where every external tool (sudo, tmux, ttyd, tsx, claude) is stubbed to a
+# controllable function. The production entrypoint.sh is NEVER modified and the
+# real host `/opt` is NEVER read or written — the test is fully hermetic even
+# when run as root on a CI host. We verify the FAIL-CLOSED branches that
+# production never sees but operators trigger when debugging:
 #
 #   1. Missing ELDER_N -> exit 1 immediately (set -u inside a positional
 #      parameter-substitution).
@@ -30,10 +33,10 @@ set -u
 # after each assertion to surface the full failure set in one pass.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENTRYPOINT="$REPO_ROOT/agents/entrypoint.sh"
+REAL_ENTRYPOINT="$REPO_ROOT/agents/entrypoint.sh"
 
-if [[ ! -x "$ENTRYPOINT" ]]; then
-  echo "FATAL: $ENTRYPOINT not executable or missing" >&2
+if [[ ! -x "$REAL_ENTRYPOINT" ]]; then
+  echo "FATAL: $REAL_ENTRYPOINT not executable or missing" >&2
   exit 1
 fi
 
@@ -67,13 +70,13 @@ run_entrypoint() {
   local logfile="$1"; shift
   local expected_rc="$1"; shift
   local actual_rc=0
-  # INIT_FIREWALL_SCRIPT points at a SANDBOX path (never the real /opt) so the
-  # test can never clobber the production firewall script even when run as root.
-  # Tests that want the "firewall present" branch create that file first; the
-  # rest get the "missing → exit 3" branch because it doesn't exist yet.
-  env -i HOME="$HOME" PATH="$SANDBOX_BIN:/usr/bin:/bin" \
-    INIT_FIREWALL_SCRIPT="$FAKE_FIREWALL" "$@" \
-    bash "$ENTRYPOINT" > "$logfile" 2>&1 &
+  # Runs the SANDBOXED COPY of entrypoint.sh (paths sed-rewritten to sandbox
+  # equivalents — see sandbox setup). The copy's firewall path points INTO the
+  # sandbox /opt stand-in, so the test can never read or clobber the real /opt
+  # even when run as root. Tests that want the "firewall present" branch create
+  # that file first; the rest get the "missing → exit 3" branch.
+  env -i HOME="$HOME" PATH="$SANDBOX_BIN:/usr/bin:/bin" "$@" \
+    bash "$SANDBOX_ENTRYPOINT" > "$logfile" 2>&1 &
   local pid=$!
   # Most tests exit fast; give them 3s, then kill (the monitor loop is
   # infinite in the happy path, but our error-path tests should exit before
@@ -128,15 +131,29 @@ SANDBOX="$(mktemp -d)"
 SANDBOX_BIN="$SANDBOX/bin"
 mkdir -p "$SANDBOX_BIN"
 
-# Sandbox stand-in for /opt/clan-world/init-firewall.sh. The entrypoint reads
-# its firewall path from INIT_FIREWALL_SCRIPT (defaults to the real /opt path in
-# production); we point it HERE so no test ever writes to or removes the real
-# /opt — critical on a root CI host where that would clobber production.
-FAKE_OPT="$SANDBOX/opt/clan-world"
-FAKE_FIREWALL="$FAKE_OPT/init-firewall.sh"
-mkdir -p "$FAKE_OPT"
+# Sandbox stand-in for /opt/clan-world/init-firewall.sh. Production entrypoint.sh
+# hard-codes the real /opt path; we COPY the script and sed that path (plus the
+# runner-main path) to these sandbox locations so no test ever reads, writes, or
+# removes the real /opt — critical on a root CI host where that would clobber
+# production.
+FAKE_FIREWALL="$SANDBOX/opt/clan-world/init-firewall.sh"
+# Sandbox stand-in for /opt/elder-runtime/src/main.ts. Deliberately NEVER
+# created, so the runner-spawn branch always hits the "elder-runner not found"
+# FATAL (the post-firewall state Tests 2 and 5 pin) without ever stat-ing the
+# real host /opt.
+FAKE_RUNNER_MAIN="$SANDBOX/opt/elder-runtime/src/main.ts"
+mkdir -p "$(dirname "$FAKE_FIREWALL")" "$(dirname "$FAKE_RUNNER_MAIN")"
 
 trap 'rm -rf "$SANDBOX"' EXIT
+
+# Hermetic COPY of entrypoint.sh with hardcoded production /opt paths rewritten
+# to sandbox equivalents. We run THIS copy in every test; the real entrypoint.sh
+# (and the real /opt) are never touched. `|` delimiter avoids escaping slashes.
+SANDBOX_ENTRYPOINT="$SANDBOX/entrypoint.sh"
+sed -e "s|/opt/clan-world/init-firewall.sh|$FAKE_FIREWALL|g" \
+    -e "s|/opt/elder-runtime/src/main.ts|$FAKE_RUNNER_MAIN|g" \
+    "$REAL_ENTRYPOINT" > "$SANDBOX_ENTRYPOINT"
+chmod +x "$SANDBOX_ENTRYPOINT"
 
 # Stub: sudo — by default forwards to the wrapped command; tests can override
 # via SUDO_FAIL=1.
@@ -171,16 +188,18 @@ FIREWALL_TOUCH="$SANDBOX/firewall-was-called"
 # --- TEST 1: missing ELDER_N → exit 1 immediately ---------------------------
 echo 'Test 1: missing ELDER_N triggers ${ELDER_N:?} bail'
 LOG1="$SANDBOX/log1"
-assert "exits non-zero when ELDER_N unset" \
-  run_entrypoint "$LOG1" any
+# bash exits 1 when a `${VAR:?msg}` expansion fails under `set -u`. Assert the
+# exact code (not "any", which would vacuously accept even a 0 exit).
+assert "exits 1 when ELDER_N unset" \
+  run_entrypoint "$LOG1" 1
 assert "stderr mentions ELDER_N required" \
   log_contains "$LOG1" "ELDER_N required"
 
 # --- TEST 2: ALLOW_UNRESTRICTED_EGRESS=1 skips firewall ---------------------
-# This test only verifies the early branch; it'll then proceed to look for
-# init-firewall.sh OR /opt/clan-world/init-firewall.sh, then for tsx +
-# elder-runtime, which DON'T exist in the sandbox → exits with FATAL for
-# elder-runner. We pin that downstream-exit-1 happens AFTER the WARNING log.
+# This test only verifies the early branch; it'll then proceed to look for tsx +
+# the (sandbox) elder-runtime main, which DON'T exist in the sandbox → exits with
+# FATAL for elder-runner. We pin that downstream-exit-1 happens AFTER the WARNING
+# log.
 echo "Test 2: ALLOW_UNRESTRICTED_EGRESS=1 skips firewall + downstream FATAL on missing runner"
 LOG2="$SANDBOX/log2"
 # Install the firewall stub so that IF the script were (wrongly) invoked the
@@ -209,8 +228,9 @@ assert "image-misbuild hint in stderr" \
 
 # --- TEST 4: firewall present but sudo refuses → exit 3 ---------------------
 # The firewall script lives in the SANDBOX /opt stand-in (NEVER the real /opt),
-# pointed at via INIT_FIREWALL_SCRIPT. This means the test runs identically as
-# root or unprivileged and can never clobber the production firewall script.
+# because the sandboxed entrypoint copy has its firewall path sed-rewritten to
+# that location. This means the test runs identically as root or unprivileged
+# and can never clobber the production firewall script.
 echo "Test 4: sudo refusal on firewall → exit 3 (sandboxed /opt)"
 install_fake_firewall
 LOG4="$SANDBOX/log4"

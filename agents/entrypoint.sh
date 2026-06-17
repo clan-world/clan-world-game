@@ -16,13 +16,6 @@ ELDER_N="${ELDER_N:?ELDER_N required (1..4)}"
 SESSION_NAME="elder-${ELDER_N}"
 TTYD_PORT="${TTYD_PORT:-7681}"
 
-# Path to the egress-lockdown script. Defaults to the production location
-# baked into the image. Overridable via INIT_FIREWALL_SCRIPT so the dry-run
-# test harness can point it at a sandbox path and never touch the real /opt
-# (which on a root CI host would clobber the production script). Production
-# never sets this — it gets the default below.
-INIT_FIREWALL_SCRIPT="${INIT_FIREWALL_SCRIPT:-/opt/clan-world/init-firewall.sh}"
-
 # Apply egress firewall. Requires CAP_NET_ADMIN on the container; without it,
 # the iptables calls inside init-firewall.sh fail. We FAIL CLOSED by default —
 # autonomous elders MUST run with egress restrictions. The operator can
@@ -33,13 +26,13 @@ INIT_FIREWALL_SCRIPT="${INIT_FIREWALL_SCRIPT:-/opt/clan-world/init-firewall.sh}"
 # the firewall applied even when iptables would have succeeded.
 if [[ "${ALLOW_UNRESTRICTED_EGRESS:-0}" = "1" ]]; then
   echo "[entrypoint] WARNING: ALLOW_UNRESTRICTED_EGRESS=1 — skipping init-firewall.sh entirely. Container will have UNRESTRICTED egress. DO NOT use in production." >&2
-elif [[ -x "${INIT_FIREWALL_SCRIPT}" ]]; then
-  if ! sudo "${INIT_FIREWALL_SCRIPT}"; then
+elif [[ -x /opt/clan-world/init-firewall.sh ]]; then
+  if ! sudo /opt/clan-world/init-firewall.sh; then
     echo "[entrypoint] FATAL: init-firewall.sh failed (likely missing CAP_NET_ADMIN). Set ALLOW_UNRESTRICTED_EGRESS=1 to override for local debugging." >&2
     exit 3
   fi
 else
-  echo "[entrypoint] FATAL: ${INIT_FIREWALL_SCRIPT} missing and ALLOW_UNRESTRICTED_EGRESS not set. Image misbuild?" >&2
+  echo "[entrypoint] FATAL: /opt/clan-world/init-firewall.sh missing and ALLOW_UNRESTRICTED_EGRESS not set. Image misbuild?" >&2
   exit 3
 fi
 
