@@ -231,27 +231,49 @@ class TestEnvVarBoundaries(unittest.TestCase):
 
     def test_whitespace_only_env_NOT_treated_as_missing(self):
         # OBSERVATION: ELDER_ID="   " is truthy in Python, so the guard
-        # `if not elder_id` passes — the hook would attempt the Convex call
-        # with elderId="   ". This is a likely bug class: a stray space in
-        # docker-compose env: ELDER_ID="1 " would be passed verbatim.
-        # The test here pins the CURRENT (buggy?) behavior so a future fix
-        # is a conscious spec change.
+        # `if not elder_id` passes — the hook attempts the Convex call with
+        # elderId="   " verbatim. This is a likely bug class: a stray space in
+        # docker-compose env: ELDER_ID="1 " would be passed downstream.
+        # This test DRIVES record_receipt (not just the env var) under a
+        # whitespace-only ELDER_ID, with the `convex` SDK stubbed so no network
+        # IO happens, and asserts the SUT's ACTUAL behavior: it does NOT skip,
+        # and it sends a mutation whose elderId is the literal "   ".
+        # Mutation guard: if record_receipt ever starts treating whitespace as
+        # missing (e.g. `if not elder_id.strip()`), captured["calls"] stays
+        # empty and this test FAILS — exactly the regression we want to catch.
+        captured_calls: list[tuple[str, dict]] = []
+
+        class _FakeConvexClient:
+            def __init__(self, url):
+                self.url = url
+
+            def mutation(self, name, payload):
+                captured_calls.append((name, payload))
+
+        fake_convex = type(sys)("convex")
+        fake_convex.ConvexClient = _FakeConvexClient
+
         with mock.patch.dict(
             os.environ,
             {"ELDER_ID": "   ", "CONVEX_DEPLOY_URL": "https://x", "BUS_ELDER_SECRET": "s"},
             clear=True,
-        ):
+        ), mock.patch.dict(sys.modules, {"convex": fake_convex}):
             captured = io.StringIO()
             with mock.patch("sys.stderr", captured):
-                # convex import will likely succeed but ConvexClient construction
-                # will be patched away to avoid network IO.
-                with mock.patch.object(ups, "record_receipt", wraps=ups.record_receipt) as _:
-                    # Just confirm the early-return guards are NOT hit.
-                    stderr_before = captured.getvalue()
-                    # We can't easily call without mocking convex; instead assert
-                    # the guard logic at the env-truthiness level directly.
-                    self.assertTrue(bool(os.environ.get("ELDER_ID")))
-                    self.assertNotIn("ELDER_ID is not set", stderr_before)
+                ups.record_receipt(
+                    {"prefix": "tick", "tickNumber": 1, "messagePreview": "tick: 1"}
+                )
+
+        # The SUT did NOT early-return on the whitespace ELDER_ID.
+        self.assertNotIn("ELDER_ID is not set", captured.getvalue())
+        # It actually issued the mutation through the stubbed convex client...
+        self.assertEqual(len(captured_calls), 1)
+        name, payload = captured_calls[0]
+        self.assertEqual(name, ups.MUTATION_NAME)
+        # ...carrying the whitespace-only ELDER_ID verbatim (current behavior).
+        self.assertEqual(payload["elderId"], "   ")
+        self.assertEqual(payload["secret"], "s")
+        self.assertEqual(payload["tickNumber"], 1)
 
     def test_bus_secret_file_with_trailing_newline_stripped(self, tmp_path=None):
         # _read_bus_elder_secret should strip() the file contents.
