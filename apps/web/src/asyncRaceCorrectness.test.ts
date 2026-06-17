@@ -39,13 +39,6 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isValidSnapshotShape } from './hooks/useCachedSnapshot';
-import {
-  CACHE_KEY,
-  FRESHNESS_THRESHOLD_MS,
-  MAX_CACHE_AGE_MS,
-  PAYLOAD_VERSION,
-  type CachedSnapshot,
-} from './hooks/snapshotCacheConstants';
 import { formatChainEvent, type ChainEventForTicker } from './eventTickerFormat';
 import { shouldRefreshTickCountdownAnchor } from './TopHud';
 import {
@@ -120,127 +113,17 @@ describe('isValidSnapshotShape — cache hydration race surface', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Section 2: localStorage cache initializer logic — the synchronous mount
-// path of `useCachedSnapshot`. We DO NOT invoke the React hook (no DOM in
-// this env); instead we replay the documented initializer pipeline against
-// a faithful in-process localStorage stub, plus a controlled Date.now stub.
-// This pins the contract that an iOS-Safari tab unpaused at time T sees the
-// correct cached-vs-cache-miss decision regardless of how stale the entry is.
-// If the production initializer ever drifts from this contract, the hook is
-// returning the wrong thing during the reconnect window.
+// Section 2: localStorage cache initializer logic.
+//
+// REMOVED (swarm R1): a `cache initializer contract` describe block used to
+// live here, but it asserted against a local `readCacheLikeHook` re-
+// implementation of the useState initializer in useCachedSnapshot.ts rather
+// than the real hook — i.e. it tested a copy, not the production code, so it
+// carried zero regression value. The cache-initializer version/age boundary
+// logic is currently inline-and-unexported in useCachedSnapshot.ts; testing
+// it properly needs a pure-function extraction (out of scope for this
+// test-only PR).
 // ---------------------------------------------------------------------------
-
-describe('cache initializer contract — race between tab-resume and cache-age', () => {
-  /**
-   * Faithful re-implementation of the synchronous useState initializer in
-   * useCachedSnapshot. Kept in lockstep with `apps/web/src/hooks/useCachedSnapshot.ts`
-   * lines 125-141. If the hook's read path changes, update this fixture so
-   * the contract test still reflects the production decision tree.
-   */
-  function readCacheLikeHook<T>(
-    storage: { getItem(k: string): string | null },
-    nowMs: number,
-    validate: (data: unknown) => boolean = isValidSnapshotShape,
-  ): { data: T; ts: number } | undefined {
-    try {
-      const raw = storage.getItem(CACHE_KEY);
-      if (!raw) return undefined;
-      const parsed = JSON.parse(raw) as CachedSnapshot<T>;
-      if (!parsed || typeof parsed.ts !== 'number') return undefined;
-      if (parsed.v !== PAYLOAD_VERSION) return undefined;
-      if (nowMs - parsed.ts > MAX_CACHE_AGE_MS) return undefined;
-      if (!validate(parsed.data)) return undefined;
-      return { data: parsed.data, ts: parsed.ts };
-    } catch {
-      return undefined;
-    }
-  }
-
-  function makeStorage(initial: Record<string, string> = {}) {
-    const store = new Map(Object.entries(initial));
-    return {
-      getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
-      setItem: (k: string, v: string) => store.set(k, v),
-      removeItem: (k: string) => store.delete(k),
-    };
-  }
-
-  it('returns cached payload when tab resumed inside MAX_CACHE_AGE_MS', () => {
-    const writeTs = 1_000_000;
-    const validPayload: CachedSnapshot<{ tick: number; clans: unknown[] }> = {
-      v: PAYLOAD_VERSION,
-      ts: writeTs,
-      data: { tick: 50, clans: [{ id: '1', name: 'Iron Guard' }] },
-    };
-    const storage = makeStorage({ [CACHE_KEY]: JSON.stringify(validPayload) });
-    // Resume the tab 30min later — well inside the 1h MAX_CACHE_AGE_MS.
-    const result = readCacheLikeHook(storage, writeTs + 30 * 60 * 1000);
-    expect(result).toEqual({ data: validPayload.data, ts: writeTs });
-  });
-
-  it('returns undefined exactly at the MAX_CACHE_AGE_MS + 1 boundary', () => {
-    // Race-condition off-by-one: a tab resumed at exactly the boundary
-    // should fall through to live (the `>` comparison in the initializer
-    // pins the inclusive edge). Stale-by-one-ms is acceptable; stale-by-
-    // one-hour-and-one-ms is not.
-    const writeTs = 5_000_000;
-    const validPayload: CachedSnapshot<{ tick: number; clans: unknown[] }> = {
-      v: PAYLOAD_VERSION,
-      ts: writeTs,
-      data: { tick: 1, clans: [{ id: '1', name: 'X' }] },
-    };
-    const storage = makeStorage({ [CACHE_KEY]: JSON.stringify(validPayload) });
-    // At exactly MAX_CACHE_AGE_MS the diff is `>`-false → still served.
-    expect(readCacheLikeHook(storage, writeTs + MAX_CACHE_AGE_MS)).toBeDefined();
-    // One ms past → cache miss.
-    expect(readCacheLikeHook(storage, writeTs + MAX_CACHE_AGE_MS + 1)).toBeUndefined();
-  });
-
-  it('returns undefined for a payload whose v lags the current PAYLOAD_VERSION', () => {
-    // The race: a deploy bumped PAYLOAD_VERSION; user's localStorage still
-    // carries the old version from before the reload. We MUST drop it
-    // instead of treating the old data as if it matched the new shape.
-    const stale: CachedSnapshot<{ tick: number; clans: unknown[] }> = {
-      v: PAYLOAD_VERSION - 1,
-      ts: 1_000,
-      data: { tick: 1, clans: [{ id: '1', name: 'X' }] },
-    };
-    const storage = makeStorage({ [CACHE_KEY]: JSON.stringify(stale) });
-    expect(readCacheLikeHook(storage, 2_000)).toBeUndefined();
-  });
-
-  it('returns undefined for a payload that JSON.parse can read but isValidSnapshotShape rejects', () => {
-    // The race we're guarding: schema migration landed without bumping the
-    // version. Validator catches it; cache miss is preferred over poisoned
-    // hydration that would crash downstream `clan.foo` loops.
-    const sneakyShapeChange = {
-      v: PAYLOAD_VERSION,
-      ts: 10_000,
-      data: { tick: 5, clans: [{ id: 1, name: 'numeric-id-broken' }] },
-    };
-    const storage = makeStorage({ [CACHE_KEY]: JSON.stringify(sneakyShapeChange) });
-    expect(readCacheLikeHook(storage, 11_000)).toBeUndefined();
-  });
-
-  it('returns undefined and does NOT throw on a truncated JSON write', () => {
-    // Race-condition: the previous tab was killed mid-localStorage.setItem
-    // and persisted a half-written JSON string. Hydration must not throw —
-    // it would unmount the cockpit tree via the error boundary. The
-    // try/catch in the initializer is exactly for this case.
-    const storage = makeStorage({ [CACHE_KEY]: '{"v":1,"ts":1000,"data":{"tick":5,"clan' });
-    expect(() => readCacheLikeHook(storage, 2_000)).not.toThrow();
-    expect(readCacheLikeHook(storage, 2_000)).toBeUndefined();
-  });
-
-  it('FRESHNESS_THRESHOLD_MS < MAX_CACHE_AGE_MS — invariant the "last known good" guard depends on', () => {
-    // Documented in snapshotCacheConstants.ts:90 — "Strictly less than
-    // MAX_CACHE_AGE_MS by construction." If this invariant ever flips,
-    // the freshness guard could keep serving a cached payload past the
-    // age at which the initializer would drop it on next mount, producing
-    // a "ghost realm that survives a reload" bug.
-    expect(FRESHNESS_THRESHOLD_MS).toBeLessThan(MAX_CACHE_AGE_MS);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Section 3: formatChainEvent — ordering / interleaving / idempotency.
