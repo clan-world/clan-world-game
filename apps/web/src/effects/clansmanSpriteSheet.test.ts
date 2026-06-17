@@ -133,10 +133,11 @@ describe('clansmanSpriteSheet — sheet geometry invariants', () => {
   // Boundary case: if SHEET_COLS or SHEET_ROWS drifts from the actual PNG,
   // every frame is sliced wrong and the sprite blinks garbage.
   it('SHEET_COLS × FRAME_WIDTH equals SHEET_PIXEL_WIDTH (no leftover pixels)', () => {
-    expect(SHEET_COLS * FRAME_WIDTH).toBeCloseTo(SHEET_COLS * FRAME_WIDTH, 6);
-    // Tautological by construction but pins the relationship — if someone
-    // hard-codes FRAME_WIDTH later, this assertion ALSO breaks if the
-    // multiplication overflows or NaN's.
+    // Hard-pin the product against the real sheet pixel width (1122). This is a
+    // genuine regression guard: bump SHEET_COLS (4) or the underlying
+    // SHEET_PIXEL_WIDTH (1122 → FRAME_WIDTH 280.5) and the slice math goes
+    // wrong — this assertion catches the drift instead of silently passing.
+    expect(SHEET_COLS * FRAME_WIDTH).toBe(1122);
     expect(Number.isFinite(FRAME_WIDTH)).toBe(true);
     expect(FRAME_WIDTH).toBeGreaterThan(0);
   });

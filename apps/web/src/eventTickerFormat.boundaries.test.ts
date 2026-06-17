@@ -137,7 +137,7 @@ describe('formatChainEvent — numeric extremes', () => {
     expect(entry?.text).toBe('World paused at tick 42');
   });
 
-  it('formats huge resource amounts using wei-scale heuristic (≥1e12 → divide by 1e18)', () => {
+  it("formats huge resource amounts using wei-scale heuristic (≥1e12 → divide by 1e18) (KNOWN BUG: pins current '5.0' output)", () => {
     // resourceAmount() switches to wei-scale division when raw value ≥1e12
     // (a heuristic for "this looks like an 18-decimal token amount"). Boundary:
     // 1e18 wei should render as 1 unit. 5e18 → 5 units.
@@ -157,8 +157,9 @@ describe('formatChainEvent — numeric extremes', () => {
     }));
 
     expect(entry).not.toBeNull();
-    // Pins CURRENT (buggy) behaviour: "5.0 wood" not "5 wood". Convert this
-    // to '.toBe(\'Clan 1 gathered 5 wood\')' once the regex is fixed.
+    // ⚠ KNOWN BUG (wei-scale .0 double-escape in eventTickerFormat): asserts
+    // CURRENT buggy output. When the source regex is fixed, flip this to
+    // 'Clan 1 gathered 5 wood'. Do NOT just delete.
     expect(entry?.text).toBe('Clan 1 gathered 5.0 wood');
     // The important invariants still hold even with the regex bug — no
     // scientific notation or raw wei leak through:
