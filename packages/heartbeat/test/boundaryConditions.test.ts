@@ -48,10 +48,13 @@ describe('computeHeartbeatDelayMs — boundary equality + sign edges', () => {
     expect(computeHeartbeatDelayMs(60, 60_000)).toBe(HEARTBEAT_JITTER_MS);
   });
 
-  it('clamps to jitter (not negative) when nextHeartbeatAtTs is in the deep past', () => {
-    // Far-past boundary: Math.max(0, -1_000_000) must yield 0, then add jitter.
-    expect(computeHeartbeatDelayMs(0, 1_000_000)).toBe(HEARTBEAT_JITTER_MS);
-    expect(computeHeartbeatDelayMs(60, 120_000)).toBe(HEARTBEAT_JITTER_MS);
+  it('clamps to 0 (not negative) when nextHeartbeatAtTs is in the deep past', () => {
+    // v2.17.x: the safety margin is folded INSIDE the clamp —
+    // Math.max(0, ts*1000 + HEARTBEAT_SAFETY_MARGIN_MS - now). When the target
+    // is far enough in the past that even the margin can't lift the sum above 0,
+    // the result clamps to exactly 0 (fire-now), NOT to the jitter/margin.
+    expect(computeHeartbeatDelayMs(0, 1_000_000)).toBe(0);
+    expect(computeHeartbeatDelayMs(60, 120_000)).toBe(0);
   });
 
   it('returns 0 when nextHeartbeatAtTs*1000 === nowMs AND jitter=0 (no-jitter override)', () => {
@@ -65,9 +68,12 @@ describe('computeHeartbeatDelayMs — boundary equality + sign edges', () => {
   });
 
   it('handles nextHeartbeatAtTs=0 (uninitialized chain) without overflow or sign flip', () => {
-    // On-chain 0 means "fire immediately"; with positive now, result should be jitter (clamped).
+    // On-chain 0 means "fire immediately". With now=0 the sum is exactly the
+    // safety margin (0*1000 + margin - 0); with now=1 the margin is decremented
+    // by the elapsed 1ms (v2.17.x folds the margin inside the Math.max clamp,
+    // so it is NOT a flat additive jitter).
     expect(computeHeartbeatDelayMs(0, 0)).toBe(HEARTBEAT_JITTER_MS);
-    expect(computeHeartbeatDelayMs(0, 1)).toBe(HEARTBEAT_JITTER_MS);
+    expect(computeHeartbeatDelayMs(0, 1)).toBe(HEARTBEAT_JITTER_MS - 1);
   });
 });
 
