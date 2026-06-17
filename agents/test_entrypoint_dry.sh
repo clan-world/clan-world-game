@@ -67,7 +67,12 @@ run_entrypoint() {
   local logfile="$1"; shift
   local expected_rc="$1"; shift
   local actual_rc=0
-  env -i HOME="$HOME" PATH="$SANDBOX_BIN:/usr/bin:/bin" "$@" \
+  # INIT_FIREWALL_SCRIPT points at a SANDBOX path (never the real /opt) so the
+  # test can never clobber the production firewall script even when run as root.
+  # Tests that want the "firewall present" branch create that file first; the
+  # rest get the "missing → exit 3" branch because it doesn't exist yet.
+  env -i HOME="$HOME" PATH="$SANDBOX_BIN:/usr/bin:/bin" \
+    INIT_FIREWALL_SCRIPT="$FAKE_FIREWALL" "$@" \
     bash "$ENTRYPOINT" > "$logfile" 2>&1 &
   local pid=$!
   # Most tests exit fast; give them 3s, then kill (the monitor loop is
@@ -100,11 +105,36 @@ log_contains() {
   return 0
 }
 
+# Install a fake init-firewall.sh into the SANDBOX /opt stand-in. When invoked
+# it touches $FIREWALL_TOUCH so tests can prove whether the entrypoint actually
+# ran it. Honours SUDO_FAIL via the sudo stub (the script itself always exits 0;
+# the sudo wrapper decides success/failure).
+install_fake_firewall() {
+  cat > "$FAKE_FIREWALL" <<EOF
+#!/usr/bin/env bash
+touch "$FIREWALL_TOUCH"
+echo "[stub-firewall] init-firewall.sh invoked" >&2
+exit 0
+EOF
+  chmod +x "$FAKE_FIREWALL"
+}
+
+firewall_was_invoked() { [[ -e "$FIREWALL_TOUCH" ]]; }
+firewall_not_invoked() { [[ ! -e "$FIREWALL_TOUCH" ]]; }
+
 # --- sandbox setup ----------------------------------------------------------
 
 SANDBOX="$(mktemp -d)"
 SANDBOX_BIN="$SANDBOX/bin"
 mkdir -p "$SANDBOX_BIN"
+
+# Sandbox stand-in for /opt/clan-world/init-firewall.sh. The entrypoint reads
+# its firewall path from INIT_FIREWALL_SCRIPT (defaults to the real /opt path in
+# production); we point it HERE so no test ever writes to or removes the real
+# /opt — critical on a root CI host where that would clobber production.
+FAKE_OPT="$SANDBOX/opt/clan-world"
+FAKE_FIREWALL="$FAKE_OPT/init-firewall.sh"
+mkdir -p "$FAKE_OPT"
 
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -132,12 +162,11 @@ EOF
   chmod +x "$SANDBOX_BIN/$cmd"
 done
 
-# Track if init-firewall.sh was invoked
-mkdir -p /tmp/test-entrypoint-state
-FIREWALL_TOUCH=/tmp/test-entrypoint-state/firewall-was-called
-
-cleanup_firewall_touch() { rm -f "$FIREWALL_TOUCH"; }
-trap 'rm -rf "$SANDBOX"; cleanup_firewall_touch' EXIT
+# Track if init-firewall.sh was actually invoked. The fake firewall script
+# (installed in Test 4) touches this sentinel when run; assertions below check
+# its presence/absence to prove the firewall was / was not invoked. Kept inside
+# the sandbox so EXIT cleanup removes it with the rest of the tree.
+FIREWALL_TOUCH="$SANDBOX/firewall-was-called"
 
 # --- TEST 1: missing ELDER_N → exit 1 immediately ---------------------------
 echo 'Test 1: missing ELDER_N triggers ${ELDER_N:?} bail'
@@ -154,13 +183,21 @@ assert "stderr mentions ELDER_N required" \
 # elder-runner. We pin that downstream-exit-1 happens AFTER the WARNING log.
 echo "Test 2: ALLOW_UNRESTRICTED_EGRESS=1 skips firewall + downstream FATAL on missing runner"
 LOG2="$SANDBOX/log2"
-# Make /opt path NOT exist (default on CI host).
+# Install the firewall stub so that IF the script were (wrongly) invoked the
+# sentinel would appear — this makes the "firewall NEVER invoked" assertion
+# below actually verifiable rather than vacuous.
+install_fake_firewall
+rm -f "$FIREWALL_TOUCH"
 assert "ALLOW_UNRESTRICTED_EGRESS=1 reaches runner-missing FATAL" \
   run_entrypoint "$LOG2" 1 ELDER_N=1 ALLOW_UNRESTRICTED_EGRESS=1
 assert "warns about unrestricted egress" \
   log_contains "$LOG2" "ALLOW_UNRESTRICTED_EGRESS=1"
 assert "still reaches elder-runner missing FATAL" \
   log_contains "$LOG2" "elder-runner not found"
+assert "firewall script NEVER invoked under egress opt-out" \
+  firewall_not_invoked
+# Remove the stub again so Tests 3 sees the "missing firewall" branch.
+rm -f "$FAKE_FIREWALL"
 
 # --- TEST 3: init-firewall.sh missing AND no override → exit 3 --------------
 echo "Test 3: missing /opt/clan-world/init-firewall.sh + no override → exit 3"
@@ -171,30 +208,34 @@ assert "image-misbuild hint in stderr" \
   log_contains "$LOG3" "Image misbuild?"
 
 # --- TEST 4: firewall present but sudo refuses → exit 3 ---------------------
-# To exercise the "sudo failure" branch, we need /opt/clan-world/init-firewall.sh
-# to be executable AND in the if-branch path. Since we can't write to /opt as
-# unprivileged user in CI, we sub in a fake by overriding the test-path with
-# a wrapper script that mocks the file existence check. We skip this test
-# if we can't `sudo install` to /opt — pragmatic: the SUDO refusal path is
-# functionally identical to the missing-file path from the entrypoint's POV
-# in that both end in exit 3 with a clear stderr message.
-echo "Test 4: sudo refusal on firewall → exit 3"
-if [[ -w /opt/clan-world ]] || mkdir -p /opt/clan-world 2>/dev/null; then
-  cp "$REPO_ROOT/agents/init-firewall.sh" /opt/clan-world/init-firewall.sh 2>/dev/null && \
-    chmod +x /opt/clan-world/init-firewall.sh 2>/dev/null
-  if [[ -x /opt/clan-world/init-firewall.sh ]]; then
-    LOG4="$SANDBOX/log4"
-    assert "exits 3 when sudo refuses firewall" \
-      run_entrypoint "$LOG4" 3 ELDER_N=1 SUDO_FAIL=1
-    assert "CAP_NET_ADMIN hint surfaces" \
-      log_contains "$LOG4" "CAP_NET_ADMIN"
-    rm -f /opt/clan-world/init-firewall.sh
-  else
-    echo "  SKIP: could not install firewall stub to /opt/clan-world (non-root)"
-  fi
-else
-  echo "  SKIP: /opt/clan-world not writable (test runs unprivileged on CI)"
-fi
+# The firewall script lives in the SANDBOX /opt stand-in (NEVER the real /opt),
+# pointed at via INIT_FIREWALL_SCRIPT. This means the test runs identically as
+# root or unprivileged and can never clobber the production firewall script.
+echo "Test 4: sudo refusal on firewall → exit 3 (sandboxed /opt)"
+install_fake_firewall
+LOG4="$SANDBOX/log4"
+rm -f "$FIREWALL_TOUCH"
+assert "exits 3 when sudo refuses firewall" \
+  run_entrypoint "$LOG4" 3 ELDER_N=1 SUDO_FAIL=1
+assert "CAP_NET_ADMIN hint surfaces" \
+  log_contains "$LOG4" "CAP_NET_ADMIN"
+# sudo refused → the firewall script body must NOT have run (sentinel absent).
+assert "firewall body NOT executed when sudo refuses" \
+  firewall_not_invoked
+
+# --- TEST 5: firewall present + sudo succeeds → script IS invoked -----------
+# Positive control for the sentinel: with sudo passing through, the entrypoint
+# runs the firewall script (which touches the sentinel), then proceeds to the
+# runner-missing FATAL. Proves the "NEVER invoked" assertions above are real.
+echo "Test 5: firewall present + sudo passthrough → firewall invoked, then runner FATAL"
+install_fake_firewall
+LOG5="$SANDBOX/log5"
+rm -f "$FIREWALL_TOUCH"
+assert "reaches runner-missing FATAL after firewall runs" \
+  run_entrypoint "$LOG5" 1 ELDER_N=1
+assert "firewall body WAS executed under sudo passthrough" \
+  firewall_was_invoked
+rm -f "$FAKE_FIREWALL"
 
 # --- summary ----------------------------------------------------------------
 

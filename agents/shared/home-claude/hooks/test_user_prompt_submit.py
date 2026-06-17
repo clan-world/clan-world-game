@@ -18,10 +18,7 @@ import importlib
 import io
 import json
 import os
-import signal
 import sys
-import threading
-import time
 from pathlib import Path
 from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
@@ -339,7 +336,7 @@ class TestSignalInterruptDuringMutation:
         with pytest.raises(KeyboardInterrupt):
             hook.main()
 
-    def test_sigalrm_interrupt_during_secret_read_swallowed_by_oserror_catch(
+    def test_interrupted_error_during_secret_read_swallowed_by_oserror_catch(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
@@ -355,36 +352,30 @@ class TestSignalInterruptDuringMutation:
 
         This test pins the CURRENT behavior so any future change to that
         exception class needs to be deliberate.
-        """
-        if not hasattr(signal, "SIGALRM"):
-            pytest.skip("SIGALRM not available")
 
+        IMPLEMENTATION NOTE: we used to provoke this with a real SIGALRM +
+        setitimer + a sleeping open(), which was CI-fragile (timing race) and
+        mutated global signal-handler state. We now patch builtins.open to raise
+        InterruptedError directly — deterministic, no signals, no sleep. The
+        behavior under test (OSError-subclass caught → log + env fallback) is
+        identical; only the trigger mechanism changed.
+        """
         f = tmp_path / "bus.key"
         f.write_text("ok")
         monkeypatch.setenv("BUS_ELDER_SECRET_FILE", str(f))
         monkeypatch.setenv("BUS_ELDER_SECRET", "env-fallback")
 
-        def handler(signum: int, frame: Any) -> None:  # noqa: ARG001
+        def interrupted_open(*args: Any, **kwargs: Any) -> Any:
+            # Simulate a signal interrupting the syscall mid-open. InterruptedError
+            # is the EINTR-flavored OSError subclass the kernel raises here.
             raise InterruptedError("signal during read")
 
-        old = signal.signal(signal.SIGALRM, handler)
-        try:
-            real_open = open
-
-            def slow_open(*args: Any, **kwargs: Any) -> Any:
-                time.sleep(0.05)
-                return real_open(*args, **kwargs)
-
-            with patch("builtins.open", slow_open):
-                signal.setitimer(signal.ITIMER_REAL, 0.01)
-                # InterruptedError is OSError subclass → caught → log + fall
-                # through. Returned value is the env fallback, NOT None.
-                result = hook._read_bus_elder_secret()
-                assert result == "env-fallback"
-                assert "failed to read BUS_ELDER_SECRET_FILE" in stderr_capture.getvalue()
-        finally:
-            signal.setitimer(signal.ITIMER_REAL, 0)
-            signal.signal(signal.SIGALRM, old)
+        with patch("builtins.open", interrupted_open):
+            # InterruptedError is OSError subclass → caught → log + fall
+            # through. Returned value is the env fallback, NOT None.
+            result = hook._read_bus_elder_secret()
+        assert result == "env-fallback"
+        assert "failed to read BUS_ELDER_SECRET_FILE" in stderr_capture.getvalue()
 
 
 # --- HAPPY PATH: end-to-end mutation call args ------------------------------
