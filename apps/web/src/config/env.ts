@@ -24,3 +24,23 @@
  * explicit `'true'` string enables it.
  */
 export const DEMO_MODE = import.meta.env.VITE_CLANWORLD_DEMO_MODE === 'true';
+
+/**
+ * CAPTURE_MODE — presentation-only mode for authored hero-video capture.
+ *
+ * Enabled via the URL query param `?capture=1` (read once at module init), so
+ * the SAME bundle serves both the live demo cockpit and the capture harness —
+ * no separate build. CAPTURE_MODE must ONLY ever change *presentation*
+ * (camera, ambient lighting, hiding admin/interaction chrome). It must never
+ * touch game logic or data.
+ *
+ * What it gates (see WorldMap.tsx):
+ * - exposes `window.__cwCapture` (viewport handle + world dims + a ready flag)
+ *   so the Playwright harness can drive a scripted cinematic camera;
+ * - drops the drag/pinch/wheel/decelerate/clampZoom interaction plugins and the
+ *   sessionStorage viewport-restore so nothing fights the scripted camera;
+ * - re-enables the day/night lighting sweep for cinematic warmth.
+ */
+export const CAPTURE_MODE =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('capture') === '1';

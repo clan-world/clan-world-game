@@ -1,0 +1,351 @@
+/* ============================================================
+   GameLandingPage — game-first manuscript landing.
+   LAYOUT ONLY. Tokens + primitives come from global.css.
+   ============================================================ */
+
+/* ============ Hero ============ */
+
+.game-hero {
+  padding: 4.5rem 0 3rem;
+  text-align: center;
+}
+
+.game-hero-kicker {
+  font-size: 0.8rem !important;
+  letter-spacing: 0.28em !important;
+  color: var(--gold-leaf) !important;
+  margin-bottom: 1.5rem;
+}
+
+.game-hero-title {
+  font-family: var(--ff-display);
+  line-height: 1;
+  margin-bottom: 1.5rem;
+}
+
+.game-hero-title-main {
+  display: block;
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: clamp(3rem, 8vw, 6rem);
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.game-hero-title-italic {
+  display: block;
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(1.75rem, 4vw, 3rem);
+  color: var(--vermillion);
+  margin-top: 0.4rem;
+}
+
+.game-hero-tagline {
+  font-family: var(--ff-prose);
+  font-size: 1.3rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  max-width: 42rem;
+  margin: 0 auto 2rem;
+}
+
+.game-hero-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-bottom: 3.5rem;
+}
+
+.game-hero-frame {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0.75rem;
+}
+
+.hero-video {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: #0a0a14;
+}
+
+.game-hero-caption {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.18em !important;
+  color: var(--ink-faded) !important;
+}
+
+/* ============ Shared section heads ============ */
+
+.game-section-head {
+  max-width: 42rem;
+  margin: 0 auto 3rem;
+}
+
+.game-eyebrow {
+  font-size: 0.82rem !important;
+  letter-spacing: 0.28em !important;
+  color: var(--vermillion) !important;
+  margin-bottom: 1rem;
+}
+
+.game-section-title {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(2rem, 4.5vw, 3.25rem);
+  line-height: 1.1;
+  color: var(--ink);
+  margin-bottom: 1.25rem;
+}
+
+.game-section-lead {
+  font-size: 1.2rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.game-section-lead.center,
+.game-section-head.center .game-section-lead {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ============ Living world map ============ */
+
+.game-map-frame {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0.75rem;
+  position: relative;
+}
+
+.game-map-frame iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  display: block;
+  background: #0a0a14;
+}
+
+.game-map-caption {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.18em !important;
+  color: var(--ink-faded) !important;
+}
+
+@media (max-width: 720px) {
+  .game-map-frame iframe { aspect-ratio: 4 / 3; }
+}
+
+/* ============ Ælder cards ============ */
+
+.game-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .game-card-grid { grid-template-columns: 1fr; max-width: 32rem; }
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.game-card-glyph {
+  font-family: var(--ff-display);
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--gold-leaf);
+  margin-bottom: 0.75rem;
+}
+
+.game-card-title {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: 1.5rem;
+  color: var(--vermillion);
+  margin-bottom: 0.75rem;
+}
+
+.game-card p {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+
+.game-card-shields {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  align-items: flex-end;
+}
+
+.game-aelders-quote {
+  margin: 3rem auto 0;
+  text-align: left;
+}
+
+/* ============ Tales ============ */
+
+.game-tales-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+@media (max-width: 900px) {
+  .game-tales-grid { grid-template-columns: 1fr; max-width: 36rem; margin: 0 auto; }
+}
+
+.game-tale {
+  margin: 0;
+}
+
+.game-tale-number {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: 1.75rem;
+  color: var(--gold-leaf);
+  margin-bottom: 0.4rem;
+}
+
+.game-tale-title {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: 1.35rem;
+  color: var(--ink);
+  margin-bottom: 0.75rem;
+}
+
+.game-tale p {
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+/* ============ How a season plays ============ */
+
+.game-season-strip {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .game-season-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .game-season-strip { grid-template-columns: 1fr; max-width: 28rem; margin: 0 auto; }
+}
+
+.game-step {
+  display: flex;
+  flex-direction: column;
+}
+
+.game-step-glyph {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: 2.25rem;
+  line-height: 1;
+  color: var(--vermillion);
+  margin-bottom: 0.6rem;
+}
+
+.game-step-title {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: 1.3rem;
+  color: var(--ink);
+  margin-bottom: 0.6rem;
+}
+
+.game-step p {
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+/* ============ Provenance strip ============ */
+
+.game-provenance {
+  padding: 3.5rem 0;
+  background: rgba(168, 149, 106, 0.18);
+  border-top: 1.5px solid var(--gold-leaf);
+  border-bottom: 1.5px solid var(--gold-leaf);
+}
+
+.game-provenance-eyebrow {
+  font-size: 0.78rem !important;
+  letter-spacing: 0.28em !important;
+  color: var(--vermillion) !important;
+  margin-bottom: 1rem;
+}
+
+.game-provenance-line {
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  margin-bottom: 1.75rem;
+}
+
+.game-provenance-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}
+
+/* ============ Coda ============ */
+
+.game-coda {
+  padding: 5rem 0;
+  text-align: center;
+}
+
+.game-coda-mark {
+  font-size: 1.75rem;
+  color: var(--gold-leaf);
+  margin-bottom: 1.25rem;
+}
+
+.game-coda-title {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  color: var(--ink);
+  margin-bottom: 1.5rem;
+}
+
+.game-coda-prose {
+  font-size: 1.2rem;
+  font-style: italic;
+  color: var(--ink-soft);
+  max-width: 30rem;
+  margin: 0 auto 2.5rem;
+  line-height: 1.6;
+}
+
+.game-coda-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.25rem;
+}
