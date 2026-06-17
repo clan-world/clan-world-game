@@ -23,9 +23,16 @@ import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   HEARTBEAT_RETRY_BACKOFF_MS,
+  HEARTBEAT_SAFETY_MARGIN_MS,
   startHeartbeatScheduler,
 } from '../src/heartbeatScheduler';
 import { HeartbeatRateLimitedError, type IHeartbeatCaller } from '@clan-world/agents/seams';
+
+// v2.17.x gates the first fire behind the safety margin (computeHeartbeatDelayMs
+// folds HEARTBEAT_SAFETY_MARGIN_MS inside the clamp). Advancing fake timers must
+// clear the margin before the scheduler reaches callHeartbeat. Reference the
+// exported constant so a future margin change can't silently re-drift these.
+const PAST_FIRST_FIRE_MS = HEARTBEAT_SAFETY_MARGIN_MS + 1;
 
 class TestHeartbeatTimeoutError extends Error {
   override name = 'HeartbeatTimeoutError';
@@ -105,7 +112,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
     });
 
     // Advance past jitter so the scheduler enters callHeartbeat.
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(PAST_FIRST_FIRE_MS);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     // Abort WHILE the heartbeat is in flight.
@@ -145,7 +152,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
     });
 
     // First attempt + jitter -> first failure registered, enters 1s backoff.
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(PAST_FIRST_FIRE_MS);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     // Abort partway through the 1s backoff (after 200ms).
@@ -185,7 +192,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
 
     // Drive all retry attempts to exhaustion -> alert is called.
     await vi.advanceTimersByTimeAsync(
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((s, ms) => s + ms, 0),
+      PAST_FIRST_FIRE_MS + HEARTBEAT_RETRY_BACKOFF_MS.reduce((s, ms) => s + ms, 0),
     );
     expect(callHeartbeat).toHaveBeenCalledTimes(HEARTBEAT_RETRY_BACKOFF_MS.length + 1);
     expect(alert).toHaveBeenCalledTimes(1);
@@ -243,7 +250,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(PAST_FIRST_FIRE_MS);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
 
     // Now resolve the tx successfully — concurrent state advance has already
@@ -299,7 +306,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
 
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(PAST_FIRST_FIRE_MS);
 
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
     expect(alert).not.toHaveBeenCalled();
@@ -350,7 +357,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
 
     // Run far enough to exhaust all retries.
     await vi.advanceTimersByTimeAsync(
-      501 + HEARTBEAT_RETRY_BACKOFF_MS.reduce((s, ms) => s + ms, 0),
+      PAST_FIRST_FIRE_MS + HEARTBEAT_RETRY_BACKOFF_MS.reduce((s, ms) => s + ms, 0),
     );
 
     expect(callCount).toBe(HEARTBEAT_RETRY_BACKOFF_MS.length + 1);
@@ -394,7 +401,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
     });
 
     // Trigger the rate-limited call.
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(PAST_FIRST_FIRE_MS);
     expect(callHeartbeat).toHaveBeenCalledTimes(1);
     expect(postRunnerStatus).toHaveBeenCalledTimes(1);
 
@@ -449,7 +456,7 @@ describe('heartbeatScheduler — async / race correctness', () => {
     });
 
     // Both schedulers fire once after jitter.
-    await vi.advanceTimersByTimeAsync(501);
+    await vi.advanceTimersByTimeAsync(PAST_FIRST_FIRE_MS);
     expect(callA).toHaveBeenCalledTimes(1);
     expect(callB).toHaveBeenCalledTimes(1);
 
