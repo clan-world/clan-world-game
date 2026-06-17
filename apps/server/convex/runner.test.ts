@@ -203,4 +203,125 @@ describe("convex runner functions", () => {
     })).rejects.toThrow("does not belong to elder-1");
     expect(tables.resetEventLog?.[0]?.completedAt).toBeUndefined();
   });
+
+  // ---- additional error-path coverage (Agent A: untested error paths) ----
+  //
+  // The existing tests above cover happy paths + cross-elder ownership rejects.
+  // The branches below cover the remaining throw sites in runner.ts that
+  // would silently no-op or corrupt state if a regression dropped them.
+
+  it("rejects every mutation when supplied a foreign-elder secret", async () => {
+    // baseline runner.test.ts only verifies wrong-secret on getRunnerAuxiliary.
+    // Every other mutation calls requireBusElderSecret too — sweep them all so
+    // a refactor that drops the call on (e.g.) recordTickSend is caught.
+    const tables: Record<string, any[]> = {};
+    const db = createDb(tables);
+
+    await expect(call(recordTickSend, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+      tickNumber: 1,
+      messageHash: "h",
+    })).rejects.toThrow("invalid bus elder secret");
+    expect(tables.tickSendLog).toBeUndefined();
+
+    await expect(call(recordResetEvent, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+      resetTick: 1,
+      reason: "scheduled",
+    })).rejects.toThrow("invalid bus elder secret");
+    expect(tables.resetEventLog).toBeUndefined();
+
+    await expect(call(recordRunnerEvent, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+      kind: "hook_failure",
+      message: "x",
+    })).rejects.toThrow("invalid bus elder secret");
+    expect(tables.runnerEvents).toBeUndefined();
+
+    await expect(call(consumePendingMessages, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+      messageIds: [],
+      consumedAt: 1,
+    })).rejects.toThrow("invalid bus elder secret");
+
+    await expect(call(completeResetEvent, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+      resetEventId: "resetEventLog:nonexistent",
+    })).rejects.toThrow("invalid bus elder secret");
+
+    await expect(call(hasTickReceive, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+      tickNumber: 1,
+    })).rejects.toThrow("invalid bus elder secret");
+
+    await expect(call(getRunnerStartupState, db, {
+      elderId: "elder-1",
+      secret: "secret-2",
+    })).rejects.toThrow("invalid bus elder secret");
+  });
+
+  it("consumePendingMessages throws when ANY id in batch is missing (atomic check)", async () => {
+    // The loop in consumePendingMessages collects owned ids first, then
+    // patches them. If id #2 doesn't exist, the throw happens BEFORE any
+    // patches run — so id #1's consumedAt should stay undefined too. This
+    // protects the all-or-nothing semantics of the batch consume.
+    const tables: Record<string, any[]> = {
+      pendingMessages: [
+        { _id: "pendingMessages:1", _creationTime: 1, targetElderId: "elder-1", text: "x", source: "user-message", insertedAt: 1, consumedAt: undefined },
+      ],
+    };
+    const db = createDb(tables);
+
+    await expect(call(consumePendingMessages, db, {
+      elderId: "elder-1",
+      secret: "secret-1",
+      messageIds: ["pendingMessages:1", "pendingMessages:999"],
+      consumedAt: 123,
+    })).rejects.toThrow("pending message not found: pendingMessages:999");
+    expect(tables.pendingMessages?.[0]?.consumedAt).toBeUndefined();
+  });
+
+  it("completeResetEvent throws when resetEventId doesn't exist", async () => {
+    // Distinct from cross-elder ownership: this path catches a typo'd /
+    // already-deleted reset id, with a specific "reset event not found"
+    // message vs. the "does not belong" rejection.
+    const tables: Record<string, any[]> = {};
+    const db = createDb(tables);
+
+    await expect(call(completeResetEvent, db, {
+      elderId: "elder-1",
+      secret: "secret-1",
+      resetEventId: "resetEventLog:does-not-exist",
+    })).rejects.toThrow("reset event not found: resetEventLog:does-not-exist");
+  });
+
+  it("getRunnerStartupState falls back to default clock when tickClock is empty", async () => {
+    // The latestClock() helper has TWO branches: row present vs. row missing.
+    // The baseline test only exercises the present branch. If a refactor
+    // drops the cold-start default, runners would deserialize undefined and
+    // crash on first boot of a fresh deployment.
+    const db = createDb({});
+    const result = await call(getRunnerStartupState, db, { elderId: "elder-1", secret: "secret-1" });
+    expect(result.tickClock.tick).toBe(0);
+    expect(result.lastReceivedTick).toBeNull();
+    expect(result.sentForCurrentTick).toBe(false);
+  });
+
+  it("returns sentForCurrentTick=false when a send exists for a DIFFERENT tick", async () => {
+    // by_elder_tick uses an .eq(tickNumber) on the CURRENT tick. A send row
+    // logged at tick N-1 must NOT satisfy the "current tick" check at tick N.
+    // Without this guard, the runner skips sending after a restart.
+    const db = createDb({
+      tickClock: [{ _id: "tickClock:1", _creationTime: 1, tick: 10, tickEpochStartedAt: 0, tickEpochDurationMs: 60_000, seasonStartTick: 0, seasonEndTick: 360, winterActive: false }],
+      tickSendLog: [{ _id: "tickSendLog:1", _creationTime: 1, elderId: "elder-1", tickNumber: 9, sentAt: 1, messageHash: "abc" }],
+    });
+    const result = await call(getRunnerStartupState, db, { elderId: "elder-1", secret: "secret-1" });
+    expect(result.sentForCurrentTick).toBe(false);
+  });
 });
