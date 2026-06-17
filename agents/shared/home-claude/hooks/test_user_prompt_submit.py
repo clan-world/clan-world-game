@@ -313,7 +313,7 @@ class TestSignalInterruptDuringMutation:
     the runner's resend logic re-delivers if the receipt was lost.
     """
 
-    def test_keyboard_interrupt_in_mutation_does_not_propagate(
+    def test_keyboard_interrupt_in_mutation_propagates_to_caller_by_design(
         self, monkeypatch: pytest.MonkeyPatch, stderr_capture: _StderrProxy
     ) -> None:
         _set_full_env(monkeypatch)

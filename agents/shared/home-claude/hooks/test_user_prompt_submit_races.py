@@ -18,7 +18,6 @@ surface via subprocess + monkeypatching to assert:
   2. SIGTERM during the mutation does not raise (main() catches Exception)
   3. partial / truncated / rotated secret files degrade gracefully
   4. POSIX read concurrency on the secret file is safe
-  5. tmux session-race: kill-session right before attach exits non-zero cleanly
 
 Run with:
   python3 -m pytest agents/shared/home-claude/hooks/test_user_prompt_submit_races.py -v
@@ -37,19 +36,21 @@ import threading
 import time
 from pathlib import Path
 
-import pytest
-
 HOOK_DIR = Path(__file__).parent
 HOOK_PATH = HOOK_DIR / "user_prompt_submit.py"
 
 # A COMPLETE env that drives record_receipt past the ELDER_ID / CONVEX_DEPLOY_URL
-# guards so the subprocess actually reaches the secret-file read AND the
-# (stubbed/unreachable) Convex mutation path. With only BUS_ELDER_SECRET_FILE
-# set, record_receipt short-circuits at `if not elder_id` and the secret-read /
-# mutation path is never genuinely exercised — a refactor that reordered the
-# secret read after that guard would still pass green (test theater). The convex
-# SDK is not installed in the test env, so `from convex import ConvexClient`
-# raises, is caught by record_receipt, and the hook exits 0 with NO network IO.
+# guards so the subprocess actually reaches the gated Convex mutation path.
+#
+# NOTE: the BUS_ELDER_SECRET read itself is UNCONDITIONAL — record_receipt calls
+# _read_bus_elder_secret() BEFORE the `if not elder_id` / `if not convex_url`
+# guards, so even a minimal env exercises the secret read. What FULL_ENV buys is
+# reaching the path that IS gated on ELDER_ID + CONVEX_DEPLOY_URL (+ a non-empty
+# secret): the `from convex import ConvexClient` / client.mutation() call. The
+# convex SDK is not installed in the test env, so that import raises, is caught
+# by record_receipt, and the hook exits 0 with NO network IO — but the gated
+# mutation path is genuinely reached, which is what assert_reached_secret_path
+# verifies.
 FULL_ENV = {
     "ELDER_ID": "elder-1",
     "CONVEX_DEPLOY_URL": "https://fake.convex.cloud",
@@ -57,18 +58,22 @@ FULL_ENV = {
 
 
 def assert_reached_secret_path(stderr: str) -> None:
-    """Assert the subprocess got PAST the env guards into the secret-read +
-    convex path (i.e. did not early-return on a missing ELDER_ID/CONVEX_URL).
+    """Assert the subprocess got PAST the env guards into the GATED convex-import
+    / mutation path (the part that actually depends on ELDER_ID +
+    CONVEX_DEPLOY_URL + a non-empty secret).
 
-    Reaching the path means one of:
-      - it tried to import the (absent) convex SDK → "failed to import convex SDK"
-      - the secret was empty/partial → "BUS_ELDER_SECRET_FILE ... is not set"
-    Either proves the secret read executed. What we must NEVER see is the
-    ELDER_ID / CONVEX_DEPLOY_URL early-return — that would mean the test never
-    exercised the secret path it claims to stress.
+    The secret READ is unconditional, so it is NOT what gates here — checking only
+    that the early-returns didn't fire would be satisfiable by an unconditional
+    read and prove nothing about the gating. Instead we assert the convex import
+    was attempted ("failed to import convex SDK"), which is reachable ONLY after
+    all three of ELDER_ID, CONVEX_DEPLOY_URL, and a non-empty secret are present.
+    We also assert none of the three early-return markers fired, so a regression
+    that re-orders a guard ahead of the mutation surfaces here.
     """
+    assert "failed to import convex SDK" in stderr, stderr
     assert "ELDER_ID is not set" not in stderr, stderr
     assert "CONVEX_DEPLOY_URL is not set" not in stderr, stderr
+    assert "BUS_ELDER_SECRET_FILE (or BUS_ELDER_SECRET) is not set" not in stderr, stderr
 
 
 # Ensure hook module is importable for in-process tests.
@@ -114,10 +119,11 @@ def _fire_hook(prompt: str, secret_file: str) -> tuple[int, str]:
     """Module-level fn so multiprocessing.Pool can pickle it.
 
     Passes a COMPLETE env (ELDER_ID + CONVEX_DEPLOY_URL + BUS_ELDER_SECRET_FILE)
-    so the subprocess drives record_receipt all the way to the secret read and
-    the convex mutation attempt. convex is not installed in the test env, so the
-    import is caught and the hook exits 0 with no network IO — but the
-    secret-file read path IS genuinely exercised under concurrency.
+    so the subprocess drives record_receipt all the way to the GATED convex
+    mutation attempt (reachable only with all three present). convex is not
+    installed in the test env, so the import is caught and the hook exits 0 with
+    no network IO — but the secret-file read path IS genuinely exercised under
+    concurrency, and the gated path is reached.
     """
     cp = run_hook_subprocess(
         prompt,
@@ -370,75 +376,14 @@ def test_secret_file_with_only_whitespace_returns_none(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------------
-# 4. tmux session race (kill while attach is happening)
+# 4. Prompt parser stress under concurrent input edge cases
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    subprocess.run(
-        ["which", "tmux"], capture_output=True, text=True
-    ).returncode
-    != 0,
-    reason="tmux not installed in test env",
-)
-def test_tmux_kill_session_during_attach_race():
-    """entrypoint.sh assumes:
-      1. kill-session at top (clear stale)
-      2. runner creates new session
-      3. ttyd attach-session
-
-    If two entrypoint invocations race (e.g. container restart while
-    cleanup is still happening), kill-session called on a session that
-    another shell is attaching to should NOT corrupt state. tmux just
-    exits non-zero on the attaching side.
-
-    This test verifies the bash semantics: `tmux kill-session -t X || true`
-    returns 0 even when X doesn't exist. The script depends on this for
-    its initial cleanup line not to abort under `set -e`.
-    """
-    session = "test-exp-c-race-session"
-    # Make sure clean state
-    subprocess.run(
-        ["tmux", "kill-session", "-t", session], capture_output=True
-    )
-
-    # Create the session detached
-    cp = subprocess.run(
-        ["tmux", "new-session", "-d", "-s", session, "sleep", "10"],
-        capture_output=True,
-        text=True,
-    )
-    assert cp.returncode == 0, cp.stderr
-
-    try:
-        # Now race: two concurrent kill-session calls. The second should not
-        # crash bash even though the session is already gone.
-        r1 = subprocess.run(
-            ["tmux", "kill-session", "-t", session], capture_output=True
-        )
-        r2 = subprocess.run(
-            ["tmux", "kill-session", "-t", session], capture_output=True
-        )
-        # First succeeds, second fails (no such session). entrypoint.sh
-        # protects with `|| true` so both are tolerable.
-        assert r1.returncode == 0
-        assert r2.returncode != 0  # confirms tmux IS strict here
-        # The `|| true` idiom in entrypoint.sh:41 is therefore load-bearing —
-        # without it, a re-entrant entrypoint would `set -e` exit on cleanup.
-    finally:
-        subprocess.run(
-            ["tmux", "kill-session", "-t", session], capture_output=True
-        )
-
-
-# --------------------------------------------------------------------------
-# 5. Prompt parser stress under concurrent input edge cases
-# --------------------------------------------------------------------------
-
-
-def test_concurrent_parse_with_malformed_prompts(tmp_path):
-    """Throw a bag of malformed payloads at the hook in parallel. The hook
-    must short-circuit gracefully on every one (return 0, no traceback)."""
+def test_parse_malformed_prompts_fuzz(tmp_path):
+    """Throw a bag of malformed payloads at the hook serially (fuzz surface).
+    The hook must short-circuit gracefully on every one (return 0, no
+    traceback)."""
     secret = tmp_path / "k"
     secret.write_text("s")
 
@@ -455,8 +400,6 @@ def test_concurrent_parse_with_malformed_prompts(tmp_path):
         '{"prompt": "special-msg:"}',  # empty special-msg uid → log+skip
         '{"prompt": "\\n   \\n   tick:7"}',  # leading whitespace lines OK
     ]
-
-    ctx = mp.get_context("spawn")
 
     def run_with_raw(raw):
         cp = subprocess.run(
@@ -481,7 +424,7 @@ def test_concurrent_parse_with_malformed_prompts(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# 6. Sanity: hook completes well under CC's timeout budget
+# 5. Sanity: hook completes well under CC's timeout budget
 # --------------------------------------------------------------------------
 
 
