@@ -15,7 +15,7 @@ import { api } from '../../server/convex/_generated/api';
 import type { Doc } from '../../server/convex/_generated/dataModel';
 import worldMapBg from './assets/world-map.png';
 import worldMapWinterBg from './assets/world-map-winter.png';
-import { DEMO_MODE } from './config/env';
+import { DEMO_MODE, CAPTURE_MODE } from './config/env';
 import { BanditState, ClansmanState } from '@clan-world/shared/generated/enums';
 import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
 import {
@@ -43,7 +43,9 @@ const WORLD_HEIGHT = MAP_HEIGHT;
 // `pnpm dev` only via `import.meta.env.DEV` so production builds never ship
 // the debug fills + raw (x,y) vertex labels, while keeping the tooling on
 // for future region authoring / map redesigns.
-const SHOW_REGION_POLYGONS = import.meta.env.DEV;
+// Off under CAPTURE_MODE so the authored hero video never shows the debug
+// polygon fills / raw (x,y) vertex labels even when captured against a dev build.
+const SHOW_REGION_POLYGONS = import.meta.env.DEV && !CAPTURE_MODE;
 
 // Winter map-overlay fade timings. The base map (`world-map.png`) stays fully
 // opaque at all times; we modulate the alpha of a second Sprite
@@ -740,9 +742,9 @@ const CARRY_BAR_H = 5;
 
 const TICKS_PER_DAY_CYCLE = 30;
 const FALLBACK_DAY_TICK_MS = 60_000;
-// Temporarily disabled for demo recording; leave the implementation in place
-// so the effect can be re-enabled after the capture.
-const ENABLE_DAY_NIGHT_EFFECT = false;
+// Disabled in normal demo/live mode; re-enabled under CAPTURE_MODE so the
+// authored hero video gets the cinematic dawn→day→dusk→night lighting sweep.
+const ENABLE_DAY_NIGHT_EFFECT = CAPTURE_MODE;
 const DAYNIGHT_KEYFRAMES: Record<'dawn' | 'day' | 'dusk' | 'night', DayNightKeyframe> = {
   dawn: { r: 1.10, g: 0.90, b: 0.80, brightness: 0.95, sat: 0.85 },
   day: { r: 1.00, g: 1.00, b: 1.00, brightness: 1.00, sat: 1.00 },
@@ -1737,16 +1739,37 @@ export function WorldMap() {
           initialW / WORLD_WIDTH,
           initialH / WORLD_HEIGHT,
         );
-        viewport
-          .drag()
-          .pinch()
-          .wheel()
-          .decelerate()
-          .clampZoom({ minScale: initialFitScale, maxScale: initialFitScale * 4 })
-          .clamp({ direction: 'all', underflow: 'center' });
-        viewport.setZoom(initialFitScale, true);
-        viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+        if (CAPTURE_MODE) {
+          // Capture mode: attach NO interaction plugins. A scripted cinematic
+          // camera (driven by the hero-video harness via window.__cwCapture)
+          // owns the viewport; skipping clampZoom also lets the camera push
+          // past the normal fit*4 zoom ceiling for tighter beauty shots.
+          viewport.setZoom(initialFitScale, true);
+          viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+        } else {
+          viewport
+            .drag()
+            .pinch()
+            .wheel()
+            .decelerate()
+            .clampZoom({ minScale: initialFitScale, maxScale: initialFitScale * 4 })
+            .clamp({ direction: 'all', underflow: 'center' });
+          viewport.setZoom(initialFitScale, true);
+          viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+        }
         viewportRef.current = viewport;
+
+        if (CAPTURE_MODE && typeof window !== 'undefined') {
+          // Expose a minimal camera handle for the Playwright hero-video
+          // harness. All keyframe/easing logic lives in the harness so the
+          // cinematic can be re-tuned without an app rebuild.
+          (window as unknown as { __cwCapture?: unknown }).__cwCapture = {
+            viewport,
+            world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+            fitScale: initialFitScale,
+            ready: true,
+          };
+        }
 
         // Persist + restore pan/zoom so iOS Safari tab eviction (or HMR full
         // reload during dev) doesn't lose the user's current view. Keyed in
@@ -1754,7 +1777,8 @@ export function WorldMap() {
         // `VIEWPORT_STORAGE_KEY` is env+diamond scoped (see issue #300) so
         // switching backends or realms doesn't surface stale viewport state.
         try {
-          const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
+          // Capture mode owns the camera — never restore a saved viewport.
+          const raw = CAPTURE_MODE ? null : sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
           if (raw) {
             const saved = JSON.parse(raw) as { cx: number; cy: number; scale: number };
             // Bounds-clamp: a poisoned viewport entry (e.g. cx=99999,
@@ -4613,6 +4637,9 @@ export function WorldMap() {
   }
 
   function shouldStartDemoCombatVignette() {
+    // Under CAPTURE_MODE the scripted hero camera owns the viewport; the
+    // auto-combat vignette would fight it (it re-centers/zooms on its target).
+    if (CAPTURE_MODE) return false;
     if (!DEMO_MODE || combatVignetteRef.current || pendingCombatTriggerRef.current) return false;
     const attackTick = DEMO_BANDIT.attacksAtTick;
     if (combatPlayedTickRef.current === attackTick) return false;
